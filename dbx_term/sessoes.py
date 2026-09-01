@@ -162,12 +162,38 @@ def _teve_conversa(registros: list[dict]) -> bool:
     return any(r.get("type") == "assistant" for r in registros)
 
 
-def _titulo(registros: list[dict]) -> str:
-    """O nome que o proprio Claude deu para a conversa.
+LIMITE_DO_TITULO = 60
 
-    Ele grava um registro `ai-title` sempre que reescreve o titulo, entao o ultimo da cauda
-    e o nome atual. E bem mais util na lista do que o nome da pasta.
+
+def _primeira_fala(registros: list[dict]) -> str:
+    """A primeira coisa que a pessoa escreveu, pra dar nome a conversa nova.
+
+    O Claude so batiza a conversa depois que ela cresce. Ate la, o que voce pediu
+    identifica melhor do que qualquer rotulo generico.
     """
+    for registro in registros:
+        if registro.get("type") != "user" or registro.get("isMeta"):
+            continue
+        conteudo = (registro.get("message") or {}).get("content")
+        texto = ""
+        if isinstance(conteudo, str):
+            texto = conteudo
+        elif isinstance(conteudo, list):
+            if any(b.get("type") == "tool_result" for b in conteudo if isinstance(b, dict)):
+                continue
+            texto = " ".join(
+                b.get("text", "") for b in conteudo if isinstance(b, dict) and b.get("type") == "text"
+            )
+        texto = " ".join(texto.split())
+        # linha de sistema e comando local nao sao pedido de ninguem
+        if not texto or texto.startswith("<") or texto.startswith("/"):
+            continue
+        return texto[:LIMITE_DO_TITULO] + ("…" if len(texto) > LIMITE_DO_TITULO else "")
+    return ""
+
+
+def _titulo(registros: list[dict]) -> str:
+    """O nome que o proprio Claude escreveu no transcript."""
     for registro in reversed(registros):
         if registro.get("type") == "ai-title" and registro.get("aiTitle"):
             return str(registro["aiTitle"]).strip()
@@ -209,6 +235,7 @@ def _estado_de(arquivo: Path, mtime: float, tamanho: int) -> dict:
         leitura = _ler_estado(registros)
         leitura["pasta"], leitura["ramo"] = _onde(registros)
         leitura["titulo"] = _titulo(registros)
+        leitura["sugestao"] = _primeira_fala(registros)
         leitura["conversou"] = _teve_conversa(registros) or tamanho > CAUDA
     _LEMBRADO[chave] = (mtime, tamanho, leitura)
     if len(_LEMBRADO) > 400:
@@ -273,8 +300,10 @@ def listar(pastas: dict[str, str], vistas: dict[str, dict] | None = None) -> lis
                 {
                     "perfil": chave,
                     "sessao": arquivo.stem,
-                    # o transcript e a fonte mais confiavel do nome; a marca serve de reserva
-                    "titulo": leitura.get("titulo") or marca.get("titulo", ""),
+                    # A status line traz o nome de agora, entao ela vem primeiro: renomear a
+                    # conversa aparece na hora, e sessao retomada nasce com transcript novo
+                    # e sem ai-title. Depois o transcript, e por ultimo o que voce pediu primeiro.
+                    "titulo": marca.get("titulo") or leitura.get("titulo") or leitura.get("sugestao", ""),
                     "conversou": leitura.get("conversou", False),
                     "pasta": leitura.get("pasta", ""),
                     "ramo": leitura.get("ramo", ""),
