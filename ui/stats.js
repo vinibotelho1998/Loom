@@ -1,25 +1,28 @@
 "use strict";
 
-/* Painel de estatisticas de uso.
-   Serie unica de proposito: o que importa por dia e o total gerado, e uma barra
-   por dia le melhor do que quatro series empilhadas disputando a mesma altura.
-   A quebra por modelo e por conta vive em lista, com barra proporcional. */
+/* Uso, dentro das Configuracoes.
 
-const MIL = 1000;
+   Uma conta por vez. Voce escolhe de quem quer ver e a tela inteira responde: os numeros,
+   as reguas do plano e o grafico. Tabela larga com tudo junto nao cabia e nao se lia. */
+
+const CAMPOS_SOMA = ["entrada", "saida", "raciocinio", "cacheEscrito", "cacheLido", "mensagens"];
+
+let usoBruto = {};
+let usoPerfis = [];
+let usoLimites = {};
+let contaEscolhida = "todas";
+let faixaGrafico = "dia";
 
 function curto(n) {
   if (!n) return "0";
-  if (n >= 1e9) return (n / 1e9).toFixed(2) + " B";
-  if (n >= 1e6) return (n / 1e6).toFixed(1) + " M";
-  if (n >= MIL) return (n / MIL).toFixed(1) + " k";
+  if (n >= 1e9) return (n / 1e9).toFixed(2) + "B";
+  if (n >= 1e6) return (n / 1e6).toFixed(1) + "M";
+  if (n >= 1000) return (n / 1000).toFixed(1) + "k";
   return String(n);
 }
 
 function nomeModelo(id) {
-  return id
-    .replace(/^claude-/, "")
-    .replace(/-\d{8}$/, "")
-    .replace(/^<|>$/g, "");
+  return String(id).replace(/^claude-/, "").replace(/-\d{8}$/, "").replace(/[<>]/g, "");
 }
 
 function diaCurto(iso) {
@@ -27,125 +30,8 @@ function diaCurto(iso) {
   return d + "/" + m;
 }
 
-function cartao(titulo, dados) {
-  const d = dados || {};
-  return (
-    '<div class="cartao">' +
-    '<div class="cartao-titulo">' + titulo + "</div>" +
-    '<div class="cartao-valor">' + curto(d.saida || 0) + "</div>" +
-    '<div class="cartao-rodape">gerados · ' + (d.mensagens || 0) + " respostas</div>" +
-    '<div class="cartao-detalhe">' +
-    "<span>raciocinio " + curto(d.raciocinio || 0) + "</span>" +
-    "<span>cache lido " + curto(d.cacheLido || 0) + "</span>" +
-    "</div></div>"
-  );
-}
-
-function grafico(serie) {
-  if (!serie.length) return '<div class="vazio">Sem consumo nos ultimos 30 dias.</div>';
-
-  const larg = 760;
-  const alt = 190;
-  const baixo = 26;
-  const topo = 14;
-  const teto = Math.max(...serie.map((d) => d.saida), 1);
-  const passo = larg / serie.length;
-  const grossura = Math.min(passo - 2, 22);
-  const util = alt - baixo - topo;
-
-  const grades = [0.25, 0.5, 0.75, 1]
-    .map((f) => {
-      const y = topo + util * (1 - f);
-      return (
-        '<line class="grade" x1="0" x2="' + larg + '" y1="' + y + '" y2="' + y + '"></line>' +
-        '<text class="marca-eixo" x="0" y="' + (y - 5) + '">' + curto(Math.round(teto * f)) + "</text>"
-      );
-    })
-    .join("");
-
-  const pico = serie.reduce((a, b) => (b.saida > a.saida ? b : a), serie[0]);
-
-  const barras = serie
-    .map((d, i) => {
-      const h = Math.max((d.saida / teto) * util, d.saida ? 2 : 0);
-      const x = i * passo + (passo - grossura) / 2;
-      const y = topo + util - h;
-      const titulo =
-        diaCurto(d.dia) + " · " + curto(d.saida) + " gerados · " + (d.mensagens || 0) + " respostas";
-      return (
-        '<g class="barra">' +
-        '<rect class="alvo" x="' + i * passo + '" y="' + topo + '" width="' + passo + '" height="' + util + '"></rect>' +
-        '<rect class="fito" x="' + x + '" y="' + y + '" width="' + grossura + '" height="' + h + '" rx="3"></rect>' +
-        "<title>" + titulo + "</title>" +
-        "</g>"
-      );
-    })
-    .join("");
-
-  const rotulos = serie
-    .map((d, i) => {
-      const mostrar = i === 0 || i === serie.length - 1 || d.dia === pico.dia;
-      if (!mostrar) return "";
-      const x = i * passo + passo / 2;
-      const ancora = i === 0 ? "start" : i === serie.length - 1 ? "end" : "middle";
-      return '<text class="rotulo-dia" x="' + x + '" y="' + (alt - 8) + '" text-anchor="' + ancora + '">' + diaCurto(d.dia) + "</text>";
-    })
-    .join("");
-
-  return (
-    '<svg class="gráfico" viewBox="0 0 ' + larg + " " + alt + '" preserveAspectRatio="none">' +
-    grades + barras + rotulos +
-    "</svg>"
-  );
-}
-
-function listaModelos(modelos) {
-  if (!modelos || !modelos.length) return "";
-  const teto = Math.max(...modelos.map((m) => m.tokens), 1);
-  return (
-    '<div class="bloco"><h3>Por modelo, ultimos 30 dias</h3>' +
-    modelos
-      .filter((m) => m.tokens > 0)
-      .map(
-        (m) =>
-          '<div class="faixa">' +
-          '<span class="faixa-nome">' + nomeModelo(m.modelo) + "</span>" +
-          '<span class="faixa-trilho"><i style="width:' + Math.max((m.tokens / teto) * 100, 1) + '%"></i></span>' +
-          '<span class="faixa-valor">' + curto(m.tokens) + "</span>" +
-          "</div>"
-      )
-      .join("") +
-    "</div>"
-  );
-}
-
-function listaContas(entradas) {
-  return (
-    '<div class="bloco"><h3>Por conta</h3>' +
-    '<table class="tabela"><thead><tr>' +
-    "<th>conta</th><th>hoje</th><th>semana</th><th>mes</th><th>respostas na semana</th><th>ultimo uso</th>" +
-    "</tr></thead><tbody>" +
-    entradas
-      .map(
-        (e) =>
-          "<tr>" +
-          '<td><span class="bolinha" style="background:' + e.cor + '"></span>' + e.nome + "</td>" +
-          "<td>" + curto(e.dados.hoje.saida || 0) + "</td>" +
-          "<td>" + curto(e.dados.semana.saida || 0) + "</td>" +
-          "<td>" + curto(e.dados.mes.saida || 0) + "</td>" +
-          "<td>" + (e.dados.semana.mensagens || 0) + "</td>" +
-          "<td>" + (e.dados.ultimoDia ? diaCurto(e.dados.ultimoDia) : "nunca") + "</td>" +
-          "</tr>"
-      )
-      .join("") +
-    "</tbody></table></div>"
-  );
-}
-
 function somar(alvo, parcela) {
-  for (const k of ["entrada", "saida", "raciocinio", "cacheEscrito", "cacheLido", "mensagens"]) {
-    alvo[k] = (alvo[k] || 0) + (parcela[k] || 0);
-  }
+  for (const k of CAMPOS_SOMA) alvo[k] = (alvo[k] || 0) + ((parcela || {})[k] || 0);
   return alvo;
 }
 
@@ -156,94 +42,220 @@ function porSemana(serie) {
     const seg = new Date(d);
     seg.setDate(d.getDate() - ((d.getDay() + 6) % 7));
     const chave = seg.toISOString().slice(0, 10);
-    const alvo = baldes.get(chave) || { dia: chave };
-    baldes.set(chave, somar(alvo, ponto));
+    baldes.set(chave, somar(baldes.get(chave) || { dia: chave }, ponto));
   }
   return [...baldes.values()].sort((a, b) => a.dia.localeCompare(b.dia));
 }
 
-let FAIXA_GRAFICO = "dia";
-let SERIE_GUARDADA = [];
+/* ---------------------------------------------------------------- contas */
 
-function pintarGrafico() {
-  const alvo = document.getElementById("area-grafico");
-  if (!alvo) return;
-  const serie = FAIXA_GRAFICO === "semana" ? porSemana(SERIE_GUARDADA) : SERIE_GUARDADA;
-  alvo.innerHTML = grafico(serie);
-  document.querySelectorAll("#filtro-grafico .aba-filtro").forEach((b) => {
-    b.classList.toggle("ativa", b.dataset.faixa === FAIXA_GRAFICO);
-  });
-}
+function contasDoUso() {
+  const lista = [];
+  let removidas = null;
 
-function ligarFiltroGrafico() {
-  document.querySelectorAll("#filtro-grafico .aba-filtro").forEach((b) => {
-    b.addEventListener("click", () => {
-      FAIXA_GRAFICO = b.dataset.faixa;
-      pintarGrafico();
+  // Se a pasta de sempre virou conta cadastrada, o gasto antigo dela e da mesma conta.
+  // Sem juntar, a tela mostra Principal e a conta lado a lado somando duas vezes.
+  const dona = usoPerfis.find((p) => p.padrao);
+
+  for (const chave of Object.keys(usoBruto)) {
+    if (dona && chave === "__padrao__") continue;
+    const perfil = usoPerfis.find((p) => p.id === chave);
+    if (!perfil && chave !== "__padrao__") {
+      // conta apagada do cadastro: o gasto continua no historico, mas um id solto
+      // na tela nao diz nada a ninguem
+      removidas = removidas || { id: "__removidas__", nome: "Removidas", cor: "#2f3540", email: "", chaves: [] };
+      removidas.chaves.push(chave);
+      continue;
+    }
+    const chaves = [chave];
+    if (dona && perfil && perfil.id === dona.id && usoBruto["__padrao__"]) chaves.push("__padrao__");
+    lista.push({
+      id: chave,
+      nome: perfil ? perfil.nome : "Pasta padrao",
+      cor: perfil ? perfil.cor : "#5b6371",
+      email: perfil ? perfil.email || "" : "Gasto da pasta de sempre, de antes de existir conta cadastrada",
+      chaves,
     });
-  });
-}
-
-function renderStats(dados, perfis) {
-  const chaves = Object.keys(dados);
-  if (!chaves.length) {
-    return (
-      '<div class="stats"><div class="vazio">' +
-      "Nenhum consumo encontrado ainda. O medidor le os transcript que o Claude Code grava em disco, " +
-      "entao o numero aparece depois da primeira conversa dentro de uma aba do DBX Term." +
-      "</div></div>"
-    );
   }
 
-  const geral = { hoje: {}, semana: {}, mes: {} };
-  const entradas = [];
-  const serieGeral = new Map();
-  const modelosGeral = new Map();
+  lista.sort((a, b) => (totalDe(b.chaves).semana.saida || 0) - (totalDe(a.chaves).semana.saida || 0));
+  if (removidas) lista.push(removidas);
+  return lista;
+}
+
+function totalDe(chaves) {
+  const soma = { hoje: {}, semana: {}, mes: {}, total: {} };
+  const serie = new Map();
+  const modelos = new Map();
 
   for (const chave of chaves) {
-    const d = dados[chave];
-    const perfil = perfis.find((p) => p.id === chave);
-    entradas.push({
-      nome: perfil ? perfil.nome : "conta de antes do app",
-      cor: perfil ? perfil.cor : "#5b6371",
-      dados: d,
-    });
-    somar(geral.hoje, d.hoje);
-    somar(geral.semana, d.semana);
-    somar(geral.mes, d.mes);
-    for (const ponto of d.serie) {
-      serieGeral.set(ponto.dia, somar(serieGeral.get(ponto.dia) || { dia: ponto.dia }, ponto));
+    const d = usoBruto[chave];
+    if (!d) continue;
+    somar(soma.hoje, d.hoje);
+    somar(soma.semana, d.semana);
+    somar(soma.mes, d.mes);
+    somar(soma.total, d.total);
+    for (const ponto of d.serie || []) {
+      serie.set(ponto.dia, somar(serie.get(ponto.dia) || { dia: ponto.dia }, ponto));
     }
-    for (const m of d.modelos) {
-      modelosGeral.set(m.modelo, (modelosGeral.get(m.modelo) || 0) + m.tokens);
-    }
+    for (const m of d.modelos || []) modelos.set(m.modelo, (modelos.get(m.modelo) || 0) + m.tokens);
   }
 
-  const serie = [...serieGeral.values()].sort((a, b) => a.dia.localeCompare(b.dia));
-  const modelos = [...modelosGeral.entries()]
-    .map(([modelo, tokens]) => ({ modelo, tokens }))
-    .sort((a, b) => b.tokens - a.tokens);
+  soma.serie = [...serie.values()].sort((a, b) => a.dia.localeCompare(b.dia));
+  soma.modelos = [...modelos.entries()].filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+  return soma;
+}
 
-  SERIE_GUARDADA = serie;
+function selecionadas() {
+  const contas = contasDoUso();
+  if (contaEscolhida === "todas") return contas.flatMap((c) => c.chaves);
+  const alvo = contas.find((c) => c.id === contaEscolhida);
+  return alvo ? alvo.chaves : [];
+}
+
+/* --------------------------------------------------------------- pedacos */
+
+function numero(rotulo, valor, apoio) {
+  return (
+    '<div class="numero"><span class="numero-rotulo">' + rotulo + "</span>" +
+    '<span class="numero-valor">' + curto(valor) + "</span>" +
+    '<span class="numero-apoio">' + apoio + "</span></div>"
+  );
+}
+
+function regua(rotulo, faixa) {
+  if (!faixa || typeof faixa.usado !== "number") {
+    return '<div class="regua-linha"><span class="regua-rotulo">' + rotulo + "</span>" +
+      '<span class="regua-vazia">Sem leitura ainda</span></div>';
+  }
+  const pct = Math.round(faixa.usado);
+  const classe = pct >= 85 ? "critico" : pct >= 60 ? "atencao" : "";
+  return (
+    '<div class="regua-linha"><span class="regua-rotulo">' + rotulo + "</span>" +
+    '<span class="regua ' + classe + '"><span class="trilho"><i style="width:' + Math.min(pct, 100) + '%"></i></span>' +
+    "<b>" + pct + "%</b></span></div>"
+  );
+}
+
+function grafico(serie) {
+  if (!serie.length) return '<div class="vazio">Sem consumo no periodo.</div>';
+
+  const larg = 620;
+  const alt = 110;
+  const baixo = 16;
+  const teto = Math.max(...serie.map((d) => d.saida), 1);
+  const passo = larg / serie.length;
+  const grossura = Math.min(passo - 3, 16);
+  const util = alt - baixo;
+
+  const barras = serie
+    .map((d, i) => {
+      const h = Math.max((d.saida / teto) * util, d.saida ? 2 : 0);
+      const x = i * passo + (passo - grossura) / 2;
+      return (
+        '<g class="barra">' +
+        '<rect class="alvo" x="' + i * passo + '" y="0" width="' + passo + '" height="' + util + '"></rect>' +
+        '<rect class="fito" x="' + x + '" y="' + (util - h) + '" width="' + grossura + '" height="' + h + '" rx="2"></rect>' +
+        "<title>" + diaCurto(d.dia) + " · " + curto(d.saida) + " gerados</title></g>"
+      );
+    })
+    .join("");
+
+  const pontas = [0, serie.length - 1]
+    .map((i) => {
+      const x = i === 0 ? 0 : larg;
+      const ancora = i === 0 ? "start" : "end";
+      return '<text class="rotulo-dia" x="' + x + '" y="' + (alt - 3) + '" text-anchor="' + ancora + '">' +
+        diaCurto(serie[i].dia) + "</text>";
+    })
+    .join("");
 
   return (
-    '<div class="stats">' +
-    '<div class="stats-topo"><h1>Uso</h1>' +
-    '<span class="stats-nota">medido nos transcript em disco, nao e o limite do plano</span></div>' +
-    '<div class="cartoes">' +
-    cartao("Hoje", geral.hoje) +
-    cartao("Esta semana", geral.semana) +
-    cartao("Este mes", geral.mes) +
-    "</div>" +
-    '<div class="bloco">' +
-    '<div class="bloco-topo"><h3>Tokens gerados</h3>' +
-    '<div class="filtro" id="filtro-grafico">' +
-    '<button class="aba-filtro ativa" data-faixa="dia">por dia</button>' +
-    '<button class="aba-filtro" data-faixa="semana">por semana</button>' +
-    "</div></div>" +
-    '<div id="area-grafico"></div></div>' +
-    listaContas(entradas) +
-    listaModelos(modelos) +
-    "</div>"
+    '<svg viewBox="0 0 ' + larg + " " + alt + '" preserveAspectRatio="none">' + barras + pontas + "</svg>" +
+    '<div class="grafico-teto">pico de ' + curto(teto) + " num " + (faixaGrafico === "semana" ? "semana" : "dia") + "</div>"
   );
+}
+
+/* ----------------------------------------------------------------- tela */
+
+function pintarUsoCorpo() {
+  const alvo = document.getElementById("corpo-uso");
+  if (!alvo) return;
+
+  const contas = contasDoUso();
+  if (!contas.length) {
+    alvo.innerHTML =
+      '<div class="vazio">Nenhum consumo encontrado ainda. O medidor le os transcript que o Claude ' +
+      "grava em disco, entao o numero aparece depois da primeira conversa.</div>";
+    return;
+  }
+
+  if (contaEscolhida !== "todas" && !contas.some((c) => c.id === contaEscolhida)) contaEscolhida = "todas";
+
+  const filtro =
+    '<div class="filtro-contas">' +
+    '<button class="chip' + (contaEscolhida === "todas" ? " ativo" : "") + '" data-conta="todas">Todas</button>' +
+    contas
+      .map(
+        (c) =>
+          '<button class="chip' + (contaEscolhida === c.id ? " ativo" : "") + '" data-conta="' + c.id + '" ' +
+          (c.email ? 'title="' + c.email + '"' : "") + ">" +
+          '<span class="bolinha" style="background:' + c.cor + '"></span>' + c.nome + "</button>"
+      )
+      .join("") +
+    "</div>";
+
+  const dados = totalDe(selecionadas());
+  const uma = contaEscolhida !== "todas" ? contas.find((c) => c.id === contaEscolhida) : null;
+  const faixas = uma && uma.chaves.length === 1 ? ((usoLimites || {})[uma.chaves[0]] || {}).faixas || {} : null;
+
+  const numeros =
+    '<div class="numeros">' +
+    numero("Hoje", dados.hoje.saida || 0, (dados.hoje.mensagens || 0) + " respostas") +
+    numero("Esta semana", dados.semana.saida || 0, (dados.semana.mensagens || 0) + " respostas") +
+    numero("Este mes", dados.mes.saida || 0, (dados.mes.mensagens || 0) + " respostas") +
+    "</div>";
+
+  const limite = faixas
+    ? '<div class="bloco-limite"><h3>Limite do plano</h3>' + regua("5h", faixas.five_hour) + regua("7d", faixas.seven_day) + "</div>"
+    : "";
+
+  const modelos = dados.modelos.length
+    ? '<div class="modelos-uso">' +
+      dados.modelos.map(([m, v]) => '<span class="pilula-modelo">' + nomeModelo(m) + " <b>" + curto(v) + "</b></span>").join("") +
+      "</div>"
+    : "";
+
+  alvo.innerHTML =
+    '<p class="ajuda">Tokens gerados, lidos dos transcript em disco. Escolha a conta pra ver so o dela.</p>' +
+    filtro +
+    numeros +
+    limite +
+    '<div class="bloco-topo"><h3>Ultimos 30 dias</h3>' +
+    '<div class="filtro" id="filtro-grafico">' +
+    '<button class="aba-filtro' + (faixaGrafico === "dia" ? " ativa" : "") + '" data-faixa="dia">Dia</button>' +
+    '<button class="aba-filtro' + (faixaGrafico === "semana" ? " ativa" : "") + '" data-faixa="semana">Semana</button>' +
+    "</div></div>" +
+    '<div id="area-grafico">' + grafico(faixaGrafico === "semana" ? porSemana(dados.serie) : dados.serie) + "</div>" +
+    modelos;
+
+  alvo.querySelectorAll("[data-conta]").forEach((b) => {
+    b.addEventListener("click", () => {
+      contaEscolhida = b.dataset.conta;
+      pintarUsoCorpo();
+    });
+  });
+  alvo.querySelectorAll("#filtro-grafico .aba-filtro").forEach((b) => {
+    b.addEventListener("click", () => {
+      faixaGrafico = b.dataset.faixa;
+      pintarUsoCorpo();
+    });
+  });
+}
+
+function renderStats(dados, perfis, limites) {
+  usoBruto = dados || {};
+  usoPerfis = perfis || [];
+  usoLimites = limites || {};
+  pintarUsoCorpo();
 }
