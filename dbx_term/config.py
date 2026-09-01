@@ -7,9 +7,9 @@ from .caminhos import RAIZ
 ARQUIVO = RAIZ / "config.json"
 
 PADRAO = {
-    "fonte": "JetBrains Mono",
-    "tamanhoFonte": 13,
-    "entrelinha": 1.3,
+    "fonte": "Hack",
+    "tamanhoFonte": 14,
+    "entrelinha": 1.25,
     "espacoLetra": 0,
     "cursor": "bar",
     "cursorPisca": True,
