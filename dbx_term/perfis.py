@@ -38,6 +38,17 @@ class Perfil:
     def emprestada(self) -> bool:
         return bool(self.pasta)
 
+    @property
+    def e_padrao(self) -> bool:
+        """Se esta conta e a que a ferramenta usaria sozinha, sem variavel nenhuma."""
+        padrao = mod_ferramentas.por_id(self.ferramenta).padrao
+        if not padrao:
+            return False
+        try:
+            return self.config_dir.resolve() == Path(os.path.expanduser(padrao)).resolve()
+        except OSError:
+            return False
+
 
 def _carregar_bruto() -> list[dict]:
     if not ARQUIVO.exists():
