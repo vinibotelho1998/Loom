@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ctypes.wintypes
 import os
 import sys
 from pathlib import Path
@@ -12,6 +13,13 @@ from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import QApplication, QMainWindow
 
 from .bridge import Bridge
+
+# Tres niveis de cinza, do mais claro pro mais escuro, pra dar profundidade:
+# a barra de titulo do sistema, a barra do app e o terminal.
+COR_TITULO = "#252932"
+COR_FUNDO = "#16181c"
+COR_LINHA = "#333843"
+COR_TEXTO = "#c8cfda"
 
 UI_DIR = Path(__file__).resolve().parent.parent / "ui"
 
@@ -31,7 +39,7 @@ class MainWindow(QMainWindow):
 
         self.view = QWebEngineView(self)
         self.view.setPage(LoggingPage(self.view))
-        self.view.page().setBackgroundColor(QColor("#000000"))
+        self.view.page().setBackgroundColor(QColor(COR_FUNDO))
         settings = self.view.settings()
         settings.setAttribute(QWebEngineSettings.LocalContentCanAccessFileUrls, True)
         settings.setAttribute(QWebEngineSettings.ScrollAnimatorEnabled, False)
@@ -55,6 +63,39 @@ class MainWindow(QMainWindow):
             endereco.setQuery("&".join(consulta))
         self.view.load(endereco)
         self.setCentralWidget(self.view)
+
+    def _pintar_barra_de_titulo(self) -> None:
+        """Pinta a barra de titulo do Windows na cor do app.
+
+        Ela nao e desenhada por nos, e sim pelo sistema, entao sem isto fica um retangulo
+        preto por cima de uma janela cinza. O Windows 11 aceita a cor pelo DWM.
+        """
+        if sys.platform != "win32":
+            return
+        import ctypes
+
+        def cor(hexa: str) -> int:
+            # o DWM quer BGR, e nao RGB
+            r, g, b = int(hexa[1:3], 16), int(hexa[3:5], 16), int(hexa[5:7], 16)
+            return b << 16 | g << 8 | r
+
+        DWMWA_BORDER_COLOR, DWMWA_CAPTION_COLOR, DWMWA_TEXT_COLOR = 34, 35, 36
+        try:
+            handle = ctypes.wintypes.HWND(int(self.winId()))
+            for atributo, valor in (
+                (DWMWA_CAPTION_COLOR, cor(COR_TITULO)),
+                (DWMWA_BORDER_COLOR, cor(COR_LINHA)),
+                (DWMWA_TEXT_COLOR, cor(COR_TEXTO)),
+            ):
+                ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                    handle, atributo, ctypes.byref(ctypes.c_int(valor)), ctypes.sizeof(ctypes.c_int)
+                )
+        except (AttributeError, OSError, ValueError):
+            pass
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._pintar_barra_de_titulo()
 
     def _trocar_titulo(self, texto: str) -> None:
         """A janela mostra em que conversa voce esta, que e o que a barra de tarefas precisa dizer."""
