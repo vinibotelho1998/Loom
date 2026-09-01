@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 import os
 import sys
@@ -9,6 +10,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QFileSystemWatcher, QObject, QTimer, Qt, Signal, Slot
 
+from . import caminhos as mod_caminhos
 from . import coletor as mod_coletor
 from . import config as mod_config
 from . import ferramentas as mod_ferramentas
@@ -30,6 +32,7 @@ TAXA_PRA_AGRUPAR = 12 * 1024  # bytes por segundo
 JANELA_DE_VIGIA = 24 * 3600
 TETO_DE_VIGIA = 400
 RAIZ_PROJETO = Path(__file__).resolve().parent.parent
+RAIZ_DADOS = mod_caminhos.RAIZ
 
 
 class Bridge(QObject):
@@ -52,6 +55,7 @@ class Bridge(QObject):
         self._volume_recente = 0
         self._marco_volume = time.monotonic()
         self._shells = mod_shells.descobrir()
+        self._elevacao: dict | None = None
         self._sem_autoabrir = False
 
         # olho nos transcript: assim que o Claude escreve, a tela sabe, sem esperar ciclo
@@ -80,6 +84,12 @@ class Bridge(QObject):
         return json.dumps([s.como_dict() for s in self._shells])
 
     @Slot(result=str)
+    def elevacao(self) -> str:
+        if self._elevacao is None:
+            self._elevacao = mod_shells.elevacao()
+        return json.dumps(self._elevacao)
+
+    @Slot(result=str)
     def listProfiles(self) -> str:
         return json.dumps([
             {
@@ -98,6 +108,39 @@ class Bridge(QObject):
             }
             for p in mod_perfis.listar()
         ])
+
+    @Slot(str, str, result=str)
+    def salvarColagem(self, base64_dados: str, extensao: str) -> str:
+        """Grava uma imagem da area de transferencia e devolve o caminho.
+
+        Terminal nao recebe imagem, recebe texto. O que o Claude entende e o caminho de um
+        arquivo, entao colar uma imagem vira gravar o arquivo e digitar o caminho dele.
+        """
+        try:
+            bruto = base64.b64decode(base64_dados, validate=True)
+        except (ValueError, TypeError):
+            return ""
+        if not bruto or len(bruto) > 25 * 1024 * 1024:
+            return ""
+
+        pasta = RAIZ_DADOS / "colagens"
+        pasta.mkdir(parents=True, exist_ok=True)
+        # limpa o que ficou de dias anteriores pra pasta nao virar deposito
+        limite = time.time() - 7 * 24 * 3600
+        for antigo in pasta.glob("*"):
+            try:
+                if antigo.stat().st_mtime < limite:
+                    antigo.unlink()
+            except OSError:
+                pass
+
+        sufixo = "".join(c for c in extensao if c.isalnum()) or "png"
+        alvo = pasta / f"colagem-{int(time.time() * 1000)}.{sufixo}"
+        try:
+            alvo.write_bytes(bruto)
+        except OSError:
+            return ""
+        return str(alvo)
 
     @Slot(str)
     def setTitle(self, texto: str) -> None:
@@ -141,7 +184,7 @@ class Bridge(QObject):
             pedido_bruto = {}
         self._sem_autoabrir = bool(pedido_bruto.get("conversa"))
         try:
-            session_id = self.openSession(shell_id, perfil_id, cols, rows)
+            session_id = self._abrir(shell_id, perfil_id, cols, rows, bool(pedido_bruto.get("elevar")))
         finally:
             self._sem_autoabrir = False
         pedido = pedido_bruto
@@ -237,12 +280,26 @@ class Bridge(QObject):
 
     @Slot(str, str, int, int, result=str)
     def openSession(self, shell_id: str, perfil_id: str, cols: int, rows: int) -> str:
+        return self._abrir(shell_id, perfil_id, cols, rows, False)
+
+    @Slot(str, str, int, int, bool, result=str)
+    def openElevated(self, shell_id: str, perfil_id: str, cols: int, rows: int, elevar: bool) -> str:
+        return self._abrir(shell_id, perfil_id, cols, rows, elevar)
+
+    def _abrir(self, shell_id: str, perfil_id: str, cols: int, rows: int, elevar: bool) -> str:
         shell = next((s for s in self._shells if s.id == shell_id), None)
         if shell is None:
             shell = mod_shells.padrao(self._shells)
 
         perfil = mod_perfis.por_id(perfil_id) if perfil_id else None
         session_id = uuid.uuid4().hex[:8]
+
+        argv = [shell.caminho, *shell.args]
+        if elevar:
+            if self._elevacao is None:
+                self._elevacao = mod_shells.elevacao()
+            if self._elevacao.get("disponivel"):
+                argv = mod_shells.elevado(shell, self._elevacao["comando"])
 
         env = {"DBX_TERM_ABA": session_id}
         if perfil is not None:
@@ -256,7 +313,7 @@ class Bridge(QObject):
                     mod_perfis.confiar(perfil, os.path.expanduser("~"))
         session = PtySession(
             session_id,
-            argv=[shell.caminho, *shell.args],
+            argv=argv,
             env=env,
             cols=cols,
             rows=rows,
