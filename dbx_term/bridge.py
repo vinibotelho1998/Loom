@@ -19,7 +19,16 @@ from . import uso as mod_uso
 from . import shells as mod_shells
 from .pty_session import PtySession
 
-INTERVALO_FLUSH_MS = 8
+# Entrega da saida. O ConPTY devolve pedacos minusculos, entao sem agrupar dariam quase
+# cem travessias por segundo carregando 150 bytes cada, e cada travessia custa serializar
+# e atravessar a ponte. Agrupamos pela TAXA: parado entrega rapido, pro eco da tecla ser
+# imediato; despejando muito texto, espaca, porque ai o que importa e vazao.
+FLUSH_MINIMO_MS = 12
+FLUSH_MAXIMO_MS = 40
+TAXA_PRA_AGRUPAR = 12 * 1024  # bytes por segundo
+# tudo que a lista mostra fica sob observacao, senao a sessao volta a viver sem avisar
+JANELA_DE_VIGIA = 24 * 3600
+TETO_DE_VIGIA = 400
 RAIZ_PROJETO = Path(__file__).resolve().parent.parent
 
 
@@ -40,6 +49,8 @@ class Bridge(QObject):
         super().__init__(parent)
         self._sessions: dict[str, PtySession] = {}
         self._buffers: dict[str, list[str]] = {}
+        self._volume_recente = 0
+        self._marco_volume = time.monotonic()
         self._shells = mod_shells.descobrir()
         self._sem_autoabrir = False
 
@@ -52,13 +63,13 @@ class Bridge(QObject):
         self._aviso.setInterval(120)
         self._aviso.timeout.connect(self.mexeram)
         self._relistar = QTimer(self)
-        self._relistar.setInterval(20000)
+        self._relistar.setInterval(8000)
         self._relistar.timeout.connect(self._revisar_vigia)
         self._relistar.start()
         QTimer.singleShot(1500, self._revisar_vigia)
 
         self._flush_timer = QTimer(self)
-        self._flush_timer.setInterval(INTERVALO_FLUSH_MS)
+        self._flush_timer.setInterval(FLUSH_MINIMO_MS)
         self._flush_timer.timeout.connect(self._flush)
         self._flush_timer.start()
 
@@ -290,12 +301,32 @@ class Bridge(QObject):
     def _on_output(self, session_id: str, data: str) -> None:
         self._buffers.setdefault(session_id, []).append(data)
 
+    def _ritmo(self, volume: int) -> None:
+        """Ajusta o intervalo pela taxa de saida do ultimo meio segundo."""
+        agora = time.monotonic()
+        self._volume_recente += volume
+        if agora - self._marco_volume < 0.5:
+            return
+        taxa = self._volume_recente / (agora - self._marco_volume)
+        self._volume_recente = 0
+        self._marco_volume = agora
+
+        alvo = FLUSH_MAXIMO_MS if taxa >= TAXA_PRA_AGRUPAR else FLUSH_MINIMO_MS
+        if self._flush_timer.interval() != alvo:
+            self._flush_timer.setInterval(alvo)
+
     def _flush(self) -> None:
         if not self._buffers:
+            self._ritmo(0)
             return
+
         pendentes, self._buffers = self._buffers, {}
+        volume = 0
         for session_id, pedacos in pendentes.items():
-            self.output.emit(session_id, "".join(pedacos))
+            texto = "".join(pedacos)
+            volume += len(texto)
+            self.output.emit(session_id, texto)
+        self._ritmo(volume)
 
     @Slot(str, int)
     def _on_exit(self, session_id: str, code: int) -> None:
@@ -317,6 +348,12 @@ class Bridge(QObject):
 
         agora = time.time()
         alvos: set[str] = set()
+
+        # a pasta do coletor tambem: e por ela que chega o nome novo depois de um /rename,
+        # e o percentual do plano. Sem isso a tela so descobre no proximo ciclo do relogio.
+        mod_coletor.PASTA.mkdir(parents=True, exist_ok=True)
+        alvos.add(str(mod_coletor.PASTA))
+
         for pasta in pastas.values():
             raiz = Path(pasta) / "projects"
             if not raiz.is_dir():
@@ -324,11 +361,17 @@ class Bridge(QObject):
             alvos.add(str(raiz))
             for arquivo in raiz.rglob("*.jsonl"):
                 try:
-                    if agora - arquivo.stat().st_mtime <= 6 * 3600:
-                        alvos.add(str(arquivo))
+                    idade = agora - arquivo.stat().st_mtime
                 except OSError:
                     continue
-            if len(alvos) > 120:
+                if idade > JANELA_DE_VIGIA:
+                    continue
+                alvos.add(str(arquivo))
+                # a pasta do projeto tambem, senao conversa nova nao avisa que nasceu
+                alvos.add(str(arquivo.parent))
+                if len(alvos) >= TETO_DE_VIGIA:
+                    break
+            if len(alvos) >= TETO_DE_VIGIA:
                 break
 
         atuais = set(self._vigia.files()) | set(self._vigia.directories())

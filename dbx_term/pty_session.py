@@ -82,6 +82,8 @@ class PtySession(QObject):
                 data = self._proc.read()
                 if not data:
                     break
+                if self._stopping:
+                    break
                 self.output.emit(self.session_id, data)
         except EOFError:
             pass
