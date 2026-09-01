@@ -109,7 +109,15 @@ def coletar(pastas: dict[str, Path]) -> dict:
             if not registros and novo_fim == desde:
                 continue
             vistos = defaultdict(Counter)
+            ids = set()
             for registro in registros:
+                # a mesma resposta pode aparecer duas vezes quando a sessao e retomada
+                # ou quando o Claude reescreve o bloco. Contar duas vezes inflaria o gasto.
+                identificador = (registro.get("message") or {}).get("id") or registro.get("requestId")
+                if identificador:
+                    if identificador in ids:
+                        continue
+                    ids.add(identificador)
                 parcial = Counter()
                 chave_dia = _somar(registro, parcial)
                 if chave_dia:
