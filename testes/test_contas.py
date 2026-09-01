@@ -152,6 +152,31 @@ class Coletor(ComPastaPropria):
         self.assertFalse((alvo / "settings.json").exists())
 
 
+class BarraResiliente(ComPastaPropria):
+    """A status line do usuario nao pode cair junto com o projeto."""
+
+    def test_com_o_projeto_no_lugar_chama_o_coletor(self):
+        projeto = self.raiz / "projeto"
+        projeto.mkdir()
+        (projeto / "coletar.py").write_text("", encoding="utf-8")
+
+        atalho = perfis.blindar_status_line("py.exe", str(projeto), "minha-barra")
+        conteudo = atalho.read_text(encoding="utf-8", newline="")
+
+        self.assertIn("coletar.py", conteudo)
+        self.assertIn("minha-barra", conteudo)
+        quebra_dupla = chr(13) + chr(13) + chr(10)
+        self.assertNotIn(quebra_dupla, conteudo, "quebra dupla estraga arquivo cmd")
+
+    def test_sem_o_projeto_ainda_chama_a_barra_de_sempre(self):
+        sumido = self.raiz / "nao-existe"
+        atalho = perfis.blindar_status_line("py.exe", str(sumido), "minha-barra")
+
+        linhas = atalho.read_text(encoding="utf-8").splitlines()
+        ramo_else = linhas[linhas.index(") else (") + 1]
+        self.assertIn("minha-barra", ramo_else, "o caminho de fuga precisa chamar a barra original")
+
+
 class Confianca(ComPastaPropria):
     def test_herda_so_o_que_ja_estava_aceito(self):
         origem = self.casa / ".claude.json"

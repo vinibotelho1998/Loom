@@ -369,3 +369,31 @@ def identidade(perfil: Perfil) -> dict:
     }
     _IDENTIDADE[chave] = (carimbo, resumo)
     return resumo
+
+
+def blindar_status_line(python: str, projeto: str, anterior: str) -> Path:
+    """Cria um atalho que sobrevive ao projeto sumir.
+
+    O settings do Claude guarda caminho absoluto. Se a pasta do DBX Term for movida ou
+    apagada, a status line quebraria em TODAS as sessoes, inclusive fora deste app.
+    Este arquivo mora na pasta de dados, confere se o coletor ainda existe e, se nao existe,
+    chama direto a status line de sempre. O pior caso deixa de ser perder a barra.
+    """
+    entrada = Path(projeto) / "coletar.py"
+    destino = RAIZ / "status-line.cmd"
+    RAIZ.mkdir(parents=True, exist_ok=True)
+
+    linhas = [
+        "@echo off",
+        "rem Gerado pelo DBX Term. Se o projeto sumir, a status line de sempre continua.",
+        f'if exist "{entrada}" (',
+        f'  "{python}" "{entrada}" %*',
+        ") else (",
+        f"  {anterior}",
+        ")",
+    ]
+    # newline vazio: sem isso o Windows converte de novo e o arquivo sai com quebra dupla
+    with open(destino, "w", encoding="utf-8", newline="") as fh:
+        quebra = chr(13) + chr(10)
+        fh.write(quebra.join(linhas) + quebra)
+    return destino
