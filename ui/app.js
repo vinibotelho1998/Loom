@@ -14,7 +14,10 @@ const TEMA = {
   brightCyan: "#87dce2", brightWhite: "#eef2f8",
 };
 
-const FONTE = '"JetBrains Mono", Consolas, monospace';
+function pilhaDeFonte(nome) {
+  const escolhida = nome || "Hack";
+  return '"' + escolhida + '", Hack, "JetBrains Mono", Consolas, monospace';
+}
 
 const el = (id) => document.getElementById(id);
 const elAbas = el("abas");
@@ -122,7 +125,7 @@ class AbaStats extends AbaBase {
 function opcoesTerminal() {
   return {
     theme: TEMA,
-    fontFamily: FONTE,
+    fontFamily: pilhaDeFonte(cfg.fonte),
     fontSize: cfg.tamanhoFonte,
     lineHeight: cfg.entrelinha,
     letterSpacing: cfg.espacoLetra,
@@ -336,7 +339,7 @@ class Aba extends AbaBase {
 
   aplicar() {
     const o = opcoesTerminal();
-    for (const chave of ["fontSize", "lineHeight", "letterSpacing", "cursorStyle", "cursorBlink", "scrollback"]) {
+    for (const chave of ["fontFamily", "fontSize", "lineHeight", "letterSpacing", "cursorStyle", "cursorBlink", "scrollback"]) {
       this.term.options[chave] = o[chave];
     }
     this.fit.fit();
@@ -771,6 +774,7 @@ function carregarFerramentas(depois) {
 /* ------------------------------------------------------- configuracoes */
 
 const CAMPOS = [
+  ["fonte", "select"],
   ["tamanhoFonte", "range"],
   ["entrelinha", "range"],
   ["espacoLetra", "range"],
@@ -822,6 +826,7 @@ function preencherCampos() {
     const saida = el("out-" + chave);
     if (saida) saida.textContent = cfg[chave];
   }
+  document.documentElement.style.setProperty("--mono", pilhaDeFonte(cfg.fonte));
   const amostra = el("amostra");
   amostra.style.fontSize = cfg.tamanhoFonte + "px";
   amostra.style.lineHeight = cfg.entrelinha;
