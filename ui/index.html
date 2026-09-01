@@ -24,7 +24,7 @@
       <span class="modelo" id="modelo-atual" hidden><i></i><b></b></span>
     </div>
     <span class="fps" id="fps" hidden></span>
-    <button class="pilula" id="abrir-stats" title="Consumo por conta, por dia e por semana"><span class="pilula-ponto"></span>Uso</button>
+    <button class="pilula" id="abrir-stats" title="Consumo e limite de cada conta"><span class="pilula-ponto"></span>Uso</button>
     <button class="icone" id="alternar-lateral" title="Mostrar ou esconder a barra lateral"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2" y="3" width="12" height="10" rx="1.6"/><path d="M6.4 3v10"/></svg></button>
     <button class="icone" id="abrir-config" title="Configurações, Ctrl+vírgula"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
   </header>
@@ -141,6 +141,7 @@
         <div class="painel-marca">Configuracoes</div>
         <button class="nav-item ativa" data-alvo="aparencia">Aparencia</button>
         <button class="nav-item" data-alvo="terminal">Terminal</button>
+        <button class="nav-item" data-alvo="uso">Uso</button>
         <button class="nav-item" data-alvo="contas">Contas</button>
         <button class="nav-item" data-alvo="ferramentas">Ferramentas</button>
         <button class="nav-item" data-alvo="sobre">Sobre</button>
@@ -256,6 +257,11 @@
             <div class="rot"><span>Uso na barra de cima</span><small>Gasto de hoje e da semana da conta da aba atual</small></div>
             <div class="ctrl"><label class="chave"><input type="checkbox" id="cfg-mostrarUsoNaBarra"><span></span></label></div>
           </div>
+        </div>
+
+        <div class="secao" id="sec-uso">
+          <h2>Uso</h2>
+          <div id="corpo-uso"></div>
         </div>
 
         <div class="secao" id="sec-contas">

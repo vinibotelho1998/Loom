@@ -49,6 +49,8 @@ class MainWindow(QMainWindow):
             consulta.append("demo=" + os.environ["DBX_TERM_DEMO"])
         if os.environ.get("DBX_TERM_BUSCA"):
             consulta.append("busca=" + os.environ["DBX_TERM_BUSCA"])
+        if os.environ.get("DBX_TERM_CONFIG"):
+            consulta.append("config=" + os.environ["DBX_TERM_CONFIG"])
         if consulta:
             endereco.setQuery("&".join(consulta))
         self.view.load(endereco)

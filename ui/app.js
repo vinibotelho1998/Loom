@@ -82,44 +82,6 @@ class AbaBase {
   }
 }
 
-/* ------------------------------------------------------ aba estatisticas */
-
-class AbaStats extends AbaBase {
-  constructor() {
-    super("Uso");
-    this.botao.querySelector(".ponto").style.background = "#3f7fd0";
-    this.tela.classList.add("tela-painel");
-    this.tela.innerHTML = '<div class="stats"><div class="vazio">Lendo os transcript...</div></div>';
-    this.recarregar();
-    this.relogio = setInterval(() => {
-      if (abaAtiva === this) this.recarregar();
-    }, 30000);
-  }
-
-  recarregar() {
-    bridge.getUsage((json) => {
-      let dados = {};
-      try {
-        dados = JSON.parse(json);
-      } catch (e) {
-        console.warn("uso ilegivel", e);
-      }
-      this.tela.innerHTML = renderStats(dados, perfis);
-      pintarGrafico();
-      ligarFiltroGrafico();
-    });
-  }
-
-  foco() {
-    this.recarregar();
-  }
-
-  destruir() {
-    clearInterval(this.relogio);
-    super.destruir();
-  }
-}
-
 /* --------------------------------------------------------- aba terminal */
 
 function opcoesTerminal() {
@@ -159,6 +121,7 @@ class Aba extends AbaBase {
     this.chapeu.className = "chapeu";
     this.chapeu.innerHTML =
       '<span class="chapeu-ponto"></span>' +
+      '<span class="chapeu-conta"></span>' +
       '<span class="chapeu-nome"></span>' +
       '<span class="chapeu-estado"></span>' +
       '<span class="chapeu-medidas"></span>';
@@ -264,9 +227,10 @@ class Aba extends AbaBase {
 
     const dona = this.perfil || contaPadraoCadastrada();
     const ferramenta = dona ? dona.ferramentaNome : "Claude Code";
+    const nome = tituloVivoDaAba(this) || s.titulo || ferramenta;
     const titulo = cartao.querySelector(".rotulo");
-    titulo.textContent = s.titulo || ferramenta;
-    titulo.title = s.titulo || "";
+    titulo.textContent = nome;
+    titulo.title = nome;
     pintarOrigem(cartao, ferramenta, s);
     cartao.querySelector(".sessao-idade").textContent = tempoCurto(s.idade);
 
@@ -384,6 +348,8 @@ function fechar(aba) {
   }
   montarSessoes();
   anotarAbas();
+  pintarUsoDaBarra();
+  atualizarTituloDaJanela();
   if (emGrade) {
     pintarGrade();
     ajustarTodas();
@@ -410,13 +376,7 @@ function abaPadrao() {
 }
 
 function abrirStats() {
-  const existente = ordem.find((a) => a instanceof AbaStats);
-  if (existente) {
-    ativar(existente);
-    existente.recarregar();
-    return;
-  }
-  ativar(new AbaStats());
+  abrirConfig("uso");
 }
 
 el("abrir-stats").addEventListener("click", abrirStats);
@@ -864,14 +824,31 @@ function ligarCampos() {
 
 document.querySelectorAll(".nav-item").forEach((b) => {
   b.addEventListener("click", () => {
-    document.querySelectorAll(".nav-item").forEach((o) => o.classList.remove("ativa"));
-    document.querySelectorAll(".secao").forEach((s) => s.classList.remove("ativa"));
-    b.classList.add("ativa");
-    el("sec-" + b.dataset.alvo).classList.add("ativa");
+    mostrarSecao(b.dataset.alvo);
+    if (b.dataset.alvo === "uso") pintarUso();
   });
 });
 
-function abrirConfig() {
+function mostrarSecao(alvo) {
+  document.querySelectorAll(".nav-item").forEach((o) => o.classList.toggle("ativa", o.dataset.alvo === alvo));
+  document.querySelectorAll(".secao").forEach((s) => s.classList.toggle("ativa", s.id === "sec-" + alvo));
+}
+
+function pintarUso() {
+  const alvo = el("corpo-uso");
+  if (!alvo) return;
+  bridge.getUsage((json) => {
+    let dados = {};
+    try {
+      dados = JSON.parse(json);
+    } catch (e) {
+      dados = {};
+    }
+    renderStats(dados, perfis, limitesPorPerfil);
+  });
+}
+
+function abrirConfig(secao) {
   esconderMenu();
   carregarFerramentas(() => {
     recarregarPerfis(() => {
@@ -880,13 +857,15 @@ function abrirConfig() {
       montarSelecaoPerfis();
       montarSelecaoShells();
       preencherCampos();
+      if (secao) mostrarSecao(secao);
+      pintarUso();
       abrirVeu("veu-config");
       medirFps(true);
     });
   });
 }
 
-el("abrir-config").addEventListener("click", abrirConfig);
+el("abrir-config").addEventListener("click", () => abrirConfig());
 
 /* ------------------------------------------------------------- sessoes */
 
@@ -1241,20 +1220,37 @@ function novaAbaEm(s) {
   }
 }
 
+let janelaAtiva = true;
+
+window.addEventListener("focus", () => {
+  janelaAtiva = true;
+  atualizarSessoes();
+  atualizarLimites();
+});
+window.addEventListener("blur", () => {
+  janelaAtiva = false;
+});
+
 let varrendo = false;
 let relogioSessoes = null;
+
+let assinaturaSessoes = "";
 
 function atualizarSessoes() {
   if (!bridge || varrendo) return;
   varrendo = true;
   bridge.getSessions((json) => {
     varrendo = false;
-    try {
-      sessoes = JSON.parse(json);
-    } catch (e) {
-      sessoes = [];
+    // redesenhar a lista igual a cada segundo custa layout e reflow a toa
+    if (json !== assinaturaSessoes) {
+      assinaturaSessoes = json;
+      try {
+        sessoes = JSON.parse(json);
+      } catch (e) {
+        sessoes = [];
+      }
+      montarSessoes();
     }
-    montarSessoes();
     reagendarSessoes();
   });
 }
@@ -1264,7 +1260,8 @@ function reagendarSessoes() {
      pra idade envelhecer na tela e pra pegar o que o vigia deixar passar. */
   const acesa = sessoes.some((s) => s.estado === "rodando" || s.estado === "pensando");
   clearTimeout(relogioSessoes);
-  relogioSessoes = setTimeout(atualizarSessoes, acesa ? 1500 : 6000);
+  const ritmo = !janelaAtiva ? 8000 : acesa ? 1200 : 2500;
+  relogioSessoes = setTimeout(atualizarSessoes, ritmo);
 }
 
 /* ------------------------------------------------------------- colar */
@@ -1432,10 +1429,11 @@ let emGrade = false;
 
 function nomeDaTela(aba) {
   const s = aba.sessao;
-  if (s && s.pasta) {
-    return (aba.perfil ? aba.perfil.nome + " · " : "") + nomeDaPasta(s.pasta);
-  }
-  return (aba.perfil ? aba.perfil.nome + " · " : "") + aba.shell.nome;
+  const vivo = tituloVivoDaAba(aba);
+  if (vivo) return vivo;
+  if (s && s.titulo) return s.titulo;
+  if (s && s.pasta) return nomeDaPasta(s.pasta);
+  return aba.shell.nome;
 }
 
 function medida(rotulo, valor, classe) {
@@ -1443,11 +1441,10 @@ function medida(rotulo, valor, classe) {
 }
 
 function faixaDaConta(aba, qual) {
-  const chave = aba.perfil ? aba.perfil.id : "__padrao__";
-  if (aba.perfil && !aba.perfil.logado) return null;
-  const faixas = (limitesPorPerfil[chave] || {}).faixas || {};
-  const f = faixas[qual];
-  return f && typeof f.usado === "number" ? Math.round(f.usado) : null;
+  const dona = aba.perfil || contaPadraoCadastrada();
+  const chave = dona ? dona.id : "__padrao__";
+  if (dona && !dona.logado) return null;
+  return ((limitesPorPerfil[chave] || {}).faixas || {})[qual] || null;
 }
 
 function grau(pct) {
@@ -1456,40 +1453,32 @@ function grau(pct) {
 }
 
 function pintarChapeu(aba) {
-  const cor = aba.perfil ? aba.perfil.cor : "#5b6371";
+  const dona = aba.perfil || contaPadraoCadastrada();
+  const cor = dona ? dona.cor : "#5b6371";
   aba.tela.style.setProperty("--cor-conta", cor);
   aba.chapeu.querySelector(".chapeu-ponto").style.background = cor;
-  aba.chapeu.querySelector(".chapeu-nome").textContent = nomeDaTela(aba);
+
+  aba.chapeu.querySelector(".chapeu-conta").textContent = dona ? dona.nome : "Principal";
+  const nome = aba.chapeu.querySelector(".chapeu-nome");
+  nome.textContent = nomeDaTela(aba);
+  nome.title = aba.sessao ? aba.sessao.pasta || "" : "";
 
   const estado = aba.chapeu.querySelector(".chapeu-estado");
   const s = aba.sessao;
-  const viva = leituraDaAba(aba);
-  const nomeModelo = nomeBonito((viva && viva.modelo) || (s && s.modelo) || "");
-  aba.chapeu.querySelector(".chapeu-nome").title = nomeModelo ? "Modelo: " + nomeModelo : "";
   estado.className = "chapeu-estado" + (s ? " " + s.estado : "");
   estado.textContent = s ? (ESTADO[s.estado] || {}).texto || s.estado : "";
 
-  // shell puro, sem conta escolhida e sem Claude rodando, nao tem limite pra mostrar:
-  // o numero seria o da conta principal e nao diria nada sobre aquela aba
-  const mede = !!s || !!aba.perfil || !!viva;
+  /* So o essencial aqui: conta, conversa, estado e as duas reguas do plano.
+     Modelo e contexto vivem na barra de cima e nao precisam brigar por espaco. */
   const partes = [];
-  if (mede) {
-    const cinco = faixaDaConta(aba, "five_hour");
-    const sete = faixaDaConta(aba, "seven_day");
-    const bruto = viva && typeof viva.contexto === "number" ? viva.contexto : s && s.contexto;
-    const ctx = typeof bruto === "number" ? Math.round(bruto) : null;
-    const hoje = ((usoPorPerfil[aba.perfil ? aba.perfil.id : "__padrao__"] || {}).hoje || {}).saida || 0;
-    if (ctx !== null) {
-      const detalhe =
-        viva && typeof viva.contextoTokens === "number" && viva.contextoTeto
-          ? " " + curtoBarra(viva.contextoTokens) + "/" + curtoBarra(viva.contextoTeto)
-          : "";
-      partes.push(medida("ctx", ctx + "%" + detalhe, grau(ctx)));
+  if (s || aba.perfil) {
+    for (const [rotulo, chave] of [["5h", "five_hour"], ["7d", "seven_day"]]) {
+      const faixa = faixaDaConta(aba, chave);
+      if (!faixa || typeof faixa.usado !== "number") continue;
+      const pct = Math.round(faixa.usado);
+      const falta = faltaPara(faixa.zera);
+      partes.push(medida(rotulo, pct + "%" + (falta ? " " + falta : ""), grau(pct)));
     }
-    if (cinco !== null) partes.push(medida("5h", cinco + "%", grau(cinco)));
-    if (sete !== null) partes.push(medida("7d", sete + "%", grau(sete)));
-    if (hoje) partes.push(medida("hoje", curtoBarra(hoje), ""));
-    if (nomeModelo) partes.unshift('<b class="chapeu-modelo">' + nomeModelo + "</b>");
   }
   aba.chapeu.querySelector(".chapeu-medidas").innerHTML = partes.join("");
 }
@@ -1685,12 +1674,26 @@ function atualizarTituloDaJanela() {
   const s = sessaoDaAba();
   const aba = abaAtiva && !abaAtiva.ehPainel ? abaAtiva : null;
   let texto = "";
-  if (s && s.titulo) texto = s.titulo;
+  if (!abaAtiva) {
+    if (tituloNaJanela !== "") {
+      tituloNaJanela = "";
+      if (bridge) bridge.setTitle("");
+    }
+    return;
+  }
+  const vivo = aba ? tituloVivoDaAba(aba) : "";
+  if (vivo) texto = vivo;
+  else if (s && s.titulo) texto = s.titulo;
   else if (aba) texto = (aba.perfil ? aba.perfil.nome + " · " : "") + aba.shell.nome;
   else if (abaAtiva && abaAtiva.ehPainel) texto = "Uso";
   if (texto === tituloNaJanela) return;
   tituloNaJanela = texto;
   if (bridge) bridge.setTitle(texto);
+}
+
+function tituloVivoDaAba(aba) {
+  const viva = leituraDaAba(aba);
+  return viva && viva.titulo ? viva.titulo : "";
 }
 
 function pintarModelo() {
@@ -1770,7 +1773,9 @@ function pintarMedidor(id, faixa, semLogin) {
 
 function pintarUsoDaBarra() {
   const barra = el("uso-barra");
-  if (!cfg.mostrarUsoNaBarra || emGrade) {
+  // sem aba de terminal aberta nao ha conta em uso, e mostrar limite ali seria invencao
+  const semAba = !abaAtiva || abaAtiva.ehPainel;
+  if (!cfg.mostrarUsoNaBarra || emGrade || semAba) {
     barra.hidden = true;
     return;
   }
@@ -1782,8 +1787,8 @@ function pintarUsoDaBarra() {
   selo.querySelector("b").textContent = perfil ? perfil.nome : "Principal";
   selo.querySelector("i").style.background = perfil ? perfil.cor : "#5b6371";
   selo.title = perfil
-    ? "tudo nesta barra e da conta desta aba"
-    : "conta que ja estava logada antes do app, usada pelas abas sem conta escolhida";
+    ? "Tudo nesta barra é da conta desta aba"
+    : "Pasta de login de sempre, usada pelas abas sem conta escolhida";
 
   // sem login nao existe limite pra mostrar, e emprestar o de outra conta so confunde
   const semLogin = !!perfil && !perfil.logado;
@@ -1798,9 +1803,13 @@ function pintarUsoDaBarra() {
   atualizarTituloDaJanela();
 }
 
+let assinaturaLimites = "";
+
 function atualizarLimites() {
   if (!bridge) return;
   bridge.getLimits((json) => {
+    if (json === assinaturaLimites) return;
+    assinaturaLimites = json;
     try {
       const lido = JSON.parse(json);
       limitesPorPerfil = lido.porConta || {};
@@ -1810,7 +1819,17 @@ function atualizarLimites() {
       limitesPorAba = {};
     }
     pintarUsoDaBarra();
+    atualizarTituloDaJanela();
     if (emGrade) pintarGrade();
+    for (const aba of ordem) {
+      if (aba.ehPainel || !aba.sessao) continue;
+      const nome = tituloVivoDaAba(aba);
+      const rotulo = aba.botao.querySelector(".rotulo");
+      if (nome && rotulo && rotulo.textContent !== nome) {
+        rotulo.textContent = nome;
+        rotulo.title = nome;
+      }
+    }
   });
 }
 
@@ -1827,7 +1846,9 @@ function atualizarUsoDaBarra() {
 }
 
 setInterval(atualizarUsoDaBarra, 30000);
-setInterval(atualizarLimites, 1200);
+setInterval(() => {
+  if (janelaAtiva) atualizarLimites();
+}, 1200);
 
 /* ------------------------------------------------------------- atalhos */
 
@@ -1966,6 +1987,8 @@ new QWebChannel(qt.webChannelTransport, (channel) => {
           atualizarLimites();
 
           const parametros = new URLSearchParams(location.search);
+          const secaoDemo = parametros.get("config");
+          if (secaoDemo) setTimeout(() => abrirConfig(secaoDemo), 1800);
           const termoDemo = parametros.get("busca");
           if (termoDemo) {
             setTimeout(() => {
