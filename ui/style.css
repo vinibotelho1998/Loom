@@ -46,7 +46,7 @@ html, body {
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 40px;
+  height: 42px;
   padding: 0 10px 0 14px;
   background: var(--cromo);
   border-bottom: 1px solid var(--linha);
@@ -65,7 +65,7 @@ html, body {
 
 /* ------------------------------------------------------------------ palco */
 
-.corpo { display: flex; height: calc(100% - 40px); }
+.corpo { display: flex; height: calc(100% - 42px); }
 .palco { position: relative; flex: 1; min-width: 0; }
 
 .tela {
@@ -574,8 +574,10 @@ svg.gráfico .barra:hover .fito { fill: #7fb8ff; }
 
 .sessao-linha {
   display: flex; align-items: center; gap: 6px;
-  font: 10.5px var(--mono);
-  color: #4d545f;
+  font: 500 9.5px/1.4 var(--mono);
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: #454b55;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .sessao-linha .ferramenta { color: var(--apagado); }
@@ -624,8 +626,8 @@ svg.gráfico .barra:hover .fito { fill: #7fb8ff; }
 /* --------------------------------------------------------------- medidor */
 
 .medidor {
-  display: flex; align-items: center; gap: 7px;
-  height: 26px; padding: 0 10px;
+  display: flex; align-items: center; gap: 8px;
+  height: 28px; padding: 0 11px;
   border: 1px solid var(--linha);
   border-radius: 7px;
   background: transparent;
@@ -634,15 +636,15 @@ svg.gráfico .barra:hover .fito { fill: #7fb8ff; }
 }
 .medidor:hover { background: #0d0e11; border-color: #2c2f37; }
 .medidor i {
-  font: normal 9.5px/1 var(--mono);
+  font: 600 10.5px/1 var(--mono);
   font-style: normal;
-  letter-spacing: .06em;
-  color: #3c424d;
+  letter-spacing: .04em;
+  color: #5b6371;
 }
 .medidor .trilho {
-  width: 54px; height: 5px;
-  border-radius: 3px;
-  background: #15171c;
+  width: 64px; height: 7px;
+  border-radius: 4px;
+  background: #191c22;
   overflow: hidden;
 }
 .medidor .trilho b {
@@ -652,10 +654,10 @@ svg.gráfico .barra:hover .fito { fill: #7fb8ff; }
   transition: width .3s ease, background .3s ease;
 }
 .medidor em {
-  font: 600 11px/1 var(--mono);
+  font: 600 12.5px/1 var(--mono);
   font-style: normal;
-  color: var(--apagado);
-  min-width: 30px; text-align: right;
+  color: var(--texto);
+  min-width: 34px; text-align: right;
 }
 .medidor.atencao .trilho b { background: #c99a4a; }
 .medidor.atencao em { color: #d9b25f; }
@@ -694,18 +696,15 @@ svg.gráfico .barra:hover .fito { fill: #7fb8ff; }
 
 .sessao.aguardando { border-left-color: #d5b06b; background: #0c0b08; }
 .sessao.aguardando .sessao-pulso { background: #d5b06b; animation: bater 1.6s ease-in-out infinite; }
-.sessao.aguardando .sessao-pasta { color: #f0cd85; }
+.sessao.aguardando .sessao-pasta { color: #e0c48a; }
 
-.sessao.respondeu { border-left-color: #4d9e6a; }
-.sessao.respondeu .sessao-pulso { background: #6cc98a; }
-.sessao.respondeu .sessao-linha { color: #6cc98a; }
 
 .sessao.pensando {
   border-left-color: #cc5560;
   animation: respira 1.9s ease-in-out infinite;
 }
 .sessao.pensando .sessao-pulso { background: #e05561; animation: bater 1s ease-in-out infinite; }
-.sessao.pensando .sessao-linha { color: #f0808a; }
+.sessao.pensando .sessao-linha { color: #b05a62; }
 
 @keyframes respira {
   0%, 100% { background: #0c0708; border-color: #1c1214; border-left-color: #a8444d; }
@@ -728,7 +727,7 @@ svg.gráfico .barra:hover .fito { fill: #7fb8ff; }
 .sessao.rodando .sessao-pulso { background: #4f9cf9; animation: bater 1.6s ease-in-out infinite; }
 
 .sessao-linha { font-weight: 500; }
-.sessao.aguardando .sessao-linha { color: #d5b06b; }
+.sessao.aguardando .sessao-linha { color: #9c8047; }
 
 .aviso {
   position: fixed;
@@ -749,13 +748,13 @@ svg.gráfico .barra:hover .fito { fill: #7fb8ff; }
 .aviso.visivel { opacity: 1; transform: translate(-50%, 0); }
 
 .uso-conta {
-  display: flex; align-items: center; gap: 6px;
-  padding: 0 10px 0 8px; height: 26px;
+  display: flex; align-items: center; gap: 7px;
+  padding: 0 11px 0 9px; height: 28px;
   border-radius: 7px;
   background: #0b0c10;
 }
 .uso-conta i { width: 6px; height: 6px; border-radius: 50%; }
-.uso-conta b { font: 500 11.5px/1 inherit; color: var(--apagado); }
+.uso-conta b { font: 600 12.5px/1 inherit; color: var(--texto); }
 .medidor.sem-dado em { font-size: 9.5px; letter-spacing: .02em; min-width: 52px; }
 
 
@@ -791,16 +790,16 @@ svg.gráfico .barra:hover .fito { fill: #7fb8ff; }
 
 .medidor u {
   text-decoration: none;
-  font: normal 9.5px/1 var(--mono);
-  color: #3c424d;
-  min-width: 34px;
+  font: 500 10.5px/1 var(--mono);
+  color: #5b6371;
+  min-width: 40px;
   text-align: right;
   white-space: nowrap;
 }
-#medidor-ctx u { min-width: 60px; }
+#medidor-ctx u { min-width: 68px; }
 .medidor u:empty { display: none; }
 .medidor em { min-width: 26px; }
-.medidor.sem-dado em { min-width: 52px; }
+.medidor.sem-dado em { min-width: 58px; font-size: 10.5px; }
 
 .sessao-ctx { display: flex; align-items: center; gap: 5px; margin-left: auto; }
 .sessao-ctx .ctx-trilho {
@@ -935,7 +934,6 @@ body.puxando-largura .tela { pointer-events: none; }
 .chapeu-estado.pensando { color: #f0808a; }
 .chapeu-estado.rodando { color: #7fb8ff; }
 .chapeu-estado.aguardando { color: #d5b06b; }
-.chapeu-estado.respondeu { color: #6cc98a; }
 .chapeu-estado.parada { color: #383e48; }
 
 .chapeu-medidas { display: flex; gap: 9px; margin-left: auto; flex: 0 0 auto; }
@@ -990,13 +988,13 @@ svg { display: block; }
 
 .modelo {
   display: flex; align-items: center; gap: 7px;
-  height: 26px; padding: 0 11px 0 9px;
+  height: 28px; padding: 0 12px 0 10px;
   border: 1px solid var(--linha);
   border-radius: 7px;
   background: #0a0b0e;
 }
 .modelo i { width: 6px; height: 6px; border-radius: 50%; }
-.modelo b { font: 600 11.5px/1 var(--mono); color: var(--texto); letter-spacing: -.01em; }
+.modelo b { font: 600 12.5px/1 var(--mono); color: var(--texto); letter-spacing: -.01em; }
 
 .chapeu-medidas b.chapeu-modelo { color: #8a93a1; }
 
@@ -1061,3 +1059,44 @@ svg { display: block; }
   text-align: right;
 }
 .conta-linha .conta-nome { flex: 0 0 120px; }
+
+/* a ferramenta em uso e informacao, entao ela nao entra no caixa alta do estado */
+.sessao-linha .ferramenta,
+.sessao-linha .ferramenta + span {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 10.5px;
+}
+.sessao-linha .ferramenta { color: #5f6a78; font-weight: 600; }
+.sessao.rodando .sessao-linha .ferramenta { color: #5d8bbf; }
+
+/* barra lateral colorida e o sinal forte; o resto do cartao fica calmo */
+.sessao { border-left-width: 3px; }
+.sessao.parada { opacity: .42; }
+.sessao.aguardando { border-left-color: #b8924e; background: #0b0a07; }
+
+.chapeu-estado {
+  font-size: 9.5px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+/* o titulo diz o que roda; a pasta vem junto, mas em segundo plano */
+
+/* titulo da conversa em cima, origem embaixo */
+.sessao-origem {
+  display: flex; align-items: baseline;
+  margin: -1px 0 4px 15px;
+  font: 10.5px var(--mono);
+  color: #454b55;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.sessao-origem b { font-weight: 600; color: #5f6a78; }
+.sessao-origem i { font-style: normal; }
+.sessao-origem:empty { display: none; }
+
+.sessao-pasta { font-weight: 600; color: var(--texto); }
+.sessao.parada .sessao-pasta { font-weight: 500; }
+.sessao.aba.ativa .sessao-pasta { color: #eef2f8; }
+
+.sessao.aguardando .sessao-pasta { color: #e0c48a; }

@@ -51,6 +51,7 @@ class AbaBase {
       '<span class="sessao-pasta rotulo"></span>' +
       '<span class="sessao-idade"></span>' +
       "</div>" +
+      '<div class="sessao-origem"></div>' +
       '<div class="sessao-linha"></div>' +
       '<div class="sessao-rodape"></div>';
     this.botao.querySelector(".rotulo").textContent = rotulo;
@@ -198,6 +199,8 @@ class Aba extends AbaBase {
 
     this.term.onData((d) => {
       if (bridge && this.sessionId) bridge.write(this.sessionId, d);
+      // apertou Enter: mandou algo, entao a lista tem que reagir junto
+      if (d.charCodeAt(0) === 13 || d.charCodeAt(0) === 10) setTimeout(atualizarSessoes, 250);
     });
     this.term.onResize((dim) => {
       if (bridge && this.sessionId) bridge.resize(this.sessionId, dim.cols, dim.rows);
@@ -211,8 +214,9 @@ class Aba extends AbaBase {
   }
 
   pintar() {
+    const dona = this.perfil || contaPadraoCadastrada();
     const ponto = this.botao.querySelector(".ponto");
-    const cor = this.perfil ? this.perfil.cor : "#5b6371";
+    const cor = dona ? dona.cor : "#5b6371";
     this.botao.style.borderLeftColor = this.viva ? cor : "#2a2f38";
     ponto.style.background = this.viva ? cor : "#3a3f49";
 
@@ -220,16 +224,23 @@ class Aba extends AbaBase {
     rodape.innerHTML = "";
     const conta = document.createElement("span");
     conta.className = "sessao-conta";
-    conta.textContent = this.perfil ? this.perfil.nome : "principal";
-    if (this.perfil) conta.style.color = this.perfil.cor;
+    conta.textContent = dona ? dona.nome : "Principal";
+    if (dona) conta.style.color = dona.cor;
     rodape.appendChild(conta);
-    const shell = document.createElement("span");
-    shell.textContent = this.shell.nome;
-    rodape.appendChild(shell);
+    if (!this.sessao) {
+      const shell = document.createElement("span");
+      shell.textContent = this.shell.nome;
+      rodape.appendChild(shell);
+    }
 
     if (!this.sessao) {
-      this.botao.classList.remove("pensando", "rodando", "aguardando", "respondeu", "parada");
-      this.botao.querySelector(".sessao-linha").textContent = this.viva ? "Shell aberto" : "Encerrada";
+      this.botao.classList.remove("pensando", "rodando", "aguardando", "parada");
+      const titulo = this.botao.querySelector(".rotulo");
+      titulo.textContent = this.shell.nome;
+      titulo.title = "";
+      const origem = this.botao.querySelector(".sessao-origem");
+      if (origem) origem.textContent = "";
+      this.botao.querySelector(".sessao-linha").textContent = this.viva ? "shell" : "closed";
       this.botao.querySelector(".sessao-idade").textContent = "";
     }
   }
@@ -238,7 +249,7 @@ class Aba extends AbaBase {
     /* Traz pro cartao da aba o estado da sessao de Claude que roda dentro dela. */
     this.sessao = s || null;
     const cartao = this.botao;
-    const estados = ["pensando", "rodando", "aguardando", "respondeu", "parada"];
+    const estados = ["pensando", "rodando", "aguardando", "parada"];
     cartao.classList.remove(...estados);
     this.tela.classList.remove(...estados);
     if (!s) {
@@ -248,9 +259,12 @@ class Aba extends AbaBase {
     cartao.classList.add(s.estado);
     this.tela.classList.add(s.estado);
 
-    const partes = (s.pasta || "").split(/[\\/]/).filter(Boolean);
-    cartao.querySelector(".rotulo").textContent = partes.length ? partes[partes.length - 1] : this.rotuloBase;
-    cartao.querySelector(".rotulo").title = s.pasta || "";
+    const dona = this.perfil || contaPadraoCadastrada();
+    const ferramenta = dona ? dona.ferramentaNome : "Claude Code";
+    const titulo = cartao.querySelector(".rotulo");
+    titulo.textContent = s.titulo || ferramenta;
+    titulo.title = s.titulo || "";
+    pintarOrigem(cartao, ferramenta, s);
     cartao.querySelector(".sessao-idade").textContent = tempoCurto(s.idade);
 
     const linha = cartao.querySelector(".sessao-linha");
@@ -349,6 +363,7 @@ function ativar(aba) {
   aba.tela.classList.add("ativa");
   aba.botao.classList.add("ativa");
   pintarUsoDaBarra();
+  atualizarTituloDaJanela();
   requestAnimationFrame(() => {
     aba.ajustar();
     aba.foco();
@@ -883,14 +898,45 @@ function tempoCurto(s) {
 }
 
 const ESTADO = {
-  pensando: { texto: "Pensando", dica: "o modelo esta gerando a resposta agora" },
-  rodando: { texto: "Rodando", dica: "uma ferramenta esta em execucao" },
-  aguardando: { texto: "Aguardando", dica: "ela terminou e esta esperando voce digitar" },
-  respondeu: { texto: "Respondeu", dica: "acabou de responder" },
-  parada: { texto: "Parada", dica: "sem nada escrito ha bastante tempo" },
+  pensando: { texto: "thinking", dica: "O modelo está gerando a resposta agora" },
+  rodando: { texto: "working", dica: "Uma ferramenta está em execução" },
+  aguardando: { texto: "ready", dica: "Terminou e está esperando você digitar" },
+  parada: { texto: "stopped", dica: "Sem nada escrito há bastante tempo" },
 };
 
 let sessaoDoMenu = null;
+
+let pastaPessoal = "";
+
+function contaDaSessao(s) {
+  /* A pasta onde o transcript esta e a verdade sobre de quem e a sessao. A marca gravada
+     na hora pode ser antiga, de antes de a conta ser renomeada ou cadastrada. */
+  if (s.perfil && s.perfil !== "__padrao__") return s.perfil;
+  const cadastrada = contaPadraoCadastrada();
+  if (cadastrada) return cadastrada.id;
+  return s.conta || s.perfil;
+}
+
+function nomeDaPasta(caminho) {
+  /* A pasta pessoal se chama como voce, entao mostrar o nome dela vira confusao.
+     Todo terminal escreve ~ nesse caso, e e o que a pessoa reconhece na hora. */
+  if (!caminho) return "";
+  const limpo = caminho.replace(/[\\/]+$/, "");
+  if (pastaPessoal && limpo.toLowerCase() === pastaPessoal.toLowerCase()) return "~";
+  const partes = limpo.split(/[\\/]/).filter(Boolean);
+  return partes.length ? partes[partes.length - 1] : "";
+}
+
+function pintarOrigem(cartao, ferramenta, s) {
+  /* Abaixo do titulo, quem gerou a conversa e onde ela roda. */
+  const alvo = cartao.querySelector(".sessao-origem");
+  if (!alvo) return;
+  alvo.innerHTML = "<b></b><i></i>";
+  alvo.querySelector("b").textContent = ferramenta;
+  const pasta = nomeDaPasta(s.pasta);
+  alvo.querySelector("i").textContent = pasta ? " · " + pasta : "";
+  alvo.title = s.pasta || "";
+}
 
 function barraContexto(valor) {
   const ctx = document.createElement("span");
@@ -931,7 +977,7 @@ function montarSessoes() {
   for (const aba of terminais) {
     if (donos.has(aba)) continue;
     const conta = aba.perfil ? aba.perfil.id : "__padrao__";
-    const candidata = vivas.find((s) => !usadas.has(s.sessao) && (s.conta || s.perfil) === conta);
+    const candidata = vivas.find((s) => !usadas.has(s.sessao) && contaDaSessao(s) === conta);
     if (candidata) {
       usadas.add(candidata.sessao);
       donos.set(aba, candidata);
@@ -939,6 +985,7 @@ function montarSessoes() {
   }
 
   for (const aba of terminais) aba.refletir(donos.get(aba) || null);
+  atualizarTituloDaJanela();
   anotarAbas();
 
   if (emGrade) pintarGrade();
@@ -970,19 +1017,19 @@ function montarCartao(s) {
     const cartao = document.createElement("div");
     cartao.className = "sessao externa " + s.estado;
 
-    const perfil = perfis.find((p) => p.id === (s.conta || s.perfil));
-    const partes = (s.pasta || "").split(/[\\/]/).filter(Boolean);
-    const pasta = partes.length ? partes[partes.length - 1] : "sem pasta";
+    const perfil = perfis.find((p) => p.id === contaDaSessao(s));
+    const pasta = nomeDaPasta(s.pasta) || "sem pasta";
 
     const topo = document.createElement("div");
     topo.className = "sessao-topo";
     const pulso = document.createElement("span");
     pulso.className = "sessao-pulso";
     if (perfil && s.estado !== "parada") pulso.style.background = perfil.cor;
+    const ferramenta = perfil ? perfil.ferramentaNome : "Claude Code";
     const nome = document.createElement("span");
     nome.className = "sessao-pasta";
-    nome.textContent = pasta;
-    nome.title = s.pasta;
+    nome.textContent = s.titulo || ferramenta;
+    nome.title = s.titulo || s.pasta;
     const idade = document.createElement("span");
     idade.className = "sessao-idade";
     idade.textContent = tempoCurto(s.idade);
@@ -1011,12 +1058,15 @@ function montarCartao(s) {
       conta.style.color = perfil.cor;
     } else {
       conta.textContent = "Principal";
-      conta.title = "a conta que ja estava logada antes deste app, fora dos perfis do DBX Term";
+      conta.title = "A conta que já estava logada antes deste app, fora dos perfis do DBX Term";
     }
     rodape.appendChild(conta);
     if (typeof s.contexto === "number") rodape.appendChild(barraContexto(s.contexto));
 
-    cartao.append(topo, linha, rodape);
+    const origem = document.createElement("div");
+    origem.className = "sessao-origem";
+    cartao.append(topo, origem, linha, rodape);
+    pintarOrigem(cartao, ferramenta, s);
     cartao.addEventListener("contextmenu", (ev) => {
       ev.preventDefault();
       abrirMenuSessao(s, ev.clientX, ev.clientY);
@@ -1053,7 +1103,7 @@ function irParaSessao(s) {
     ativar(alvo);
     return;
   }
-  const conta = s.conta || s.perfil;
+  const conta = contaDaSessao(s);
   const abertas = conta && conta !== "__padrao__" ? abasDaConta(conta).length : 0;
   piscarAviso(
     abertas > 1
@@ -1151,6 +1201,7 @@ elMenuSessao.querySelectorAll("[data-acao]").forEach((b) => {
     if (acao === "ir") irParaSessao(s);
     else if (acao === "atualizar") atualizarSessoes();
     else if (acao === "abrir") novaAbaEm(s);
+    else if (acao === "retomar") retomarSessao(s);
     else if (acao === "copiar") navigator.clipboard.writeText(s.pasta || "");
     else if (acao === "encerrar") {
       const alvo = abaDaSessao(s);
@@ -1164,8 +1215,18 @@ document.addEventListener("mousedown", (ev) => {
   if (!elMenuSessao.hidden && !elMenuSessao.contains(ev.target)) fecharMenuSessao();
 });
 
+function retomarSessao(s) {
+  /* Abre uma aba na conta certa e manda o CLI continuar aquela conversa. */
+  const perfil = perfis.find((p) => p.id === contaDaSessao(s));
+  if (!perfil) {
+    piscarAviso("Essa sessão é de uma conta que não está cadastrada aqui");
+    return;
+  }
+  novaAba("", perfil.id, { pasta: s.pasta, conversa: s.sessao });
+}
+
 function novaAbaEm(s) {
-  const perfil = perfis.find((p) => p.id === (s.conta || s.perfil));
+  const perfil = perfis.find((p) => p.id === contaDaSessao(s));
   novaAba("", perfil ? perfil.id : "");
   if (s.pasta) {
     const alvo = ordem[ordem.length - 1];
@@ -1194,10 +1255,11 @@ function atualizarSessoes() {
 }
 
 function reagendarSessoes() {
-  // acompanhar de perto so custa enquanto tem gente trabalhando. Parado, a cada 4 segundos basta.
+  /* O aviso de arquivo mexido e quem manda; este relogio e so a rede de seguranca
+     pra idade envelhecer na tela e pra pegar o que o vigia deixar passar. */
   const acesa = sessoes.some((s) => s.estado === "rodando" || s.estado === "pensando");
   clearTimeout(relogioSessoes);
-  relogioSessoes = setTimeout(atualizarSessoes, acesa ? 900 : 4000);
+  relogioSessoes = setTimeout(atualizarSessoes, acesa ? 1500 : 6000);
 }
 
 /* ------------------------------------------------------------- colar */
@@ -1348,7 +1410,10 @@ function restaurarAbas(depois) {
     }
     let ativa = null;
     for (const s of salvas) {
-      const aba = novaAba(s.shell, s.perfil, { pasta: s.pasta, conversa: s.conversa });
+      // volta a aba, a conta e a pasta. A conversa NAO e retomada sozinha: isso dependia
+      // de acertar o tempo de subida do CLI e falhava calado. Retomar e escolha sua,
+      // pelo botao direito na sessao.
+      const aba = novaAba(s.shell, s.perfil, { pasta: s.pasta });
       if (aba && s.ativa) ativa = aba;
     }
     if (ativa) ativar(ativa);
@@ -1363,9 +1428,7 @@ let emGrade = false;
 function nomeDaTela(aba) {
   const s = aba.sessao;
   if (s && s.pasta) {
-    const partes = s.pasta.split(/[\/]/).filter(Boolean);
-    const pasta = partes.length ? partes[partes.length - 1] : "";
-    return (aba.perfil ? aba.perfil.nome + " · " : "") + pasta;
+    return (aba.perfil ? aba.perfil.nome + " · " : "") + nomeDaPasta(s.pasta);
   }
   return (aba.perfil ? aba.perfil.nome + " · " : "") + aba.shell.nome;
 }
@@ -1611,6 +1674,20 @@ function detalharContexto() {
     (typeof viva.contextoSobra === "number" ? "sobram " + Math.round(viva.contextoSobra) + "% ate compactar" : "");
 }
 
+let tituloNaJanela = "";
+
+function atualizarTituloDaJanela() {
+  const s = sessaoDaAba();
+  const aba = abaAtiva && !abaAtiva.ehPainel ? abaAtiva : null;
+  let texto = "";
+  if (s && s.titulo) texto = s.titulo;
+  else if (aba) texto = (aba.perfil ? aba.perfil.nome + " · " : "") + aba.shell.nome;
+  else if (abaAtiva && abaAtiva.ehPainel) texto = "Uso";
+  if (texto === tituloNaJanela) return;
+  tituloNaJanela = texto;
+  if (bridge) bridge.setTitle(texto);
+}
+
 function pintarModelo() {
   const caixa = el("modelo-atual");
   const viva = leituraDaAba(abaAtiva);
@@ -1633,8 +1710,16 @@ function contextoDaAba() {
   return minha ? { usado: minha.contexto } : null;
 }
 
+function contaPadraoCadastrada() {
+  /* Aba sem conta escolhida usa a pasta de sempre. Se essa pasta virou uma conta cadastrada,
+     ela precisa aparecer com o nome que voce deu, e nao como "Principal" em paralelo. */
+  return perfis.find((p) => p.padrao) || null;
+}
+
 function chaveDaAba() {
-  return abaAtiva && !abaAtiva.ehPainel && abaAtiva.perfil ? abaAtiva.perfil.id : "__padrao__";
+  if (abaAtiva && !abaAtiva.ehPainel && abaAtiva.perfil) return abaAtiva.perfil.id;
+  const cadastrada = contaPadraoCadastrada();
+  return cadastrada ? cadastrada.id : "__padrao__";
 }
 
 function faltaPara(quando) {
@@ -1705,6 +1790,7 @@ function pintarUsoDaBarra() {
   detalharContexto();
 
   pintarModelo();
+  atualizarTituloDaJanela();
 }
 
 function atualizarLimites() {
@@ -1830,12 +1916,21 @@ new QWebChannel(qt.webChannelTransport, (channel) => {
     else for (const a of ordem) if (!a.ehPainel && !a.sessionId) a.pendentes.push(data);
   });
 
+  bridge.mexeram.connect(() => {
+    atualizarSessoes();
+    atualizarLimites();
+  });
+
   bridge.exited.connect((id, code) => {
     const aba = porSessao.get(id);
     if (aba) {
       aba.encerrada(code);
       montarSessoes();
     }
+  });
+
+  bridge.getHome((casa) => {
+    pastaPessoal = (casa || "").replace(/[\\/]+$/, "");
   });
 
   bridge.getConfig((jsonCfg) => {
