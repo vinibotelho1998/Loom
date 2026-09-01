@@ -1,0 +1,8 @@
+# ambiente local, tem caminho absoluto dentro e nao serve em outra maquina
+.venv/
+
+__pycache__/
+*.pyc
+
+# arquivos de apoio que nascem durante o desenvolvimento
+ui/_teste_*.html
