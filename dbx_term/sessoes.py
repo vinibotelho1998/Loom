@@ -9,7 +9,6 @@ from pathlib import Path
 CAUDA = 96 * 1024
 JANELA_VIVA = 24 * 3600
 SEGUNDOS_ATIVO = 90
-SEGUNDOS_FRESCO = 120
 SEGUNDOS_PARADA = 20 * 60
 
 ALVO_DA_FERRAMENTA = {
@@ -76,11 +75,13 @@ def _ler_estado(registros: list[dict]) -> dict:
     ferramenta = ""
     alvo = ""
     modelo = ""
+    carimbo = ""
 
     for registro in reversed(registros):
         tipo = registro.get("type")
         if tipo not in ("assistant", "user"):
             continue
+        carimbo = registro.get("timestamp") or carimbo
         mensagem = registro.get("message") or {}
         conteudo = mensagem.get("content")
         blocos = conteudo if isinstance(conteudo, list) else []
@@ -101,26 +102,43 @@ def _ler_estado(registros: list[dict]) -> dict:
         bruto = "pensando"
         break
 
-    return {"bruto": bruto, "ferramenta": ferramenta, "alvo": alvo, "modelo": modelo}
+    return {"bruto": bruto, "ferramenta": ferramenta, "alvo": alvo, "modelo": modelo, "quando": carimbo}
 
 
 def _decidir(bruto: str, idade: float) -> str:
     """Cruza o que estava escrito com ha quanto tempo nada e escrito.
 
     Um transcript parado em tool_use ha meia hora nao esta rodando coisa nenhuma,
-    esta abandonado. E um texto recem escrito ainda e uma resposta fresca, nao uma espera.
+    esta abandonado. Terminou de responder e ninguem falou mais, esta esperando voce.
     """
     if idade >= SEGUNDOS_PARADA:
         return "parada"
     if bruto in ("rodando", "pensando"):
         return bruto if idade < SEGUNDOS_ATIVO else "aguardando"
-    if bruto == "respondeu":
-        return "respondeu" if idade < SEGUNDOS_FRESCO else "aguardando"
+    if bruto in ("respondeu", "aguardando"):
+        return "aguardando"
     return "parada"
 
 
 def _idade(mtime: float) -> float:
     return max(time.time() - mtime, 0)
+
+
+def _idade_da_conversa(leitura: dict, mtime: float) -> float:
+    """Ha quanto tempo alguem de fato falou nessa conversa.
+
+    Nao serve olhar a data do arquivo: o Claude escreve nele coisas que nao sao conversa,
+    como o titulo e o modo, e isso deixava a sessao parecendo recente pra sempre, presa em
+    pensando. O que vale e o carimbo da ultima mensagem.
+    """
+    carimbo = leitura.get("quando")
+    if carimbo:
+        try:
+            quando = datetime.fromisoformat(carimbo.replace("Z", "+00:00"))
+            return max(datetime.now(quando.tzinfo).timestamp() - quando.timestamp(), 0)
+        except ValueError:
+            pass
+    return _idade(mtime)
 
 
 # arquivo que nao cresceu nao muda de estado, entao nao precisa ser lido de novo
@@ -133,6 +151,27 @@ PASTAS_DE_SERVICO = (".claude", ".dbx-term", ".codex", ".gemini")
 def _de_servico(caminho: str) -> bool:
     partes = caminho.replace("\\", "/").lower().split("/")
     return any(p in PASTAS_DE_SERVICO for p in partes)
+
+
+def _teve_conversa(registros: list[dict]) -> bool:
+    """Houve pelo menos uma resposta do modelo aqui dentro?
+
+    A tela de confiar na pasta cria sessao que morre antes de virar conversa, e o Claude
+    troca de id ao passar por ela. Sem esse corte, cada abertura vira uma linha na lista.
+    """
+    return any(r.get("type") == "assistant" for r in registros)
+
+
+def _titulo(registros: list[dict]) -> str:
+    """O nome que o proprio Claude deu para a conversa.
+
+    Ele grava um registro `ai-title` sempre que reescreve o titulo, entao o ultimo da cauda
+    e o nome atual. E bem mais util na lista do que o nome da pasta.
+    """
+    for registro in reversed(registros):
+        if registro.get("type") == "ai-title" and registro.get("aiTitle"):
+            return str(registro["aiTitle"]).strip()
+    return ""
 
 
 def _onde(registros: list[dict]) -> tuple[str, str]:
@@ -169,6 +208,8 @@ def _estado_de(arquivo: Path, mtime: float, tamanho: int) -> dict:
     else:
         leitura = _ler_estado(registros)
         leitura["pasta"], leitura["ramo"] = _onde(registros)
+        leitura["titulo"] = _titulo(registros)
+        leitura["conversou"] = _teve_conversa(registros) or tamanho > CAUDA
     _LEMBRADO[chave] = (mtime, tamanho, leitura)
     if len(_LEMBRADO) > 400:
         _LEMBRADO.clear()
@@ -176,22 +217,24 @@ def _estado_de(arquivo: Path, mtime: float, tamanho: int) -> dict:
 
 
 def _colapsar(achadas: list[dict]) -> list[dict]:
-    """Junta as sobras de uma mesma conversa.
+    """Junta so o que e mesmo repeticao da mesma conversa.
 
-    O Claude troca o id da sessao quando passa pela tela de confiar na pasta, e a sessao
-    velha fica no disco pra sempre, parada, com a mesma conta e a mesma pasta. Mostrar as duas
-    faz parecer que ha duas conversas onde ha uma. Dentro de cada conta e pasta ficam as que
-    ainda tem sinal de vida, e das inertes so a mais recente.
+    Duas sessoes com o mesmo nome, na mesma conta e na mesma pasta, sao a mesma conversa
+    retomada. Fica a mais recente. Conversa sem nome nao e agrupada com ninguem: agrupar por
+    pasta escondia conversa de verdade, que foi o que aconteceu antes.
     """
-    grupos: dict[tuple[str, str], list[dict]] = {}
+    grupos: dict[tuple[str, str, str], list[dict]] = {}
+    soltas = []
     for s in achadas:
-        grupos.setdefault((s["perfil"], s["pasta"].lower()), []).append(s)
+        if not s.get("titulo"):
+            soltas.append(s)
+            continue
+        grupos.setdefault((s["perfil"], s["pasta"].lower(), s["titulo"].lower()), []).append(s)
 
-    sobreviventes = []
+    sobreviventes = list(soltas)
     for membros in grupos.values():
         membros.sort(key=lambda s: s["idade"])
-        vivos = [s for s in membros if s["idade"] < SEGUNDOS_ATIVO]
-        sobreviventes.extend(vivos or membros[:1])
+        sobreviventes.append(membros[0])
     return sobreviventes
 
 
@@ -223,13 +266,16 @@ def listar(pastas: dict[str, str], vistas: dict[str, dict] | None = None) -> lis
             leitura = _estado_de(arquivo, mtime, tamanho)
             if not leitura:
                 continue
-            idade = _idade(mtime)
+            idade = _idade_da_conversa(leitura, mtime)
             estado = _decidir(leitura["bruto"], idade)
             marca = (vistas or {}).get(arquivo.stem, {})
             achadas.append(
                 {
                     "perfil": chave,
                     "sessao": arquivo.stem,
+                    # o transcript e a fonte mais confiavel do nome; a marca serve de reserva
+                    "titulo": leitura.get("titulo") or marca.get("titulo", ""),
+                    "conversou": leitura.get("conversou", False),
                     "pasta": leitura.get("pasta", ""),
                     "ramo": leitura.get("ramo", ""),
                     "estado": estado,
@@ -247,13 +293,14 @@ def listar(pastas: dict[str, str], vistas: dict[str, dict] | None = None) -> lis
                 }
             )
 
-    # transcript sem cwd nao diz onde a pessoa estava, entao nao ajuda ninguem na lista
-    achadas = [s for s in achadas if s["pasta"]]
+    # transcript sem cwd nao diz onde a pessoa estava, e sessao que nunca virou conversa
+    # e so a marca de uma abertura que nao foi pra frente
+    achadas = [s for s in achadas if s["pasta"] and s.get("conversou")]
     achadas = _colapsar(achadas)
 
-    peso = {"aguardando": 0, "respondeu": 1, "pensando": 2, "rodando": 3, "parada": 4}
+    peso = {"aguardando": 0, "pensando": 1, "rodando": 2, "parada": 3}
     achadas.sort(key=lambda s: (peso.get(s["estado"], 3), s["idade"]))
 
     vivas = [s for s in achadas if s["estado"] != "parada"]
-    paradas = [s for s in achadas if s["estado"] == "parada"][:6]
+    paradas = [s for s in achadas if s["estado"] == "parada"][:12]
     return vivas + paradas

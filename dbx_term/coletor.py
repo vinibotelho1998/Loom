@@ -73,6 +73,9 @@ def guardar(perfil: str, dados: dict) -> None:
     modelo = (dados.get("model") or {}).get("display_name")
     if modelo:
         resumo["modelo"] = modelo
+    nome = dados.get("session_name")
+    if nome:
+        resumo["titulo"] = str(nome).strip()
 
     PASTA.mkdir(parents=True, exist_ok=True)
     alvo = PASTA / f"{sessao}.json"
@@ -171,8 +174,9 @@ def confiar_na_pasta(perfil: str, dados: dict) -> None:
 
 
 def main() -> int:
-    # a status line imprime icone e barra, e o console do Windows nasce em cp1252
-    for fluxo in (sys.stdout, sys.stderr):
+    # a status line imprime icone e barra, e o console do Windows nasce em cp1252.
+    # a entrada tambem: sem isto o nome da sessao com acento chega quebrado.
+    for fluxo in (sys.stdin, sys.stdout, sys.stderr):
         try:
             fluxo.reconfigure(encoding="utf-8", errors="replace")
         except (AttributeError, ValueError):
