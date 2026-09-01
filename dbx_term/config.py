@@ -26,6 +26,7 @@ PADRAO = {
     "confiarPastas": True,
     "esconderStatusLine": True,
     "restaurarAbas": True,
+    "mostrarSessoesDeFora": True,
 }
 
 
