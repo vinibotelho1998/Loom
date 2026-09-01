@@ -3,10 +3,11 @@ from __future__ import annotations
 import json
 import os
 import sys
+import time
 import uuid
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QTimer, Qt, Signal, Slot
+from PySide6.QtCore import QFileSystemWatcher, QObject, QTimer, Qt, Signal, Slot
 
 from . import coletor as mod_coletor
 from . import config as mod_config
@@ -32,6 +33,8 @@ class Bridge(QObject):
 
     output = Signal(str, str)
     exited = Signal(str, int)
+    tituloPedido = Signal(str)
+    mexeram = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -39,6 +42,20 @@ class Bridge(QObject):
         self._buffers: dict[str, list[str]] = {}
         self._shells = mod_shells.descobrir()
         self._sem_autoabrir = False
+
+        # olho nos transcript: assim que o Claude escreve, a tela sabe, sem esperar ciclo
+        self._vigia = QFileSystemWatcher(self)
+        self._vigia.fileChanged.connect(self._mexeu)
+        self._vigia.directoryChanged.connect(self._mexeu)
+        self._aviso = QTimer(self)
+        self._aviso.setSingleShot(True)
+        self._aviso.setInterval(120)
+        self._aviso.timeout.connect(self.mexeram)
+        self._relistar = QTimer(self)
+        self._relistar.setInterval(20000)
+        self._relistar.timeout.connect(self._revisar_vigia)
+        self._relistar.start()
+        QTimer.singleShot(1500, self._revisar_vigia)
 
         self._flush_timer = QTimer(self)
         self._flush_timer.setInterval(INTERVALO_FLUSH_MS)
@@ -64,11 +81,20 @@ class Bridge(QObject):
                 "configDir": str(p.config_dir),
                 "bytes": mod_perfis.tamanho(p),
                 "emprestada": p.emprestada,
+                "padrao": p.e_padrao,
                 "email": mod_perfis.identidade(p).get("email", ""),
                 "plano": mod_perfis.identidade(p).get("plano", ""),
             }
             for p in mod_perfis.listar()
         ])
+
+    @Slot(str)
+    def setTitle(self, texto: str) -> None:
+        self.tituloPedido.emit(texto or "")
+
+    @Slot(result=str)
+    def getHome(self) -> str:
+        return os.path.expanduser("~")
 
     @Slot(result=str)
     def listTools(self) -> str:
@@ -277,8 +303,45 @@ class Bridge(QObject):
         self._sessions.pop(session_id, None)
         self.exited.emit(session_id, code)
 
+    def _mexeu(self, _caminho: str = "") -> None:
+        """Junta rajadas de escrita num aviso so, senao a tela redesenha a cada linha."""
+        self._aviso.start()
+
+    def _revisar_vigia(self) -> None:
+        """Mantem sob observacao os transcript que mexeram nas ultimas horas."""
+        try:
+            perfis = mod_perfis.listar()
+            pastas = mod_uso.pastas_de(perfis)
+        except OSError:
+            return
+
+        agora = time.time()
+        alvos: set[str] = set()
+        for pasta in pastas.values():
+            raiz = Path(pasta) / "projects"
+            if not raiz.is_dir():
+                continue
+            alvos.add(str(raiz))
+            for arquivo in raiz.rglob("*.jsonl"):
+                try:
+                    if agora - arquivo.stat().st_mtime <= 6 * 3600:
+                        alvos.add(str(arquivo))
+                except OSError:
+                    continue
+            if len(alvos) > 120:
+                break
+
+        atuais = set(self._vigia.files()) | set(self._vigia.directories())
+        sobrando = atuais - alvos
+        if sobrando:
+            self._vigia.removePaths(list(sobrando))
+        faltando = alvos - atuais
+        if faltando:
+            self._vigia.addPaths(list(faltando))
+
     def shutdown(self) -> None:
         self._flush_timer.stop()
+        self._relistar.stop()
         for session in list(self._sessions.values()):
             session.stop()
         self._sessions.clear()

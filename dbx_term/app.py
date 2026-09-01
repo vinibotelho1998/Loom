@@ -37,6 +37,7 @@ class MainWindow(QMainWindow):
         settings.setAttribute(QWebEngineSettings.ScrollAnimatorEnabled, False)
 
         self.bridge = Bridge(self)
+        self.bridge.tituloPedido.connect(self._trocar_titulo)
         self.channel = QWebChannel(self)
         self.channel.registerObject("bridge", self.bridge)
         self.view.page().setWebChannel(self.channel)
@@ -52,6 +53,10 @@ class MainWindow(QMainWindow):
             endereco.setQuery("&".join(consulta))
         self.view.load(endereco)
         self.setCentralWidget(self.view)
+
+    def _trocar_titulo(self, texto: str) -> None:
+        """A janela mostra em que conversa voce esta, que e o que a barra de tarefas precisa dizer."""
+        self.setWindowTitle(f"{texto} · DBX Term" if texto else "DBX Term")
 
     def closeEvent(self, event):
         self.bridge.shutdown()
