@@ -178,7 +178,28 @@ Vem depois porque so faz sentido pintar quando o esqueleto ja esta de pe, e ante
 
 **Etapa 6. Acabamento.** Restaurar sessao ao abrir, exportar o uso, atalho global.
 
-## 10. Riscos
+## 10. Testes
+
+`.venv\Scripts\python.exe testesodar.py` roda tudo, e `testesodar.py rapido` pula o que abre processo.
+Nenhum teste encosta na pasta de dados de verdade: cada um roda numa pasta temporaria que e apagada no fim.
+
+O que esta coberto:
+
+- **Contas.** Criar, renomear, remover, deslogar, conta que aponta pra pasta emprestada e o caso mais
+  importante de todos: com a pasta padrao da ferramenta, a variavel de ambiente NAO pode ser definida.
+- **Coletor.** Encadeamento da status line que ja existia, instalar duas vezes sem duplicar, acento no
+  nome da sessao, contexto calculado quando o percentual nao vem, e leitura vazia nao apagando a boa.
+- **Sessoes.** Os quatro estados, a idade vindo da ultima mensagem e nao da data do arquivo, o nome da
+  conversa com suas tres fontes, e os filtros que escondem so o que nunca virou conversa.
+- **Medidor.** Soma por dia, leitura incremental, resposta repetida contando uma vez so.
+- **Terminal de verdade.** Sobe um shell num ConPTY, digita, confere a resposta, redimensiona e encerra.
+
+Todo teste foi conferido ao contrario: quebrando o codigo de proposito, o teste correspondente falha.
+Teste que passa com o codigo quebrado nao prova nada.
+
+---
+
+## 11. Riscos
 
 - **Peso do QWebEngine.** Passa de 150 MB instalado. Aceito, ja que o ganho e nao escrever emulador.
 - **Formato do transcript.** E arquivo interno do Claude Code e pode mudar sem aviso. O medidor le de forma tolerante e ignora linha que nao reconhece, em vez de quebrar.
