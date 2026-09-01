@@ -2,12 +2,12 @@
 
 
 const TEMA = {
-  background: "#000000",
+  background: "#16181c",
   foreground: "#d3d8e0",
   cursor: "#4f9cf9",
-  cursorAccent: "#000000",
-  selectionBackground: "#22344a",
-  black: "#000000", red: "#e05561", green: "#6cc98a", yellow: "#d5b06b",
+  cursorAccent: "#16181c",
+  selectionBackground: "#2b3d54",
+  black: "#16181c", red: "#e05561", green: "#6cc98a", yellow: "#d5b06b",
   blue: "#4f9cf9", magenta: "#b088f0", cyan: "#56c2c9", white: "#c8cfda",
   brightBlack: "#5b6371", brightRed: "#f0808a", brightGreen: "#8ce0a8",
   brightYellow: "#f0cd85", brightBlue: "#7fb8ff", brightMagenta: "#cba8ff",
@@ -28,6 +28,7 @@ let bridge = null;
 let shells = [];
 let perfis = [];
 let ferramentas = [];
+let elevacao = { disponivel: false, motivo: "sem sudo" };
 let cfg = {};
 const porSessao = new Map();
 const ordem = [];
@@ -103,11 +104,12 @@ function opcoesTerminal() {
 }
 
 class Aba extends AbaBase {
-  constructor(shell, perfil) {
+  constructor(shell, perfil, elevado) {
     super(shell.nome);
     this.ehPainel = false;
     this.shell = shell;
     this.perfil = perfil || null;
+    this.elevado = !!elevado;
     this.pendentes = [];
 
 
@@ -175,6 +177,25 @@ class Aba extends AbaBase {
       if (ev.type !== "keydown") return true;
       if (ev.ctrlKey && ev.shiftKey && (ev.code === "KeyT" || ev.code === "KeyW")) return false;
       if (ev.ctrlKey && (ev.code === "Comma" || ev.code === "Tab" || ev.code === "KeyF")) return false;
+
+      if (ev.ctrlKey && !ev.shiftKey && !ev.altKey && ev.code === "KeyV") {
+        ev.preventDefault();
+        colarAqui(this);
+        return false;
+      }
+      if (ev.ctrlKey && !ev.shiftKey && !ev.altKey && ev.code === "KeyA") {
+        // sem seleção feita, Ctrl+A pega a saída toda; com seleção, o Ctrl+C do
+        // terminal continua sendo o de sempre
+        ev.preventDefault();
+        this.term.selectAll();
+        return false;
+      }
+      if (ev.ctrlKey && !ev.shiftKey && ev.code === "KeyC" && this.term.hasSelection()) {
+        ev.preventDefault();
+        navigator.clipboard.writeText(this.term.getSelection());
+        this.term.clearSelection();
+        return false;
+      }
       return true;
     });
   }
@@ -202,7 +223,7 @@ class Aba extends AbaBase {
     if (!this.sessao) {
       this.botao.classList.remove("pensando", "rodando", "aguardando", "parada");
       const titulo = this.botao.querySelector(".rotulo");
-      titulo.textContent = this.shell.nome;
+      titulo.textContent = this.shell.nome + (this.elevado ? " (adm)" : "");
       titulo.title = "";
       const origem = this.botao.querySelector(".sessao-origem");
       if (origem) origem.textContent = "";
@@ -265,7 +286,7 @@ class Aba extends AbaBase {
         perfilId,
         this.term.cols,
         this.term.rows,
-        JSON.stringify(pedido || {}),
+        JSON.stringify(Object.assign({}, pedido, { elevar: this.elevado })),
         (id) => {
           this.sessionId = id;
           porSessao.set(id, this);
@@ -360,7 +381,7 @@ function novaAba(shellId, perfilId, pedido) {
   const shell = shells.find((s) => s.id === shellId) || shells[0];
   const perfil = perfis.find((p) => p.id === perfilId) || null;
   if (!shell) return;
-  const aba = new Aba(shell, perfil);
+  const aba = new Aba(shell, perfil, (pedido || {}).elevar);
   aba.abrir(pedido);
   montarSessoes();
   if (emGrade) {
@@ -416,6 +437,26 @@ function montarMenu() {
       esconderMenu();
       novaAba(s.id, "");
     });
+
+    const escudo = document.createElement("button");
+    escudo.className = "menu-escudo";
+    escudo.textContent = "adm";
+    escudo.title = elevacao.disponivel
+      ? "Abrir este shell com privilégio de administrador"
+      : elevacao.motivo === "desligado"
+      ? "O sudo do Windows está desligado. Ligue em Configurações, Sistema, Para desenvolvedores."
+      : "Precisa do sudo do Windows 11 ou do gsudo pra abrir elevado na mesma aba";
+    escudo.disabled = !elevacao.disponivel;
+    escudo.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      if (!elevacao.disponivel) {
+        piscarAviso(escudo.title);
+        return;
+      }
+      esconderMenu();
+      novaAba(s.id, "", { elevar: true });
+    });
+    b.appendChild(escudo);
     alvoShells.appendChild(b);
   }
 
@@ -989,10 +1030,19 @@ function montarSessoes() {
       : "";
   }
   elListaExternas.innerHTML = "";
-  el("divisor-fora").hidden = !deFora.length;
-  elListaExternas.hidden = !deFora.length;
-  for (const s of deFora) elListaExternas.appendChild(montarCartao(s));
-  elListaExternas.classList.toggle("encolhida", !deFora.length);
+  const mostrar = cfg.mostrarSessoesDeFora !== false;
+  const temFora = deFora.length > 0;
+
+  el("divisor-fora").hidden = !temFora || !mostrar;
+  elListaExternas.hidden = !temFora || !mostrar;
+  const botaoMostrar = el("mostrar-fora");
+  botaoMostrar.hidden = !temFora || mostrar;
+  el("conta-fora").textContent = temFora ? String(deFora.length) : "";
+
+  if (mostrar) {
+    for (const s of deFora) elListaExternas.appendChild(montarCartao(s));
+  }
+  elListaExternas.classList.toggle("encolhida", !temFora);
   aplicarAlturaExternas();
 }
 
@@ -1265,6 +1315,61 @@ function reagendarSessoes() {
 }
 
 /* ------------------------------------------------------------- colar */
+
+async function colarAqui(aba) {
+  /* Ctrl+V aceita o que estiver na area de transferencia. Texto vai direto;
+     imagem vira arquivo em disco e o que entra e o caminho, que e o que o CLI entende. */
+  if (!aba || aba.ehPainel || !aba.sessionId) return;
+  try {
+    const itens = await navigator.clipboard.read();
+    for (const item of itens) {
+      const tipoImagem = item.types.find((t) => t.startsWith("image/"));
+      if (tipoImagem) {
+        const blob = await item.getType(tipoImagem);
+        const base64 = await paraBase64(blob);
+        const extensao = tipoImagem.split("/")[1] || "png";
+        bridge.salvarColagem(base64, extensao, (caminho) => {
+          if (caminho) aba.term.paste('"' + caminho + '"');
+          else piscarAviso("Não consegui guardar essa imagem");
+        });
+        return;
+      }
+      if (item.types.includes("text/plain")) {
+        const texto = await (await item.getType("text/plain")).text();
+        entregarColagem(aba, texto);
+        return;
+      }
+    }
+  } catch (e) {
+    // alguns formatos so saem pelo caminho antigo
+    try {
+      const texto = await navigator.clipboard.readText();
+      if (texto) entregarColagem(aba, texto);
+    } catch (outro) {
+      piscarAviso("Não consegui ler a área de transferência");
+    }
+  }
+}
+
+function entregarColagem(aba, texto) {
+  const limite = cfg.avisarColagemLinhas || 0;
+  if (limite && contarLinhas(texto) > limite) {
+    pedirColagem(texto, aba);
+    return;
+  }
+  aba.term.paste(texto);
+}
+
+function paraBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const leitor = new FileReader();
+    leitor.onload = () => resolve(String(leitor.result).split(",")[1] || "");
+    leitor.onerror = reject;
+    leitor.readAsDataURL(blob);
+  });
+}
+
+
 
 let colagemPendente = null;
 
@@ -1602,6 +1707,20 @@ function aplicarAlturaExternas() {
     elLateral.classList.remove("arrastando");
   });
 })();
+
+function alternarSessoesDeFora(mostrar) {
+  cfg.mostrarSessoesDeFora = mostrar;
+  bridge.saveConfig(JSON.stringify({ mostrarSessoesDeFora: mostrar }), (json) => {
+    cfg = JSON.parse(json);
+    montarSessoes();
+  });
+}
+
+el("esconder-fora").addEventListener("click", (ev) => {
+  ev.stopPropagation();
+  alternarSessoesDeFora(false);
+});
+el("mostrar-fora").addEventListener("click", () => alternarSessoesDeFora(true));
 
 el("atualizar-sessoes").addEventListener("click", atualizarSessoes);
 el("alternar-lateral").addEventListener("click", () => {
@@ -1961,6 +2080,14 @@ new QWebChannel(qt.webChannelTransport, (channel) => {
 
   bridge.getConfig((jsonCfg) => {
     cfg = JSON.parse(jsonCfg);
+    bridge.elevacao((jsonElev) => {
+      try {
+        elevacao = JSON.parse(jsonElev);
+      } catch (e) {
+        elevacao = { disponivel: false, motivo: "sem sudo" };
+      }
+    });
+
     bridge.listShells((jsonShells) => {
       shells = JSON.parse(jsonShells);
       carregarFerramentas(() => {
