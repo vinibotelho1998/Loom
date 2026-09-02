@@ -400,6 +400,37 @@ function abrirStats() {
   abrirConfig("uso");
 }
 
+function selecionarTudo(aba) {
+  const alvo = aba || abaAtiva;
+  if (!alvo || alvo.ehPainel) return;
+  alvo.term.selectAll();
+  alvo.foco();
+  piscarAviso("Saída selecionada. Ctrl+C copia, Esc limpa a seleção");
+}
+
+function copiarTudo(aba) {
+  const alvo = aba || abaAtiva;
+  if (!alvo || alvo.ehPainel) return;
+  alvo.term.selectAll();
+  const texto = alvo.term.getSelection();
+  alvo.term.clearSelection();
+  if (!texto.trim()) {
+    piscarAviso("Não há saída pra copiar");
+    return;
+  }
+  navigator.clipboard.writeText(texto);
+  piscarAviso(contarLinhas(texto) + " linhas copiadas");
+}
+
+function limparTela(aba) {
+  const alvo = aba || abaAtiva;
+  if (!alvo || alvo.ehPainel) return;
+  alvo.term.clear();
+  alvo.foco();
+}
+
+el("selecionar-tudo").addEventListener("click", () => selecionarTudo());
+
 el("abrir-stats").addEventListener("click", abrirStats);
 document.querySelectorAll(".uso-item").forEach((b) => b.addEventListener("click", abrirStats));
 
@@ -1186,6 +1217,9 @@ elMenuAba.querySelectorAll("[data-aba]").forEach((b) => {
     if (!aba) return;
     const acao = b.dataset.aba;
     if (acao === "fechar") fecharComCuidado(aba);
+    else if (acao === "selecionar") selecionarTudo(aba);
+    else if (acao === "copiar-tudo") copiarTudo(aba);
+    else if (acao === "limpar") limparTela(aba);
     else if (acao === "duplicar") novaAba(aba.shell.id, aba.perfil ? aba.perfil.id : "");
     else if (acao === "copiar" && aba.sessao) navigator.clipboard.writeText(aba.sessao.pasta || "");
     else if (acao === "so-esta") {
@@ -1907,6 +1941,7 @@ function pintarUsoDaBarra() {
   const barra = el("uso-barra");
   // sem aba de terminal aberta nao ha conta em uso, e mostrar limite ali seria invencao
   const semAba = !abaAtiva || abaAtiva.ehPainel;
+  el("selecionar-tudo").hidden = semAba;
   if (!cfg.mostrarUsoNaBarra || emGrade || semAba) {
     barra.hidden = true;
     return;
@@ -1987,6 +2022,10 @@ setInterval(() => {
 window.addEventListener("keydown", (ev) => {
   if (ev.key === "Escape" && !elBusca.hidden) {
     fecharBusca();
+    return;
+  }
+  if (ev.key === "Escape" && abaAtiva && !abaAtiva.ehPainel && abaAtiva.term.hasSelection()) {
+    abaAtiva.term.clearSelection();
     return;
   }
   if (ev.key === "Escape") {
