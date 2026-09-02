@@ -1351,6 +1351,19 @@ async function colarAqui(aba) {
   }
 }
 
+function soltarArquivos(caminhos) {
+  /* Arrastar arquivo pra dentro escreve o caminho, que e o que o terminal entende.
+     Caminho com espaco vai entre aspas, senao o shell parte no meio. */
+  if (!abaAtiva || abaAtiva.ehPainel || !abaAtiva.sessionId) return;
+  const texto = caminhos
+    .map((c) => (/[\s"']/.test(c) ? '"' + c.replace(/"/g, '\\"') + '"' : c))
+    .join(" ");
+  if (!texto) return;
+  abaAtiva.term.paste(texto + " ");
+  abaAtiva.foco();
+  piscarAviso(caminhos.length === 1 ? "Caminho colado" : caminhos.length + " caminhos colados");
+}
+
 function entregarColagem(aba, texto) {
   const limite = cfg.avisarColagemLinhas || 0;
   if (limite && contarLinhas(texto) > limite) {
@@ -2059,6 +2072,14 @@ new QWebChannel(qt.webChannelTransport, (channel) => {
     const aba = porSessao.get(id);
     if (aba) aba.escrever(data);
     else for (const a of ordem) if (!a.ehPainel && !a.sessionId) a.pendentes.push(data);
+  });
+
+  bridge.arquivosSoltos.connect((json) => {
+    try {
+      soltarArquivos(JSON.parse(json));
+    } catch (e) {
+      console.warn("caminho ilegivel", e);
+    }
   });
 
   bridge.mexeram.connect(() => {

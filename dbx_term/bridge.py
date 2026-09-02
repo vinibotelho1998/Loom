@@ -47,6 +47,7 @@ class Bridge(QObject):
     exited = Signal(str, int)
     tituloPedido = Signal(str)
     mexeram = Signal()
+    arquivosSoltos = Signal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)

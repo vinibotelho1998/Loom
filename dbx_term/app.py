@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import ctypes.wintypes
+import json
 import os
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QUrl
+from PySide6.QtCore import QEvent, QUrl
 from PySide6.QtGui import QColor, QIcon
 from PySide6.QtWebChannel import QWebChannel
 from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineSettings
@@ -46,6 +47,13 @@ class MainWindow(QMainWindow):
 
         self.bridge = Bridge(self)
         self.bridge.tituloPedido.connect(self._trocar_titulo)
+
+        # o filtro precisa ser da aplicacao inteira: o widget que recebe o arrasto
+        # e criado por dentro do motor web e nao existe ainda neste ponto
+        self.setAcceptDrops(True)
+        app = QApplication.instance()
+        if app is not None:
+            app.installEventFilter(self)
         self.channel = QWebChannel(self)
         self.channel.registerObject("bridge", self.bridge)
         self.view.page().setWebChannel(self.channel)
@@ -63,6 +71,31 @@ class MainWindow(QMainWindow):
             endereco.setQuery("&".join(consulta))
         self.view.load(endereco)
         self.setCentralWidget(self.view)
+
+    def eventFilter(self, obj, evento):
+        """Pega o arquivo arrastado antes do motor web.
+
+        Dentro da pagina, um arquivo solto chega sem caminho nenhum, por seguranca do
+        navegador. Do lado do Qt o caminho vem inteiro, entao interceptamos aqui e
+        mandamos pra tela ja resolvido.
+        """
+        tipo = evento.type()
+        if tipo in (QEvent.Type.DragEnter, QEvent.Type.DragMove):
+            if evento.mimeData().hasUrls():
+                evento.acceptProposedAction()
+                return True
+        elif tipo == QEvent.Type.Drop:
+            # toLocalFile devolve com barra pra frente; o shell do Windows quer a de sempre
+            caminhos = [
+                str(Path(url.toLocalFile()))
+                for url in evento.mimeData().urls()
+                if url.isLocalFile() and url.toLocalFile()
+            ]
+            if caminhos:
+                evento.acceptProposedAction()
+                self.bridge.arquivosSoltos.emit(json.dumps(caminhos))
+                return True
+        return super().eventFilter(obj, evento)
 
     def _pintar_barra_de_titulo(self) -> None:
         """Pinta a barra de titulo do Windows na cor do app.
