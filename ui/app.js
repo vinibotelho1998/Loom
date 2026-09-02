@@ -6,7 +6,10 @@ const TEMA = {
   foreground: "#d3d8e0",
   cursor: "#4f9cf9",
   cursorAccent: "#16181c",
-  selectionBackground: "#2b3d54",
+  // com o fundo em cinza, o azul antigo quase nao aparecia por cima do texto
+  selectionBackground: "#3c5a80",
+  selectionForeground: "#eef2f8",
+  selectionInactiveBackground: "#2c3d52",
   black: "#16181c", red: "#e05561", green: "#6cc98a", yellow: "#d5b06b",
   blue: "#4f9cf9", magenta: "#b088f0", cyan: "#56c2c9", white: "#c8cfda",
   brightBlack: "#5b6371", brightRed: "#f0808a", brightGreen: "#8ce0a8",
@@ -181,13 +184,6 @@ class Aba extends AbaBase {
       if (ev.ctrlKey && !ev.shiftKey && !ev.altKey && ev.code === "KeyV") {
         ev.preventDefault();
         colarAqui(this);
-        return false;
-      }
-      if (ev.ctrlKey && !ev.shiftKey && !ev.altKey && ev.code === "KeyA") {
-        // sem seleção feita, Ctrl+A pega a saída toda; com seleção, o Ctrl+C do
-        // terminal continua sendo o de sempre
-        ev.preventDefault();
-        this.term.selectAll();
         return false;
       }
       if (ev.ctrlKey && !ev.shiftKey && ev.code === "KeyC" && this.term.hasSelection()) {
@@ -400,19 +396,54 @@ function abrirStats() {
   abrirConfig("uso");
 }
 
+function faixaComTexto(term) {
+  // selectAll marca o buffer inteiro, e num app de tela cheia como o Claude Code
+  // isso e quase tudo linha vazia. Aqui achamos onde o texto realmente comeca e acaba.
+  const buf = term.buffer.active;
+  let inicio = -1;
+  let fim = -1;
+  for (let i = 0; i < buf.length; i += 1) {
+    const linha = buf.getLine(i);
+    if (!linha || !linha.translateToString(true).trim()) continue;
+    if (inicio < 0) inicio = i;
+    fim = i;
+  }
+  return inicio < 0 ? null : { inicio, fim };
+}
+
 function selecionarTudo(aba) {
   const alvo = aba || abaAtiva;
   if (!alvo || alvo.ehPainel) return;
-  alvo.term.selectAll();
-  alvo.foco();
-  piscarAviso("Saída selecionada. Ctrl+C copia, Esc limpa a seleção");
+  const term = alvo.term;
+  const faixa = faixaComTexto(term);
+  term.clearSelection();
+  if (!faixa) {
+    piscarAviso("Não há saída pra selecionar");
+    return;
+  }
+  term.select(0, faixa.inicio, (faixa.fim - faixa.inicio + 1) * term.cols);
+  term.focus();
+  const linhas = faixa.fim - faixa.inicio + 1;
+  const soATela = term.buffer.active.type === "alternate";
+  piscarAviso(
+    linhas + (linhas === 1 ? " linha selecionada" : " linhas selecionadas") +
+      (soATela ? ", só o que está na tela" : "") +
+      " · Ctrl+C copia, Esc solta"
+  );
 }
 
 function copiarTudo(aba) {
   const alvo = aba || abaAtiva;
   if (!alvo || alvo.ehPainel) return;
-  alvo.term.selectAll();
-  const texto = alvo.term.getSelection();
+  const antes = alvo.term.hasSelection() ? alvo.term.getSelection() : "";
+  let texto = antes;
+  if (!texto.trim()) {
+    const faixa = faixaComTexto(alvo.term);
+    if (faixa) {
+      alvo.term.select(0, faixa.inicio, (faixa.fim - faixa.inicio + 1) * alvo.term.cols);
+      texto = alvo.term.getSelection();
+    }
+  }
   alvo.term.clearSelection();
   if (!texto.trim()) {
     piscarAviso("Não há saída pra copiar");
