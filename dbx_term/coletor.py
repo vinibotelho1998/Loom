@@ -79,7 +79,7 @@ def guardar(perfil: str, dados: dict) -> None:
 
     PASTA.mkdir(parents=True, exist_ok=True)
     alvo = PASTA / f"{sessao}.json"
-    provisorio = alvo.with_name(alvo.name + ".tmp")
+    provisorio = alvo.with_name(f"{alvo.name}.{os.getpid()}.tmp")
     provisorio.write_text(json.dumps(resumo), encoding="utf-8")
     provisorio.replace(alvo)
 
@@ -145,7 +145,7 @@ def marcar(perfil: str, dados: dict) -> None:
         }
     )
     atual.setdefault("faixas", {})
-    provisorio = alvo.with_name(alvo.name + ".tmp")
+    provisorio = alvo.with_name(f"{alvo.name}.{os.getpid()}.tmp")
     provisorio.write_text(json.dumps(atual), encoding="utf-8")
     provisorio.replace(alvo)
 

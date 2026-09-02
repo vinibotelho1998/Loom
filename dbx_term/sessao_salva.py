@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 
 from .caminhos import RAIZ
 
@@ -23,9 +24,14 @@ def gravar(abas: list[dict]) -> None:
             }
         )
     RAIZ.mkdir(parents=True, exist_ok=True)
-    provisorio = ARQUIVO.with_name(ARQUIVO.name + ".tmp")
-    provisorio.write_text(json.dumps(limpas, indent=2, ensure_ascii=False), encoding="utf-8")
-    provisorio.replace(ARQUIVO)
+    # o temporario leva o numero do processo: duas janelas abertas gravam ao mesmo tempo
+    # e brigariam pelo mesmo nome
+    provisorio = ARQUIVO.with_name(f"{ARQUIVO.name}.{os.getpid()}.tmp")
+    try:
+        provisorio.write_text(json.dumps(limpas, indent=2, ensure_ascii=False), encoding="utf-8")
+        provisorio.replace(ARQUIVO)
+    except OSError:
+        provisorio.unlink(missing_ok=True)
 
 
 def ler() -> list[dict]:
