@@ -89,13 +89,22 @@ html, body {
 
 /* ------------------------------------------------------------------ palco */
 
-.corpo { display: flex; height: calc(100% - 42px); }
-.palco { position: relative; flex: 1; min-width: 0; }
+body { display: flex; flex-direction: column; }
+.cromo { flex: 0 0 42px; }
+.corpo { display: flex; flex: 1 1 auto; min-height: 0; }
+/* palco e rodape na mesma coluna, a direita da lateral: assim a barra de uso comeca
+   onde o terminal comeca, e acompanha a lateral quando ela recolhe */
+.coluna { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+.palco { position: relative; flex: 1 1 auto; min-width: 0; min-height: 0; }
 
 .tela {
   position: absolute;
   inset: 0;
-  padding: 8px 4px 4px 12px;
+  /* content-box de proposito: o fit do xterm le a altura calculada do pai e, com
+     border-box, ela vem com o padding dentro. O terminal calculava uma linha a mais
+     e vazava por baixo, encostando na barra de uso */
+  box-sizing: content-box;
+  padding: 8px 4px 8px 12px;
   visibility: hidden;
 }
 .tela.tela-painel { padding: 0; overflow: hidden; }
@@ -437,7 +446,20 @@ select.campo { cursor: default; }
 
 /* ------------------------------------------------------------- uso na barra */
 
-.uso-barra { display: flex; gap: 6px; margin-right: 8px; }
+.uso-barra { display: flex; gap: 6px; }
+
+/* a barra de uso mora embaixo do terminal, nao no topo: la em cima ela competia
+   com o nome da janela e o nome da conta ainda quebrava linha */
+.rodape {
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 7px;
+  height: 36px;
+  padding: 0 12px;
+  background: var(--cromo);
+  border-top: 1px solid var(--linha);
+  overflow: hidden;
+}
 .uso-item {
   display: flex; align-items: baseline; gap: 5px;
   padding: 4px 9px;
@@ -470,7 +492,8 @@ select.campo { cursor: default; }
   transition: flex-basis .16s ease, width .16s ease;
 }
 .lateral.fechada { width: 0; flex-basis: 0; border-right-color: transparent; }
-.lateral.fechada + .puxador { display: none; }
+.lateral.fechada + .puxador { cursor: default; }
+.lateral.fechada + .puxador:hover { background: transparent; }
 
 .lateral-topo {
   display: flex; align-items: center; justify-content: space-between;
@@ -713,7 +736,12 @@ select.campo { cursor: default; }
   background: #171a20;
 }
 .uso-conta i { width: 6px; height: 6px; border-radius: 50%; }
-.uso-conta b { font: 600 12.5px/1 inherit; color: var(--texto); }
+.uso-conta b {
+  font: 600 12.5px/1 inherit; color: var(--texto);
+  white-space: nowrap;
+  max-width: 190px; overflow: hidden; text-overflow: ellipsis;
+}
+.uso-conta { flex: 0 0 auto; }
 .medidor.sem-dado em { font-size: 9.5px; letter-spacing: .02em; min-width: 52px; }
 
 
@@ -806,12 +834,32 @@ select.campo { cursor: default; }
 /* --------------------------------------------------------------- puxador */
 
 .puxador {
+  position: relative;
   flex: 0 0 4px;
   cursor: ew-resize;
   background: transparent;
   transition: background .13s ease;
 }
 .puxador:hover, .puxador.ativo { background: #1d3550; }
+
+.alca {
+  position: absolute;
+  top: 50%; left: -6px;
+  width: 16px; height: 46px;
+  transform: translateY(-50%);
+  display: grid; place-items: center;
+  border: 1px solid var(--linha);
+  border-radius: 8px;
+  background: #1b1e24;
+  color: #4d545f;
+  cursor: default;
+  opacity: .55;
+  z-index: 12;
+  transition: opacity .13s ease, color .13s ease, background .13s ease;
+}
+.alca svg { width: 12px; height: 12px; }
+.alca:hover { opacity: 1; color: var(--texto); background: #232833; }
+.lateral.fechada + .puxador .alca { transform: translateY(-50%) rotate(180deg); left: 3px; opacity: .8; }
 body.puxando-largura { cursor: ew-resize; }
 body.puxando-largura .tela { pointer-events: none; }
 
@@ -831,7 +879,11 @@ body.puxando-largura .tela { pointer-events: none; }
 .sessao-linha { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sessao-linha .ferramenta { flex: 0 0 auto; }
 .sessao-linha span:last-child { overflow: hidden; text-overflow: ellipsis; }
-.sessao-conta { overflow: hidden; text-overflow: ellipsis; max-width: 40%; }
+/* o nome da conta so encurta quando de fato nao cabe. Preso em 40% ele cortava
+   "Conta de trabalho" mesmo com espaco sobrando ao lado */
+.sessao-conta { overflow: hidden; text-overflow: ellipsis; max-width: 100%; flex: 0 1 auto; }
+/* se a linha apertar, o medidor de contexto cai pra linha de baixo antes de o nome sumir */
+.sessao-ctx { flex: 0 0 auto; }
 .sessao-rodape > span:not(.sessao-conta):not(.sessao-ctx) {
   overflow: hidden; text-overflow: ellipsis; max-width: 45%;
 }
@@ -1179,7 +1231,16 @@ svg { display: block; }
   cursor: default;
 }
 .mostrar-fora:hover { background: #1b1e24; color: var(--texto); }
-.mostrar-fora b { color: #7fb8ff; font-weight: 600; }
+.mostrar-fora b {
+  display: inline-block;
+  min-width: 17px;
+  margin-left: 3px;
+  padding: 1px 5px;
+  border-radius: 20px;
+  background: #1e2a3a;
+  color: #7fb8ff;
+  font: 600 10.5px/1.5 var(--mono);
+}
 
 .menu-escudo {
   margin-left: auto;

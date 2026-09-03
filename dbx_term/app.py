@@ -44,6 +44,9 @@ class MainWindow(QMainWindow):
         settings = self.view.settings()
         settings.setAttribute(QWebEngineSettings.LocalContentCanAccessFileUrls, True)
         settings.setAttribute(QWebEngineSettings.ScrollAnimatorEnabled, False)
+        # sem estes dois o navigator.clipboard nem existe, e o Ctrl+V da pagina nao le nada
+        settings.setAttribute(QWebEngineSettings.JavascriptCanAccessClipboard, True)
+        settings.setAttribute(QWebEngineSettings.JavascriptCanPaste, True)
 
         self.bridge = Bridge(self)
         self.bridge.tituloPedido.connect(self._trocar_titulo)

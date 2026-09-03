@@ -10,19 +10,6 @@
   <header class="cromo">
     <span class="marca">DBX<span class="marca-fraca">Term</span></span>
     <span class="folga"></span>
-    <div class="uso-barra" id="uso-barra" hidden>
-      <span class="uso-conta" id="uso-conta"><i></i><b></b></span>
-      <button class="medidor" id="medidor-5h" title="limite de 5 horas">
-        <i>5h</i><span class="trilho"><b></b></span><em>--</em><u></u>
-      </button>
-      <button class="medidor" id="medidor-7d" title="limite semanal">
-        <i>7d</i><span class="trilho"><b></b></span><em>--</em><u></u>
-      </button>
-      <button class="medidor" id="medidor-ctx" title="janela de contexto da sessao desta aba">
-        <i>ctx</i><span class="trilho"><b></b></span><em>--</em><u></u>
-      </button>
-      <span class="modelo" id="modelo-atual" hidden><i></i><b></b></span>
-    </div>
     <span class="fps" id="fps" hidden></span>
     <button class="pilula" id="abrir-stats" title="Consumo e limite de cada conta"><span class="pilula-ponto"></span>Uso</button>
     <button class="icone" id="selecionar-tudo" title="Selecionar toda a saída"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><rect x="2.4" y="2.4" width="11.2" height="11.2" rx="1.6" stroke-dasharray="2.6 1.8"/><path d="M5.2 6.4h5.6M5.2 9.2h3.4"/></svg></button>
@@ -53,7 +40,7 @@
       </div>
       <div class="lateral-lista" id="abas"></div>
       <div class="divisor" id="divisor-fora" hidden title="Arraste pra cima ou pra baixo pra mudar o tamanho">
-        <span id="divisor-rotulo">Fora do DBX Term</span>
+        <span id="divisor-rotulo">Terminais externos</span>
         <button class="divisor-olho" id="esconder-fora" title="Esconder estas sessões">
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round">
             <path d="M1.5 8s2.4-4 6.5-4 6.5 4 6.5 4-2.4 4-6.5 4S1.5 8 1.5 8z"/><circle cx="8" cy="8" r="1.9"/>
@@ -61,10 +48,29 @@
         </button>
       </div>
       <div class="lateral-lista lista-externa" id="lista-externas" hidden></div>
-      <button class="mostrar-fora" id="mostrar-fora" hidden>Mostrar as de fora <b id="conta-fora"></b></button>
+      <button class="mostrar-fora" id="mostrar-fora" hidden>Terminais externos <b id="conta-fora"></b></button>
     </aside>
-    <div class="puxador" id="puxador" title="arraste pra mudar a largura"></div>
-    <main class="palco" id="palco"></main>
+    <div class="puxador" id="puxador" title="arraste pra mudar a largura">
+      <button class="alca" id="recolher-lateral" title="Esconder ou mostrar a lista de sessões">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9.6 3.6 5.2 8l4.4 4.4"/></svg>
+      </button>
+    </div>
+    <div class="coluna">
+      <main class="palco" id="palco"></main>
+      <footer class="rodape uso-barra" id="uso-barra" hidden>
+        <span class="uso-conta" id="uso-conta"><i></i><b></b></span>
+        <button class="medidor" id="medidor-5h" title="limite de 5 horas">
+          <i>5h</i><span class="trilho"><b></b></span><em>--</em><u></u>
+        </button>
+        <button class="medidor" id="medidor-7d" title="limite semanal">
+          <i>7d</i><span class="trilho"><b></b></span><em>--</em><u></u>
+        </button>
+        <button class="medidor" id="medidor-ctx" title="janela de contexto da sessao desta aba">
+          <i>ctx</i><span class="trilho"><b></b></span><em>--</em><u></u>
+        </button>
+        <span class="modelo" id="modelo-atual" hidden><i></i><b></b></span>
+      </footer>
+    </div>
   </div>
 
   <div class="menu" id="menu" hidden>
@@ -258,12 +264,12 @@
           </div>
 
           <div class="linha">
-            <div class="rot"><span>Esconder a status line do Claude</span><small>Só dentro deste app, já que a barra de cima mostra o mesmo</small></div>
+            <div class="rot"><span>Esconder a status line do Claude</span><small>Só dentro deste app, já que a barra de baixo mostra o mesmo</small></div>
             <div class="ctrl"><label class="chave"><input type="checkbox" id="cfg-esconderStatusLine"><span></span></label></div>
           </div>
 
           <div class="linha">
-            <div class="rot"><span>Uso na barra de cima</span><small>Gasto de hoje e da semana da conta da aba atual</small></div>
+            <div class="rot"><span>Uso na barra de baixo</span><small>Gasto de hoje e da semana da conta da aba atual</small></div>
             <div class="ctrl"><label class="chave"><input type="checkbox" id="cfg-mostrarUsoNaBarra"><span></span></label></div>
           </div>
         </div>

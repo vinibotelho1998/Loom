@@ -143,6 +143,50 @@ class Bridge(QObject):
             return ""
         return str(alvo)
 
+    @Slot(result=str)
+    def lerAreaDeTransferencia(self) -> str:
+        """Le a area de transferencia pelo lado do Qt.
+
+        O navigator.clipboard da pagina depende de o documento estar em foco e de
+        permissao, e quando qualquer uma das duas falha o Ctrl+V nao cola nada. Aqui
+        nao ha essa dependencia. Devolve {"tipo": "texto"|"imagem"|"", "valor": ...},
+        onde valor e o texto ou o caminho do arquivo gravado.
+        """
+        from PySide6.QtGui import QGuiApplication
+
+        area = QGuiApplication.clipboard()
+        if area is None:
+            return json.dumps({"tipo": "", "valor": ""})
+
+        dados = area.mimeData()
+        if dados is not None and dados.hasImage():
+            imagem = area.image()
+            if not imagem.isNull():
+                caminho = self._gravar_imagem(imagem)
+                if caminho:
+                    return json.dumps({"tipo": "imagem", "valor": caminho})
+
+        # arquivo copiado no Explorer vira o caminho dele, igual ao arrastar pra dentro
+        if dados is not None and dados.hasUrls():
+            locais = [u.toLocalFile() for u in dados.urls() if u.isLocalFile()]
+            locais = [str(Path(c)) for c in locais if c]
+            if locais:
+                return json.dumps({"tipo": "arquivos", "valor": locais})
+
+        texto = area.text() or ""
+        return json.dumps({"tipo": "texto" if texto else "", "valor": texto})
+
+    def _gravar_imagem(self, imagem) -> str:
+        from PySide6.QtCore import QBuffer, QIODevice
+
+        buffer = QBuffer()
+        buffer.open(QIODevice.OpenModeFlag.WriteOnly)
+        if not imagem.save(buffer, "PNG"):
+            return ""
+        bruto = bytes(buffer.data())
+        buffer.close()
+        return self.salvarColagem(base64.b64encode(bruto).decode("ascii"), "png")
+
     @Slot(str)
     def setTitle(self, texto: str) -> None:
         self.tituloPedido.emit(texto or "")

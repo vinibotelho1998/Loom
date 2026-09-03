@@ -1085,8 +1085,8 @@ function montarSessoes() {
   const rotulo = el("divisor-rotulo");
   if (rotulo) {
     rotulo.textContent = orfas.length
-      ? "Fora do DBX Term · " + orfas.length + " encerradas"
-      : "Fora do DBX Term";
+      ? "Terminais externos · " + orfas.length + " encerradas"
+      : "Terminais externos";
     rotulo.title = orfas.length
       ? orfas.length + " sessões deste app já encerradas ficaram no histórico e não aparecem aqui"
       : "";
@@ -1381,10 +1381,38 @@ function reagendarSessoes() {
 
 /* ------------------------------------------------------------- colar */
 
-async function colarAqui(aba) {
-  /* Ctrl+V aceita o que estiver na area de transferencia. Texto vai direto;
-     imagem vira arquivo em disco e o que entra e o caminho, que e o que o CLI entende. */
+function colarAqui(aba) {
+  /* Ctrl+V aceita o que estiver na area de transferencia. Texto vai direto; imagem e
+     arquivo viram caminho em disco, que e o que o CLI entende.
+
+     Quem le e o lado do Qt, nao o navigator.clipboard: aquele exige documento em foco e
+     permissao, e quando qualquer uma das duas falha o Ctrl+V nao colava nada. */
   if (!aba || aba.ehPainel || !aba.sessionId) return;
+  if (!bridge) return;
+  bridge.lerAreaDeTransferencia((json) => {
+    let dados;
+    try {
+      dados = JSON.parse(json);
+    } catch (e) {
+      dados = null;
+    }
+    if (!dados || !dados.tipo) {
+      colarPeloNavegador(aba);
+      return;
+    }
+    if (dados.tipo === "texto") entregarColagem(aba, dados.valor);
+    else if (dados.tipo === "imagem") aba.term.paste(comAspas(dados.valor));
+    else if (dados.tipo === "arquivos") aba.term.paste(dados.valor.map(comAspas).join(" "));
+  });
+}
+
+function comAspas(caminho) {
+  return /[\s"']/.test(caminho) ? '"' + caminho.replace(/"/g, '\\"') + '"' : caminho;
+}
+
+async function colarPeloNavegador(aba) {
+  /* Rede de seguranca pra formato que o Qt entrega vazio, por exemplo imagem que so
+     existe como text/html com data URI dentro. */
   try {
     const itens = await navigator.clipboard.read();
     for (const item of itens) {
@@ -1392,27 +1420,19 @@ async function colarAqui(aba) {
       if (tipoImagem) {
         const blob = await item.getType(tipoImagem);
         const base64 = await paraBase64(blob);
-        const extensao = tipoImagem.split("/")[1] || "png";
-        bridge.salvarColagem(base64, extensao, (caminho) => {
-          if (caminho) aba.term.paste('"' + caminho + '"');
+        bridge.salvarColagem(base64, tipoImagem.split("/")[1] || "png", (caminho) => {
+          if (caminho) aba.term.paste(comAspas(caminho));
           else piscarAviso("Não consegui guardar essa imagem");
         });
         return;
       }
       if (item.types.includes("text/plain")) {
-        const texto = await (await item.getType("text/plain")).text();
-        entregarColagem(aba, texto);
+        entregarColagem(aba, await (await item.getType("text/plain")).text());
         return;
       }
     }
   } catch (e) {
-    // alguns formatos so saem pelo caminho antigo
-    try {
-      const texto = await navigator.clipboard.readText();
-      if (texto) entregarColagem(aba, texto);
-    } catch (outro) {
-      piscarAviso("Não consegui ler a área de transferência");
-    }
+    piscarAviso("Não há nada na área de transferência");
   }
 }
 
@@ -1420,9 +1440,7 @@ function soltarArquivos(caminhos) {
   /* Arrastar arquivo pra dentro escreve o caminho, que e o que o terminal entende.
      Caminho com espaco vai entre aspas, senao o shell parte no meio. */
   if (!abaAtiva || abaAtiva.ehPainel || !abaAtiva.sessionId) return;
-  const texto = caminhos
-    .map((c) => (/[\s"']/.test(c) ? '"' + c.replace(/"/g, '\\"') + '"' : c))
-    .join(" ");
+  const texto = caminhos.map(comAspas).join(" ");
   if (!texto) return;
   abaAtiva.term.paste(texto + " ");
   abaAtiva.foco();
@@ -1801,14 +1819,25 @@ el("esconder-fora").addEventListener("click", (ev) => {
 el("mostrar-fora").addEventListener("click", () => alternarSessoesDeFora(true));
 
 el("atualizar-sessoes").addEventListener("click", atualizarSessoes);
-el("alternar-lateral").addEventListener("click", () => {
+function alternarLateral() {
   elLateral.classList.toggle("fechada");
   setTimeout(() => {
     if (emGrade) ajustarTodas();
     else if (abaAtiva) abaAtiva.ajustar();
   }, 200);
   if (!elLateral.classList.contains("fechada")) atualizarSessoes();
+}
+
+el("alternar-lateral").addEventListener("click", alternarLateral);
+
+// alca grudada na divisa: fica sempre a vista, inclusive com a lateral ja fechada
+const alcaLateral = el("recolher-lateral");
+alcaLateral.addEventListener("click", (ev) => {
+  ev.stopPropagation();
+  alternarLateral();
 });
+// sem isso, clicar na alca comeca a arrastar a largura da lateral
+alcaLateral.addEventListener("mousedown", (ev) => ev.stopPropagation());
 
 
 /* ------------------------------------------------------ limite do plano */
@@ -1973,11 +2002,15 @@ function pintarUsoDaBarra() {
   // sem aba de terminal aberta nao ha conta em uso, e mostrar limite ali seria invencao
   const semAba = !abaAtiva || abaAtiva.ehPainel;
   el("selecionar-tudo").hidden = semAba;
+  const estava = barra.hidden;
   if (!cfg.mostrarUsoNaBarra || emGrade || semAba) {
     barra.hidden = true;
+    if (!estava) refazerEncaixe();
     return;
   }
   barra.hidden = false;
+  // a barra mora embaixo do palco, entao aparecer ou sumir muda a altura do terminal
+  if (estava) refazerEncaixe();
   const chave = chaveDaAba();
   const perfil = perfis.find((p) => p.id === chave);
 
@@ -1999,6 +2032,13 @@ function pintarUsoDaBarra() {
 
   pintarModelo();
   atualizarTituloDaJanela();
+}
+
+function refazerEncaixe() {
+  setTimeout(() => {
+    if (emGrade) ajustarTodas();
+    else if (abaAtiva) abaAtiva.ajustar();
+  }, 0);
 }
 
 let assinaturaLimites = "";
