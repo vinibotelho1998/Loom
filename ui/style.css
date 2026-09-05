@@ -44,8 +44,18 @@
   --linha-forte: #3a3f49;
   --texto: #d3d8e0;
   --apagado: #6e7683;
+  /* texto pequeno precisa de mais contraste que texto grande. O cinza de antes ficava em
+     2:1 sobre o cartao e a linha de estado, que e o que a lateral existe pra dizer,
+     era a menos legivel da tela. */
+  --apagado-2: #8a93a1;
+  --apagado-3: #7d8797;
+  --fraco: #5b6371;
   --acento: #4f9cf9;
   --mono: "JetBrains Mono", Consolas, monospace;
+
+  /* o Chromium desenha select e spinner no esquema claro sem isto, e dentro do painel
+     escuro abria uma lista branca com texto preto */
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
@@ -141,7 +151,7 @@ body { display: flex; flex-direction: column; }
   font: 500 10px/1 var(--mono);
   letter-spacing: .1em;
   text-transform: uppercase;
-  color: #3c424d;
+  color: var(--apagado-2);
 }
 
 .menu-item {
@@ -164,7 +174,7 @@ body { display: flex; flex-direction: column; }
 .menu-item .selo {
   margin-left: auto;
   font: 500 10px/1 var(--mono);
-  color: #3c424d;
+  color: var(--apagado-2);
 }
 .menu-item .selo.on { color: #63c98a; }
 .menu-acao { color: var(--apagado); font-size: 12px; }
@@ -273,7 +283,7 @@ body { display: flex; flex-direction: column; }
   font: 500 10px/1 var(--mono);
   letter-spacing: .12em;
   text-transform: uppercase;
-  color: #3c424d;
+  color: var(--apagado-2);
 }
 .nav-item {
   padding: 8px 10px;
@@ -310,7 +320,7 @@ body { display: flex; flex-direction: column; }
 .linha:last-of-type { border-bottom: 0; }
 .rot { flex: 1; display: flex; flex-direction: column; gap: 3px; }
 .rot span { font-size: 12.5px; }
-.rot small { color: #4d545f; font-size: 11px; }
+.rot small { color: var(--apagado-3); font-size: 11px; }
 .ctrl { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; }
 .ctrl code, .painel-corpo code {
   font: 11.5px var(--mono);
@@ -353,7 +363,7 @@ select.campo { cursor: default; }
   user-select: text;
 }
 
-.ajuda { margin: -6px 0 18px; color: #4d545f; font-size: 11.5px; line-height: 1.7; }
+.ajuda { margin: -6px 0 18px; color: var(--apagado-3); font-size: 11.5px; line-height: 1.7; }
 
 /* -------------------------------------------------------------- contas */
 
@@ -384,7 +394,7 @@ select.campo { cursor: default; }
 }
 .conta-nome:hover { border-color: var(--linha); }
 .conta-nome:focus { border-color: var(--acento); background: #000; }
-.conta-info { font: 10.5px var(--mono); color: #3c424d; flex: 0 0 auto; }
+.conta-info { font: 10.5px var(--mono); color: var(--apagado-2); flex: 0 0 auto; }
 .conta-info.on { color: #63c98a; }
 .conta-acao {
   border: 1px solid var(--linha); border-radius: 6px;
@@ -397,7 +407,7 @@ select.campo { cursor: default; }
 /* --------------------------------------------------------- campos extra */
 
 .campo-rot { margin: 14px 0 6px; font-size: 11.5px; color: var(--apagado); }
-.campo-dica { margin-top: 7px; font: 11px/1.6 var(--mono); color: #3c424d; }
+.campo-dica { margin-top: 7px; font: 11px/1.6 var(--mono); color: var(--apagado-2); }
 
 /* ------------------------------------------------------------- ferramentas */
 
@@ -413,7 +423,7 @@ select.campo { cursor: default; }
 }
 .ferramenta-linha .titulo { grid-column: 1 / -1; font-size: 12.5px; }
 .ferramenta-linha .campo { font-size: 11.5px; padding: 6px 9px; }
-.ferramenta-linha label { font: 10px/1 var(--mono); color: #3c424d; display: block; margin-bottom: 5px; letter-spacing: .06em; text-transform: uppercase; }
+.ferramenta-linha label { font: 10px/1 var(--mono); color: var(--apagado-2); display: block; margin-bottom: 5px; letter-spacing: .06em; text-transform: uppercase; }
 
 /* ------------------------------------------------------------ estatisticas */
 
@@ -460,25 +470,6 @@ select.campo { cursor: default; }
   border-top: 1px solid var(--linha);
   overflow: hidden;
 }
-.uso-item {
-  display: flex; align-items: baseline; gap: 5px;
-  padding: 4px 9px;
-  border: 1px solid transparent;
-  border-radius: 7px;
-  background: transparent;
-  cursor: default;
-  transition: background .13s ease, border-color .13s ease;
-}
-.uso-item:hover { background: #1b1e24; border-color: var(--linha); }
-.uso-item b { font: 600 12px/1 var(--mono); color: var(--texto); letter-spacing: -.01em; }
-.uso-item i {
-  font: normal 9.5px/1 var(--mono);
-  font-style: normal;
-  letter-spacing: .08em;
-  text-transform: uppercase;
-  color: #3c424d;
-}
-
 /* ---------------------------------------------------------------- lateral */
 
 .lateral {
@@ -498,12 +489,12 @@ select.campo { cursor: default; }
 .lateral-topo {
   display: flex; align-items: center; justify-content: space-between;
   padding: 13px 14px 10px;
-  font: 500 10px/1 var(--mono);
+  font: 600 10px/1 var(--mono);
   letter-spacing: .12em; text-transform: uppercase;
-  color: #3c424d;
+  color: var(--apagado);
 }
 .lateral-atualiza {
-  border: 0; background: transparent; color: #3c424d;
+  border: 0; background: transparent; color: var(--apagado);
   font-size: 12px; cursor: default; padding: 2px 4px; border-radius: 5px;
 }
 .lateral-atualiza:hover { color: var(--texto); background: #1d212a; }
@@ -543,7 +534,8 @@ select.campo { cursor: default; }
   cursor: default;
   transition: background .12s ease, border-color .12s ease;
 }
-.sessao:hover { background: #0d0f14; }
+/* todo hover do app clareia; so o do cartao escurecia, e as duas linguagens brigavam */
+.sessao:hover { background: #191c22; }
 
 .sessao-topo { display: flex; align-items: center; gap: 7px; margin-bottom: 5px; }
 .sessao-pulso { width: 7px; height: 7px; border-radius: 50%; background: #3a3f49; flex: 0 0 auto; }
@@ -552,14 +544,14 @@ select.campo { cursor: default; }
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   font-size: 12px; color: var(--texto);
 }
-.sessao-idade { font: 10px var(--mono); color: #3c424d; flex: 0 0 auto; }
+.sessao-idade { font: 10px var(--mono); color: var(--fraco); flex: 0 0 auto; }
 
 .sessao-linha {
   display: flex; align-items: center; gap: 6px;
-  font: 500 9.5px/1.4 var(--mono);
-  letter-spacing: .1em;
+  font: 600 10.5px/1.4 var(--mono);
+  letter-spacing: .09em;
   text-transform: uppercase;
-  color: #454b55;
+  color: var(--apagado-2);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .sessao-linha .ferramenta { color: var(--apagado); }
@@ -568,32 +560,13 @@ select.campo { cursor: default; }
   display: flex; align-items: center; gap: 6px;
   margin-top: 6px;
   font: 10px var(--mono);
-  color: #343a44;
+  color: var(--apagado-3);
 }
 .sessao-conta { padding: 1px 5px; border-radius: 4px; background: #1d212a; }
-
-.sessao.esperando { border-left-color: #d5b06b; background: #0c0b08; }
-.sessao.esperando .sessao-pulso { background: #d5b06b; animation: bater 1.6s ease-in-out infinite; }
-.sessao.esperando .sessao-pasta { color: #f0cd85; }
-
-.sessao.trabalhando { border-left-color: #3f7fd0; }
-.sessao.trabalhando .sessao-pulso { background: #4f9cf9; animation: bater 1.6s ease-in-out infinite; }
-
-.sessao.parada { opacity: .5; }
 
 @keyframes bater {
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: .45; transform: scale(.82); }
-}
-
-.lateral-vazio {
-  margin: 6px 4px;
-  padding: 16px 12px;
-  border: 1px dashed var(--linha);
-  border-radius: 8px;
-  font-size: 11.5px;
-  line-height: 1.65;
-  color: #3c424d;
 }
 
 .lateral-topo b {
@@ -654,21 +627,21 @@ select.campo { cursor: default; }
 .menu-perigo:hover { background: #1c1114; color: #f0a0a6; }
 .menu-item[disabled] { opacity: .35; }
 
-.sessao-terminal {
-  padding: 1px 5px; border-radius: 4px;
-  background: #101a26; color: #5b87b8;
-}
-.sessao-terminal.fora { background: #16161a; color: #4d545f; }
-
 .bloco-topo { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
-.bloco-topo h3 { margin: 0; }
+/* mesmo desenho do titulo de Limite do plano: eram dois h3 irmaos em linguagens diferentes */
+.bloco-topo h3 {
+  margin: 0;
+  font: 500 10px/1 var(--mono);
+  letter-spacing: .08em; text-transform: uppercase;
+  color: var(--apagado-3);
+}
 
 .filtro { display: flex; gap: 2px; padding: 2px; border: 1px solid var(--linha); border-radius: 8px; }
 .aba-filtro {
   padding: 4px 11px;
   border: 0; border-radius: 6px;
   background: transparent;
-  color: #4d545f;
+  color: var(--apagado-2);
   font: 11px inherit;
   cursor: default;
   transition: background .12s ease, color .12s ease;
@@ -676,8 +649,9 @@ select.campo { cursor: default; }
 .aba-filtro:hover { color: var(--texto); }
 .aba-filtro.ativa { background: #1f232b; color: var(--texto); }
 
-.sessao.aguardando { border-left-color: #d5b06b; background: #0c0b08; }
-.sessao.aguardando .sessao-pulso { background: #8a7440; }
+/* ready fica com a borda olive e o fundo dos outros: o marrom antigo era mais escuro que a
+   propria lateral e brigava com o destaque da aba selecionada */
+.sessao.aguardando .sessao-pulso { background: #c9a961; }
 
 
 
@@ -709,11 +683,13 @@ select.campo { cursor: default; }
 .sessao.rodando .sessao-pulso { background: #4f9cf9; }
 
 .sessao-linha { font-weight: 500; }
-.sessao.aguardando .sessao-linha { color: #7e6a3c; }
+.sessao.aguardando .sessao-linha { color: #d5b06b; }
 
+/* o aviso ficava exatamente em cima de 5h, 7d e ctx, cobrindo por 2,6 s o medidor
+   que a pessoa acabou de olhar */
 .aviso {
   position: fixed;
-  left: 50%; bottom: 26px;
+  left: 50%; bottom: 54px;
   transform: translate(-50%, 10px);
   padding: 9px 16px;
   border: 1px solid var(--linha-forte);
@@ -742,7 +718,6 @@ select.campo { cursor: default; }
   max-width: 190px; overflow: hidden; text-overflow: ellipsis;
 }
 .uso-conta { flex: 0 0 auto; }
-.medidor.sem-dado em { font-size: 9.5px; letter-spacing: .02em; min-width: 52px; }
 
 
 .divisor {
@@ -754,10 +729,10 @@ select.campo { cursor: default; }
   cursor: ns-resize;
   user-select: none;
   transition: border-color .13s ease, color .13s ease;
-  font: 500 9.5px/1 var(--mono);
+  font: 600 9.5px/1 var(--mono);
   letter-spacing: .1em;
   text-transform: uppercase;
-  color: #33383f;
+  color: var(--apagado);
 }
 .divisor::before { content: ""; flex: 0 0 8px; height: 1px; background: #23262c; }
 .divisor::after { content: ""; flex: 1; height: 1px; background: #23262c; }
@@ -768,7 +743,7 @@ select.campo { cursor: default; }
   border-left-style: solid;
   opacity: .72;
 }
-.sessao.externa:hover { background: #14161b; }
+.sessao.externa:hover { background: #191c22; }
 .sessao.externa .sessao-pasta { font-weight: 400; }
 
 .lateral-lista.encolhida { height: auto; flex: 0 0 auto; overflow: hidden; }
@@ -800,8 +775,7 @@ select.campo { cursor: default; }
 .sessao-ctx.critico .ctx-trilho b { background: #cc5560; }
 .sessao-ctx.critico em { color: #f0808a; }
 
-.divisor:hover, .divisor.puxando { border-top-color: #2c333d; color: #5b6371; }
-.divisor::after { content: ""; flex: 1; height: 1px; background: #15171c; }
+.divisor:hover, .divisor.puxando { border-top-color: #2c333d; color: var(--apagado-2); }
 .lateral.arrastando { cursor: ns-resize; }
 .lateral.arrastando .lateral-lista { pointer-events: none; }
 
@@ -821,15 +795,31 @@ select.campo { cursor: default; }
 .nova-aba:hover { background: #1d212a; color: var(--texto); border-color: var(--linha-forte); }
 .nova-aba .mais { font-size: 14px; line-height: 1; color: var(--acento); }
 
-.menu-novo { top: 84px; left: 10px; }
-
 .sessao.aba { cursor: default; }
+
+/* A aba em que voce esta. Antes ela ficava mais ESCURA que as outras e com a fonte mais
+   fina, entao afundava em vez de saltar, e nao dava pra saber onde voce estava.
+   Agora ela e a unica clara, com anel visivel e uma marca solida na lateral. */
 .sessao.aba.ativa {
-  background: #10131a;
-  border-color: var(--linha-forte);
-  box-shadow: inset 0 0 0 1px rgba(79, 156, 249, .12);
+  background: #212734;
+  border-color: #46506180;
+  box-shadow: 0 0 0 1px rgba(79, 156, 249, .55), 0 2px 10px rgba(0, 0, 0, .45);
 }
-.sessao.aba.ativa .sessao-pasta { color: var(--texto); font-weight: 500; }
+.sessao.aba.ativa::after {
+  content: "";
+  position: absolute;
+  top: 8px; bottom: 8px; right: 0;
+  width: 3px;
+  border-radius: 3px 0 0 3px;
+  background: var(--acento);
+}
+.sessao.aba.ativa .sessao-pasta { color: #f2f6fc; font-weight: 700; }
+.sessao.aba.ativa .sessao-origem { color: #7d8797; }
+.sessao.aba.ativa .sessao-origem b { color: #9aa5b5; }
+.sessao.aba.ativa .sessao-idade { color: #8a93a1; }
+.sessao.aba.ativa:hover { background: #262d3b; }
+/* posicao relativa pra marca da direita ter onde se prender */
+.sessao { position: relative; }
 
 /* --------------------------------------------------------------- puxador */
 
@@ -851,7 +841,7 @@ select.campo { cursor: default; }
   border: 1px solid var(--linha);
   border-radius: 8px;
   background: #1b1e24;
-  color: #4d545f;
+  color: var(--apagado-2);
   cursor: default;
   opacity: .55;
   z-index: 12;
@@ -908,8 +898,14 @@ body.puxando-largura .tela { pointer-events: none; }
   background: #131519;
   overflow: hidden;
 }
-.palco.grade .tela.tela-painel { display: none; }
-.palco.grade .tela.ativa { border-color: #26405e; box-shadow: 0 0 0 1px rgba(79, 156, 249, .18); }
+/* na grade o painel selecionado tambem precisa gritar: antes o anel era quase invisivel
+   e com seis terminais lado a lado nao dava pra saber onde a tecla ia cair */
+.palco.grade .tela.ativa {
+  border-color: var(--acento);
+  box-shadow: 0 0 0 1px var(--acento), 0 4px 18px rgba(0, 0, 0, .5);
+}
+.palco.grade .tela:not(.ativa) { opacity: .82; }
+.palco.grade .tela:not(.ativa):hover { opacity: 1; }
 
 .chapeu { display: none; }
 
@@ -925,11 +921,17 @@ body.puxando-largura .tela { pointer-events: none; }
   border-bottom: 1px solid var(--linha);
   border-radius: 9px 9px 0 0;
   font: 500 10.5px/1 var(--mono);
-  color: #4d545f;
+  color: var(--apagado-2);
   overflow: hidden;
   z-index: 2;
 }
-.palco.grade .tela.ativa .chapeu { background: #1a1d23; }
+.palco.grade .tela.ativa .chapeu {
+  background: #202634;
+  border-bottom-color: #46506180;
+  color: #8a93a1;
+}
+/* a cor da conta na borda do chapeu: com varios paineis, um ponto de 6px nao dava conta */
+.palco.grade .chapeu { box-shadow: inset 3px 0 0 var(--cor-conta, transparent); }
 
 .chapeu-ponto { width: 6px; height: 6px; border-radius: 50%; flex: 0 0 auto; }
 .chapeu-conta {
@@ -960,9 +962,6 @@ body.puxando-largura .tela { pointer-events: none; }
 .chapeu-medidas b.atencao { color: #d5b06b; }
 .chapeu-medidas b.critico { color: #f0808a; }
 
-.icone.ligado { background: #12233a; border-color: #1d4a7d; color: #9dc9ff; }
-
-.menu-item[hidden] { display: none !important; }
 .menu-item[disabled] { pointer-events: none; }
 
 /* ------------------------------------------------------- seletor layout */
@@ -1014,8 +1013,6 @@ svg { display: block; }
 .modelo i { width: 6px; height: 6px; border-radius: 50%; }
 .modelo b { font: 600 12.5px/1 var(--mono); color: var(--texto); letter-spacing: -.01em; }
 
-.chapeu-medidas b.chapeu-modelo { color: #8a93a1; }
-
 /* ----------------------------------------------------------------- busca */
 
 .busca {
@@ -1038,7 +1035,7 @@ svg { display: block; }
   outline: none;
   user-select: text;
 }
-.busca-conta { font: 10.5px var(--mono); color: #3c424d; min-width: 46px; text-align: right; }
+.busca-conta { font: 10.5px var(--mono); color: var(--apagado-2); min-width: 46px; text-align: right; }
 .busca button {
   width: 22px; height: 22px;
   display: grid; place-items: center;
@@ -1061,8 +1058,6 @@ svg { display: block; }
   white-space: pre;
   user-select: text;
 }
-
-.marca-caixa[hidden] { display: none !important; }
 
 .conta-acao.entrar { border-color: #1d4a7d; background: #12233a; color: #9dc9ff; }
 .conta-acao.entrar:hover { background: #17304f; color: #cfe4ff; }
@@ -1107,16 +1102,15 @@ svg { display: block; }
   display: flex; align-items: baseline;
   margin: -1px 0 4px 15px;
   font: 10.5px var(--mono);
-  color: #454b55;
+  color: var(--apagado-3);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.sessao-origem b { font-weight: 600; color: #5f6a78; }
+.sessao-origem b { font-weight: 600; color: var(--apagado-2); }
 .sessao-origem i { font-style: normal; }
 .sessao-origem:empty { display: none; }
 
 .sessao-pasta { font-weight: 600; color: var(--texto); }
 .sessao.parada .sessao-pasta { font-weight: 500; }
-.sessao.aba.ativa .sessao-pasta { color: #eef2f8; }
 
 
 
@@ -1137,7 +1131,6 @@ svg { display: block; }
 }
 .chip:hover { background: #1b1e24; color: var(--texto); }
 .chip.ativo { background: #1f232b; color: var(--texto); border-color: var(--linha-forte); }
-.chip .bolinha { margin: 0; }
 
 .numeros { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 22px; }
 .numero {
@@ -1150,7 +1143,7 @@ svg { display: block; }
   display: block;
   font: 500 10px/1 var(--mono);
   letter-spacing: .08em; text-transform: uppercase;
-  color: #4d545f;
+  color: var(--apagado-2);
 }
 .numero-valor {
   display: block;
@@ -1166,7 +1159,7 @@ svg { display: block; }
   margin: 0 0 10px;
   font: 500 10px/1 var(--mono);
   letter-spacing: .08em; text-transform: uppercase;
-  color: #4d545f;
+  color: var(--apagado-3);
 }
 .regua-linha { display: flex; align-items: center; gap: 12px; padding: 5px 0; }
 .regua-rotulo { width: 26px; font: 600 11px/1 var(--mono); color: #5b6371; }
@@ -1178,24 +1171,28 @@ svg { display: block; }
 .regua.atencao b { color: #d5b06b; }
 .regua.critico .trilho i { background: #cc5560; }
 .regua.critico b { color: #f0808a; }
-.regua-vazia { font: 11px var(--mono); color: #3c424d; }
+.regua-vazia { font: 11px var(--mono); color: var(--apagado-2); }
 
 #area-grafico svg { width: 100%; height: 110px; display: block; }
 #area-grafico .fito { fill: #3f7fd0; transition: fill .1s ease; }
 #area-grafico .alvo { fill: transparent; }
-#area-grafico .barra:hover .fito { fill: #7fb8ff; }
-#area-grafico .rotulo-dia { fill: #4d545f; font: 10px "Hack", monospace; }
-.grafico-teto { margin-top: 6px; font: 10.5px var(--mono); color: #3c424d; }
+/* a barra empilhada pinta cada fatia no estilo, entao o realce do hover vai por opacidade */
+#area-grafico .barra:hover .fito { fill: #7fb8ff; opacity: .78; }
+#area-grafico .rotulo-dia { fill: var(--apagado); font: 10px var(--mono); }
+.grafico-teto { margin-top: 6px; font: 10.5px var(--mono); color: var(--apagado); }
 
 .modelos-uso { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+/* estas pilulas sao a legenda do grafico, entao carregam a cor da familia do modelo */
 .pilula-modelo {
+  display: flex; align-items: center; gap: 7px;
   padding: 5px 10px;
   border: 1px solid var(--linha);
   border-radius: 7px;
   font: 11px var(--mono);
-  color: #4d545f;
+  color: var(--apagado-3);
 }
-.pilula-modelo b { color: var(--apagado); font-weight: 600; }
+.pilula-modelo b { color: var(--texto); font-weight: 600; }
+.pilula-modelo .bolinha { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; }
 
 /* ------------------------------------------------- so o thinking chama */
 
@@ -1226,7 +1223,7 @@ svg { display: block; }
   border: 1px dashed var(--linha);
   border-radius: 8px;
   background: transparent;
-  color: #4d545f;
+  color: var(--apagado-2);
   font: 11.5px inherit;
   cursor: default;
 }
@@ -1248,7 +1245,7 @@ svg { display: block; }
   border: 1px solid var(--linha);
   border-radius: 5px;
   background: transparent;
-  color: #3c424d;
+  color: var(--apagado-2);
   font: 600 9.5px/1 var(--mono);
   letter-spacing: .06em;
   text-transform: uppercase;
@@ -1256,3 +1253,83 @@ svg { display: block; }
 }
 .menu-escudo:hover { background: #1f232b; color: #d5b06b; border-color: #4a4029; }
 .menu-escudo[disabled] { opacity: .35; }
+
+/* --------------------------------------------------------------- densidade */
+
+/* A lateral com duas sessoes e a lateral com dez pedem coisas diferentes. */
+[data-densidade="compacta"] .sessao { padding: 6px 9px; margin-bottom: 3px; }
+[data-densidade="compacta"] .sessao-origem { display: none; }
+[data-densidade="compacta"] .sessao-topo { margin-bottom: 3px; }
+[data-densidade="compacta"] .sessao-rodape { margin-top: 3px; }
+[data-densidade="compacta"] .nova-aba { padding: 6px 11px; margin-bottom: 2px; }
+
+/* ------------------------------------------------------------- tela vazia */
+
+/* Sem nenhuma aba a janela era um retangulo cinza sem uma palavra escrita. */
+.palco-vazio {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 24px;
+  color: var(--apagado);
+  animation: surge .2s ease;
+}
+.vazio-marca {
+  font: 600 20px/1 var(--mono);
+  letter-spacing: .1em;
+  color: var(--texto);
+}
+.palco-vazio p { margin: 0; font-size: 12.5px; }
+.vazio-atalhos {
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 6px 16px;
+  margin: 10px 0 0;
+  font-size: 11.5px;
+}
+.vazio-atalhos dt {
+  font: 11px var(--mono);
+  color: var(--apagado-2);
+  text-align: right;
+  white-space: nowrap;
+}
+.vazio-atalhos dd { margin: 0; color: var(--apagado); }
+.atalhos-sobre { justify-content: start; margin-top: 18px; }
+
+/* ---------------------------------------------------------- renomear aba */
+
+.rotulo-campo {
+  flex: 1; min-width: 0;
+  padding: 1px 5px;
+  border: 1px solid var(--acento);
+  border-radius: 5px;
+  background: #0c0e12;
+  color: var(--texto);
+  font: 600 12.5px inherit;
+  outline: none;
+  user-select: text;
+}
+
+/* -------------------------------------------------------------- foco */
+
+/* Navegando por Tab o foco sumia ao chegar nos interruptores e nos botoes. */
+button:focus-visible,
+.chave input:focus-visible + span,
+select:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--acento);
+  outline-offset: 2px;
+}
+.chave span { background: var(--linha); }
+
+/* bolinha da cor da conta na tela de Uso; sem tamanho, um span vazio nao pinta nada */
+.chip .bolinha {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  margin: 0;
+}

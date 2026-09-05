@@ -12,7 +12,6 @@
     <span class="folga"></span>
     <span class="fps" id="fps" hidden></span>
     <button class="pilula" id="abrir-stats" title="Consumo e limite de cada conta"><span class="pilula-ponto"></span>Uso</button>
-    <button class="icone" id="selecionar-tudo" title="Selecionar toda a saída"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><rect x="2.4" y="2.4" width="11.2" height="11.2" rx="1.6" stroke-dasharray="2.6 1.8"/><path d="M5.2 6.4h5.6M5.2 9.2h3.4"/></svg></button>
     <button class="icone" id="alternar-lateral" title="Mostrar ou esconder a barra lateral"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2" y="3" width="12" height="10" rx="1.6"/><path d="M6.4 3v10"/></svg></button>
     <button class="icone" id="abrir-config" title="Configurações, Ctrl+vírgula"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
   </header>
@@ -50,22 +49,37 @@
       <div class="lateral-lista lista-externa" id="lista-externas" hidden></div>
       <button class="mostrar-fora" id="mostrar-fora" hidden>Terminais externos <b id="conta-fora"></b></button>
     </aside>
-    <div class="puxador" id="puxador" title="arraste pra mudar a largura">
+    <div class="puxador" id="puxador" title="Arraste pra mudar a largura">
       <button class="alca" id="recolher-lateral" title="Esconder ou mostrar a lista de sessões">
         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9.6 3.6 5.2 8l4.4 4.4"/></svg>
       </button>
     </div>
     <div class="coluna">
-      <main class="palco" id="palco"></main>
+      <main class="palco" id="palco">
+        <div class="palco-vazio" id="palco-vazio" hidden>
+          <span class="vazio-marca">DBX<span class="marca-fraca">Term</span></span>
+          <p>Nenhuma aba aberta.</p>
+          <button class="botao botao-forte" id="vazio-nova">Abrir uma aba</button>
+          <dl class="vazio-atalhos">
+            <dt>Ctrl+Shift+T</dt><dd>Nova aba</dd>
+            <dt>Ctrl+Shift+W</dt><dd>Fechar a aba</dd>
+            <dt>Ctrl+Tab</dt><dd>Próxima aba, com Shift volta</dd>
+            <dt>Alt+1 a 9</dt><dd>Pular direto pra aba</dd>
+            <dt>Ctrl+Shift+G</dt><dd>Todos lado a lado</dd>
+            <dt>Ctrl+F</dt><dd>Buscar na saída</dd>
+            <dt>Ctrl+vírgula</dt><dd>Configurações</dd>
+          </dl>
+        </div>
+      </main>
       <footer class="rodape uso-barra" id="uso-barra" hidden>
         <span class="uso-conta" id="uso-conta"><i></i><b></b></span>
-        <button class="medidor" id="medidor-5h" title="limite de 5 horas">
+        <button class="medidor" id="medidor-5h" title="Limite das últimas 5 horas">
           <i>5h</i><span class="trilho"><b></b></span><em>--</em><u></u>
         </button>
-        <button class="medidor" id="medidor-7d" title="limite semanal">
+        <button class="medidor" id="medidor-7d" title="Limite dos últimos 7 dias">
           <i>7d</i><span class="trilho"><b></b></span><em>--</em><u></u>
         </button>
-        <button class="medidor" id="medidor-ctx" title="janela de contexto da sessao desta aba">
+        <button class="medidor" id="medidor-ctx" title="Janela de contexto da sessão desta aba">
           <i>ctx</i><span class="trilho"><b></b></span><em>--</em><u></u>
         </button>
         <span class="modelo" id="modelo-atual" hidden><i></i><b></b></span>
@@ -91,7 +105,7 @@
     <div class="caixa">
       <div class="caixa-titulo">Nova conta do Claude</div>
       <p class="caixa-texto">
-        Cada conta ganha uma pasta de login separada. O primeiro comando que voce rodar
+        Cada conta ganha uma pasta de login separada. O primeiro comando que você rodar
         nessa aba pede o login normalmente, e a conta fica logada pra sempre nesse perfil.
       </p>
       <input id="nome-conta" class="campo" type="text" placeholder="Apelido, por exemplo trabalho ou pessoal" autocomplete="off">
@@ -153,8 +167,8 @@
   <div class="veu" id="veu-config" hidden>
     <div class="painel">
       <aside class="painel-nav">
-        <div class="painel-marca">Configuracoes</div>
-        <button class="nav-item ativa" data-alvo="aparencia">Aparencia</button>
+        <div class="painel-marca">Configurações</div>
+        <button class="nav-item ativa" data-alvo="aparencia">Aparência</button>
         <button class="nav-item" data-alvo="terminal">Terminal</button>
         <button class="nav-item" data-alvo="uso">Uso</button>
         <button class="nav-item" data-alvo="contas">Contas</button>
@@ -166,7 +180,7 @@
         <button class="painel-fechar" data-fecha="veu-config" title="Fechar, Esc">×</button>
 
         <div class="secao ativa" id="sec-aparencia">
-          <h2>Aparencia</h2>
+          <h2>Aparência</h2>
 
           <div class="linha">
             <div class="rot"><span>Fonte</span><small>A do terminal e a dos números da interface</small></div>
@@ -190,7 +204,7 @@
           </div>
 
           <div class="linha">
-            <div class="rot"><span>Espaco entre letras</span><small>Em pixel, 0 e o natural da fonte</small></div>
+            <div class="rot"><span>Espaço entre letras</span><small>Em pixel, 0 é o natural da fonte</small></div>
             <div class="ctrl"><input type="range" id="cfg-espacoLetra" min="0" max="3" step="1"><output id="out-espacoLetra"></output></div>
           </div>
 
@@ -210,10 +224,20 @@
             <div class="ctrl"><label class="chave"><input type="checkbox" id="cfg-cursorPisca"><span></span></label></div>
           </div>
 
-          
+          <div class="linha">
+            <div class="rot"><span>Densidade da lateral</span><small>Compacto encolhe o cartão, pra caber mais sessão na tela</small></div>
+            <div class="ctrl">
+              <select id="cfg-densidade" class="campo campo-curto">
+                <option value="confortavel">Confortável</option>
+                <option value="compacta">Compacta</option>
+              </select>
+            </div>
+          </div>
+
+
 
           <div class="linha">
-            <div class="rot"><span>Mostrar quadros por segundo</span><small>Util so pra medir, deixa desligado no dia a dia</small></div>
+            <div class="rot"><span>Mostrar quadros por segundo</span><small>Útil só pra medir, deixe desligado no dia a dia</small></div>
             <div class="ctrl"><label class="chave"><input type="checkbox" id="cfg-mostrarFps"><span></span></label></div>
           </div>
 
@@ -224,17 +248,17 @@
           <h2>Terminal</h2>
 
           <div class="linha">
-            <div class="rot"><span>Shell padrao</span><small>O que abre no Ctrl+Shift+T</small></div>
+            <div class="rot"><span>Shell padrão</span><small>O que abre no Ctrl+Shift+T</small></div>
             <div class="ctrl"><select id="cfg-shellPadrao" class="campo campo-curto"></select></div>
           </div>
 
           <div class="linha">
-            <div class="rot"><span>Conta padrao</span><small>Em qual conta a aba nova abre</small></div>
+            <div class="rot"><span>Conta padrão</span><small>Em qual conta a aba nova abre</small></div>
             <div class="ctrl"><select id="cfg-perfilPadrao" class="campo campo-curto"></select></div>
           </div>
 
           <div class="linha">
-            <div class="rot"><span>Historico</span><small>Linhas guardadas pra rolar pra tras</small></div>
+            <div class="rot"><span>Histórico</span><small>Linhas guardadas pra rolar pra trás</small></div>
             <div class="ctrl"><input type="number" id="cfg-historico" class="campo campo-curto" min="1000" max="200000" step="1000"></div>
           </div>
 
@@ -269,8 +293,23 @@
           </div>
 
           <div class="linha">
-            <div class="rot"><span>Uso na barra de baixo</span><small>Gasto de hoje e da semana da conta da aba atual</small></div>
+            <div class="rot"><span>Barra de baixo</span><small>Limite do plano, contexto e modelo da conta da aba atual</small></div>
             <div class="ctrl"><label class="chave"><input type="checkbox" id="cfg-mostrarUsoNaBarra"><span></span></label></div>
+          </div>
+
+          <div class="linha">
+            <div class="rot"><span>Avisar quando uma sessão terminar</span><small>Notificação do Windows quando ela passa a esperar você e a janela está atrás</small></div>
+            <div class="ctrl"><label class="chave"><input type="checkbox" id="cfg-avisarQuandoPronta"><span></span></label></div>
+          </div>
+
+          <div class="linha">
+            <div class="rot"><span>Fechar a aba quando o shell sair bem</span><small>Só quando ele sai com código 0; com erro a aba fica pra você ler</small></div>
+            <div class="ctrl"><label class="chave"><input type="checkbox" id="cfg-fecharAoSair"><span></span></label></div>
+          </div>
+
+          <div class="linha">
+            <div class="rot"><span>Editor dos links</span><small>Quem abre o caminho de arquivo clicado, com a linha certa. Vazio usa o programa padrão do sistema</small></div>
+            <div class="ctrl"><input type="text" id="cfg-editor" class="campo campo-curto" spellcheck="false" placeholder="code"></div>
           </div>
         </div>
 
@@ -282,9 +321,9 @@
         <div class="secao" id="sec-contas">
           <h2>Contas</h2>
           <p class="ajuda">
-            Cada conta tem a propria pasta de login, entao varias ficam logadas ao mesmo tempo e voce
-            troca sem deslogar. Remover a conta daqui nao mexe na conta la no provedor,
-            so tira o login desta maquina.
+            Cada conta tem a própria pasta de login, então várias ficam logadas ao mesmo tempo e você
+            troca sem deslogar. Remover a conta daqui não mexe na conta lá no provedor,
+            só tira o login desta máquina.
           </p>
           <div id="lista-contas"></div>
           <div class="caixa-botoes" style="justify-content:flex-start">
@@ -296,9 +335,9 @@
         <div class="secao" id="sec-ferramentas">
           <h2>Ferramentas</h2>
           <p class="ajuda">
-            Cada CLI guarda o login numa pasta apontada por uma variavel de ambiente.
-            O DBX Term so precisa saber o nome dessa variavel e o arquivo que indica login feito.
-            Claude Code esta confirmado nesta maquina. Os outros vem preenchidos com o valor
+            Cada CLI guarda o login numa pasta apontada por uma variável de ambiente.
+            O DBX Term só precisa saber o nome dessa variável e o arquivo que indica login feito.
+            Claude Code está confirmado nesta máquina. Os outros vêm preenchidos com o valor
             documentado por cada projeto e podem ser corrigidos aqui se mudarem.
           </p>
           <div id="lista-ferramentas"></div>
@@ -306,19 +345,31 @@
 
         <div class="secao" id="sec-sobre">
           <h2>Sobre</h2>
-          <div class="linha"><div class="rot"><span>Versao</span></div><div class="ctrl"><code id="sobre-versao">0.2.0</code></div></div>
+          <div class="linha"><div class="rot"><span>Versão</span></div><div class="ctrl"><code id="sobre-versao">0.2.0</code></div></div>
           <div class="linha"><div class="rot"><span>Pasta de dados</span></div><div class="ctrl"><code id="sobre-raiz"></code></div></div>
           <div class="linha"><div class="rot"><span>Quadros por segundo</span></div><div class="ctrl"><code id="sobre-fps">Medindo</code></div></div>
-          <p class="ajuda">
-            Atalhos: Ctrl+Shift+T abre aba, Ctrl+Shift+W fecha, Ctrl+Tab alterna,
-            Ctrl+virgula abre estas configuracoes.
-          </p>
+          <dl class="vazio-atalhos atalhos-sobre">
+            <dt>Ctrl+Shift+T</dt><dd>Nova aba</dd>
+            <dt>Ctrl+Shift+W</dt><dd>Fechar a aba</dd>
+            <dt>Ctrl+Tab</dt><dd>Próxima aba, com Shift volta</dd>
+            <dt>Ctrl+PageUp e PageDown</dt><dd>Aba anterior e próxima</dd>
+            <dt>Alt+1 a 9</dt><dd>Pular direto pra aba, 9 é a última</dd>
+            <dt>Ctrl+Shift+G</dt><dd>Todos os terminais lado a lado</dd>
+            <dt>Ctrl+F e F3</dt><dd>Buscar na saída e ir pra próxima</dd>
+            <dt>Ctrl+mais, menos e zero</dt><dd>Tamanho da fonte, e Ctrl com a roda</dd>
+            <dt>Shift+Enter</dt><dd>Quebra linha sem enviar</dd>
+            <dt>Ctrl+Shift+C e V</dt><dd>Copiar e colar</dd>
+            <dt>Ctrl+vírgula</dt><dd>Estas configurações</dd>
+          </dl>
         </div>
       </section>
     </div>
   </div>
 
   <div class="menu menu-sessao" id="menu-aba" hidden>
+    <button class="menu-item" data-aba="copiar-selecao">Copiar a seleção</button>
+    <button class="menu-item" data-aba="colar">Colar</button>
+    <button class="menu-item" data-aba="renomear">Renomear a aba</button>
     <button class="menu-item" data-aba="so-esta">Ver só este terminal</button>
     <button class="menu-item" data-aba="grade">Ver todos lado a lado</button>
     <button class="menu-item" data-aba="duplicar">Nova aba nesta conta</button>

@@ -279,17 +279,15 @@ def listar(pastas: dict[str, str], vistas: dict[str, dict] | None = None) -> lis
         if not raiz.is_dir():
             continue
         for arquivo in raiz.rglob("*.jsonl"):
+            # um stat so por arquivo: eram dois no mesmo laco, e isso roda a cada ciclo
             try:
-                mtime = arquivo.stat().st_mtime
+                marca = arquivo.stat()
             except OSError:
                 continue
+            mtime, tamanho = marca.st_mtime, marca.st_size
             if agora - mtime > JANELA_VIVA:
                 continue
 
-            try:
-                tamanho = arquivo.stat().st_size
-            except OSError:
-                continue
             leitura = _estado_de(arquivo, mtime, tamanho)
             if not leitura:
                 continue

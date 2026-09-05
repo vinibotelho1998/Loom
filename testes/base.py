@@ -15,7 +15,16 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from dbx_term import caminhos, coletor, config, ferramentas, perfis, sessao_salva, uso  # noqa: E402
+from dbx_term import (  # noqa: E402
+    caminhos,
+    coletor,
+    config,
+    ferramentas,
+    perfis,
+    sessao_salva,
+    sessoes,
+    uso,
+)
 
 
 class ComPastaPropria(unittest.TestCase):
@@ -32,6 +41,7 @@ class ComPastaPropria(unittest.TestCase):
             (perfis, "ARQUIVO"): perfis.ARQUIVO,
             (perfis, "PERFIS"): perfis.PERFIS,
             (perfis, "RAIZ"): perfis.RAIZ,
+            (perfis, "CACHE_IDENTIDADE"): perfis.CACHE_IDENTIDADE,
             (ferramentas, "ARQUIVO"): ferramentas.ARQUIVO,
             (ferramentas, "RAIZ"): ferramentas.RAIZ,
             (config, "ARQUIVO"): config.ARQUIVO,
@@ -50,6 +60,7 @@ class ComPastaPropria(unittest.TestCase):
         perfis.RAIZ = dados
         perfis.PERFIS = dados / "perfis"
         perfis.ARQUIVO = dados / "perfis.json"
+        perfis.CACHE_IDENTIDADE = dados / "identidade.json"
         ferramentas.RAIZ = dados
         ferramentas.ARQUIVO = dados / "ferramentas.json"
         config.RAIZ = dados
@@ -61,7 +72,12 @@ class ComPastaPropria(unittest.TestCase):
         sessao_salva.RAIZ = dados
         sessao_salva.ARQUIVO = dados / "abas.json"
 
+        # todo cache de modulo tem que comecar vazio, senao um teste enxerga o dado do outro
         perfis._IDENTIDADE.clear()
+        perfis._TAMANHO.clear()
+        coletor._LIDAS.clear()
+        sessoes._LEMBRADO.clear()
+        sessao_salva._ULTIMO = None
 
     def tearDown(self) -> None:
         for (modulo, atributo), valor in self._antes.items():

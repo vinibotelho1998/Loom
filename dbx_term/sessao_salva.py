@@ -8,8 +8,12 @@ from .caminhos import RAIZ
 ARQUIVO = RAIZ / "abas.json"
 
 
+_ULTIMO: str | None = None
+
+
 def gravar(abas: list[dict]) -> None:
     """Guarda o que estava aberto pra devolver tudo no proximo start."""
+    global _ULTIMO
     limpas = []
     for aba in abas[:20]:
         if not isinstance(aba, dict) or not aba.get("shell"):
@@ -20,16 +24,22 @@ def gravar(abas: list[dict]) -> None:
                 "perfil": str(aba.get("perfil", "")),
                 "pasta": str(aba.get("pasta", "")),
                 "conversa": str(aba.get("conversa", "")),
+                "apelido": str(aba.get("apelido", "")),
                 "ativa": bool(aba.get("ativa")),
             }
         )
+    # conteudo igual nao volta pro disco: era uma gravacao atomica por ciclo de sessoes
+    texto = json.dumps(limpas, indent=2, ensure_ascii=False)
+    if texto == _ULTIMO:
+        return
     RAIZ.mkdir(parents=True, exist_ok=True)
     # o temporario leva o numero do processo: duas janelas abertas gravam ao mesmo tempo
     # e brigariam pelo mesmo nome
     provisorio = ARQUIVO.with_name(f"{ARQUIVO.name}.{os.getpid()}.tmp")
     try:
-        provisorio.write_text(json.dumps(limpas, indent=2, ensure_ascii=False), encoding="utf-8")
+        provisorio.write_text(texto, encoding="utf-8")
         provisorio.replace(ARQUIVO)
+        _ULTIMO = texto
     except OSError:
         provisorio.unlink(missing_ok=True)
 

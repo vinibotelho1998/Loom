@@ -214,31 +214,59 @@ def main() -> int:
     return 0
 
 
+# arquivo que nao mudou ja foi lido; reparsear tudo a cada ciclo era o custo de graca
+_LIDAS: dict[str, tuple[int, int, dict]] = {}
+
+
 def ler_todas() -> dict[str, dict]:
     """Tudo que o coletor viu nas ultimas horas, por id de sessao."""
     if not PASTA.is_dir():
         return {}
     agora = time.time()
     achadas = {}
-    for arquivo in PASTA.glob("*.json"):
-        try:
-            dados = json.loads(arquivo.read_text(encoding="utf-8"))
-        except (ValueError, OSError):
+    vivos: set[str] = set()
+    try:
+        entradas = list(os.scandir(PASTA))
+    except OSError:
+        return {}
+
+    for entrada in entradas:
+        if not entrada.name.endswith(".json"):
             continue
-        if agora - dados.get("lido", 0) > VALIDADE:
+        try:
+            marca = entrada.stat()
+        except OSError:
+            continue
+        vivos.add(entrada.path)
+        lembrado = _LIDAS.get(entrada.path)
+        if lembrado and lembrado[0] == marca.st_mtime_ns and lembrado[1] == marca.st_size:
+            dados = lembrado[2]
+        else:
             try:
-                arquivo.unlink()
+                dados = json.loads(Path(entrada.path).read_text(encoding="utf-8"))
+            except (ValueError, OSError):
+                continue
+            _LIDAS[entrada.path] = (marca.st_mtime_ns, marca.st_size, dados)
+
+        if agora - dados.get("lido", 0) > VALIDADE:
+            _LIDAS.pop(entrada.path, None)
+            vivos.discard(entrada.path)
+            try:
+                Path(entrada.path).unlink()
             except OSError:
                 pass
             continue
-        achadas[dados.get("sessao", arquivo.stem)] = dados
+        achadas[dados.get("sessao", Path(entrada.path).stem)] = dados
+
+    for caminho in [c for c in _LIDAS if c not in vivos]:
+        _LIDAS.pop(caminho, None)
     return achadas
 
 
-def por_aba() -> dict[str, dict]:
+def por_aba(vistas: dict[str, dict] | None = None) -> dict[str, dict]:
     """A leitura mais recente de cada aba do app, pra tela reagir sem esperar a varredura."""
     melhor: dict[str, dict] = {}
-    for dados in ler_todas().values():
+    for dados in (vistas if vistas is not None else ler_todas()).values():
         aba = dados.get("aba")
         if not aba:
             continue
@@ -248,14 +276,14 @@ def por_aba() -> dict[str, dict]:
     return melhor
 
 
-def limites_por_perfil() -> dict[str, dict]:
+def limites_por_perfil(vistas: dict[str, dict] | None = None) -> dict[str, dict]:
     """A leitura mais recente de cada conta, que e o que a barra de cima mostra.
 
     Sessao marcada so pelo hook ainda nao tem percentual, entao ela nao pode passar
     na frente de uma leitura de verdade e apagar o numero da barra.
     """
     melhor: dict[str, dict] = {}
-    for dados in ler_todas().values():
+    for dados in (vistas if vistas is not None else ler_todas()).values():
         chave = dados.get("perfil") or "__padrao__"
         atual = melhor.get(chave)
         tem = bool(dados.get("faixas"))

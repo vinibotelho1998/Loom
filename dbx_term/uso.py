@@ -35,8 +35,19 @@ def _gravar_cache(cache: dict) -> None:
     CACHE.write_text(json.dumps(cache), encoding="utf-8")
 
 
+BLOCO = 4 * 1024 * 1024
+# quanto cada passada aceita ler de um arquivo so. Indexar do zero um transcript de 100 MB
+# segurava a tela por segundos; assim ele entra aos poucos e a janela continua respondendo.
+TETO_POR_PASSADA = 32 * 1024 * 1024
+
+
 def _ler_novidades(caminho: Path, desde: int) -> tuple[list[dict], int]:
-    """Le so o que cresceu no arquivo desde a ultima passada."""
+    """Le so o que cresceu no arquivo desde a ultima passada.
+
+    Em binario e por blocos, porque o deslocamento guardado e em bytes. A versao anterior
+    carregava o resto do arquivo como texto e depois recodificava duas vezes so pra descobrir
+    onde tinha parado, o que custava varias copias inteiras na memoria.
+    """
     try:
         tamanho = caminho.stat().st_size
     except OSError:
@@ -45,25 +56,35 @@ def _ler_novidades(caminho: Path, desde: int) -> tuple[list[dict], int]:
         desde = 0
     if tamanho == desde:
         return [], desde
-    linhas = []
+
+    linhas: list[dict] = []
+    fim = desde
+    restante = min(tamanho - desde, TETO_POR_PASSADA)
+    # sobra sempre comeca no byte `fim`: e o pedaco lido que ainda nao terminou em quebra
+    sobra = b""
     try:
-        with open(caminho, "r", encoding="utf-8", errors="replace") as fh:
+        with open(caminho, "rb") as fh:
             fh.seek(desde)
-            bruto = fh.read()
-            fim = desde + len(bruto.encode("utf-8", errors="replace"))
+            while restante > 0:
+                pedaco = fh.read(min(restante, BLOCO))
+                if not pedaco:
+                    break
+                restante -= len(pedaco)
+                sobra += pedaco
+                corte = sobra.rfind(b"\n")
+                if corte == -1:
+                    continue
+                for linha in sobra[:corte].split(b"\n"):
+                    if b'"usage"' not in linha:
+                        continue
+                    try:
+                        linhas.append(json.loads(linha.decode("utf-8", errors="replace")))
+                    except ValueError:
+                        continue
+                fim += corte + 1
+                sobra = sobra[corte + 1 :]
     except OSError:
-        return [], desde
-    corte = bruto.rfind("\n")
-    if corte == -1:
-        return [], desde
-    fim = desde + len(bruto[: corte + 1].encode("utf-8", errors="replace"))
-    for linha in bruto[:corte].splitlines():
-        if '"usage"' not in linha:
-            continue
-        try:
-            linhas.append(json.loads(linha))
-        except ValueError:
-            continue
+        return linhas, fim
     return linhas, fim
 
 
@@ -97,6 +118,7 @@ def coletar(pastas: dict[str, Path]) -> dict:
     cache = _carregar_cache()
     arquivos = cache["arquivos"]
     dias = cache["dias"]
+    mudou = False
 
     for chave_perfil, pasta in pastas.items():
         raiz = Path(pasta) / "projects"
@@ -127,8 +149,11 @@ def coletar(pastas: dict[str, Path]) -> dict:
                 for campo in CAMPOS:
                     destino[campo] = destino.get(campo, 0) + contagem[campo]
             arquivos[chave] = novo_fim
+            mudou = True
 
-    _gravar_cache({"arquivos": arquivos, "dias": dias})
+    # sem novidade nao ha o que gravar: antes o arquivo inteiro era reescrito a cada leitura
+    if mudou:
+        _gravar_cache({"arquivos": arquivos, "dias": dias})
     return dias
 
 
@@ -143,6 +168,8 @@ def relatorio(pastas: dict[str, Path]) -> dict:
     por_perfil: dict[str, dict] = {}
     serie: dict[str, dict[str, Counter]] = defaultdict(lambda: defaultdict(Counter))
     modelos: dict[str, Counter] = defaultdict(Counter)
+    # o gasto do dia quebrado por modelo, que e o que a barra empilhada do grafico precisa
+    dia_por_modelo: dict[str, dict[str, Counter]] = defaultdict(lambda: defaultdict(Counter))
 
     for chave, valores in dias.items():
         partes = chave.split("|")
@@ -171,6 +198,7 @@ def relatorio(pastas: dict[str, Path]) -> dict:
         if dia >= trinta:
             serie[perfil][dia_texto].update(contagem)
             modelos[perfil][modelo] += contagem["saida"] + contagem["entrada"]
+            dia_por_modelo[perfil][dia_texto][modelo] += contagem["saida"]
 
     saida = {}
     for perfil, blocos in por_perfil.items():
@@ -181,7 +209,8 @@ def relatorio(pastas: dict[str, Path]) -> dict:
             "total": dict(blocos["total"]),
             "ultimoDia": blocos["ultimoDia"],
             "serie": [
-                {"dia": d, **dict(c)} for d, c in sorted(serie[perfil].items())
+                {"dia": d, **dict(c), "porModelo": dict(dia_por_modelo[perfil].get(d, {}))}
+                for d, c in sorted(serie[perfil].items())
             ],
             "modelos": [
                 {"modelo": m, "tokens": v} for m, v in sorted(modelos[perfil].items(), key=lambda x: -x[1])

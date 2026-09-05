@@ -35,6 +35,14 @@ function somar(alvo, parcela) {
   return alvo;
 }
 
+function juntarModelos(alvo, ponto) {
+  alvo.porModelo = alvo.porModelo || {};
+  for (const [m, v] of Object.entries(ponto.porModelo || {})) {
+    alvo.porModelo[m] = (alvo.porModelo[m] || 0) + v;
+  }
+  return alvo;
+}
+
 function porSemana(serie) {
   const baldes = new Map();
   for (const ponto of serie) {
@@ -42,9 +50,15 @@ function porSemana(serie) {
     const seg = new Date(d);
     seg.setDate(d.getDate() - ((d.getDay() + 6) % 7));
     const chave = seg.toISOString().slice(0, 10);
-    baldes.set(chave, somar(baldes.get(chave) || { dia: chave }, ponto));
+    baldes.set(chave, juntarModelos(somar(baldes.get(chave) || { dia: chave }, ponto), ponto));
   }
   return [...baldes.values()].sort((a, b) => a.dia.localeCompare(b.dia));
+}
+
+function familiaDoModelo(id) {
+  const nome = String(id).toLowerCase();
+  const familia = Object.keys(CORES_MODELO).find((f) => nome.includes(f));
+  return CORES_MODELO[familia] || "#5b6371";
 }
 
 /* ---------------------------------------------------------------- contas */
@@ -71,7 +85,7 @@ function contasDoUso() {
     if (dona && perfil && perfil.id === dona.id && usoBruto["__padrao__"]) chaves.push("__padrao__");
     lista.push({
       id: chave,
-      nome: perfil ? perfil.nome : "Pasta padrao",
+      nome: perfil ? perfil.nome : "Pasta padrão",
       cor: perfil ? perfil.cor : "#5b6371",
       email: perfil ? perfil.email || "" : "Gasto da pasta de sempre, de antes de existir conta cadastrada",
       chaves,
@@ -96,7 +110,7 @@ function totalDe(chaves) {
     somar(soma.mes, d.mes);
     somar(soma.total, d.total);
     for (const ponto of d.serie || []) {
-      serie.set(ponto.dia, somar(serie.get(ponto.dia) || { dia: ponto.dia }, ponto));
+      serie.set(ponto.dia, juntarModelos(somar(serie.get(ponto.dia) || { dia: ponto.dia }, ponto), ponto));
     }
     for (const m of d.modelos || []) modelos.set(m.modelo, (modelos.get(m.modelo) || 0) + m.tokens);
   }
@@ -138,7 +152,7 @@ function regua(rotulo, faixa) {
 }
 
 function grafico(serie) {
-  if (!serie.length) return '<div class="vazio">Sem consumo no periodo.</div>';
+  if (!serie.length) return '<div class="vazio">Sem consumo no período.</div>';
 
   const larg = 620;
   const alt = 110;
@@ -152,11 +166,40 @@ function grafico(serie) {
     .map((d, i) => {
       const h = Math.max((d.saida / teto) * util, d.saida ? 2 : 0);
       const x = i * passo + (passo - grossura) / 2;
+
+      // empilhada por modelo, do que mais gastou pro que menos, como o PLANO pede
+      const fatias = Object.entries(d.porModelo || {})
+        .filter(([, v]) => v > 0)
+        .sort((a, b) => b[1] - a[1]);
+      const soma = fatias.reduce((t, [, v]) => t + v, 0);
+
+      let pedacos;
+      let dica = diaCurto(d.dia) + " · " + curto(d.saida) + " gerados";
+      if (soma > 0) {
+        let base = util;
+        pedacos = fatias
+          .map(([modelo, valor]) => {
+            const alto = Math.max((valor / soma) * h, 1);
+            base -= alto;
+            return (
+              // no estilo, e nao no atributo: a regra .fito do CSS venceria o atributo
+              '<rect class="fito" x="' + x + '" y="' + base + '" width="' + grossura +
+              '" height="' + alto + '" style="fill:' + familiaDoModelo(modelo) + '"></rect>'
+            );
+          })
+          .join("");
+        dica += fatias.map(([m, v]) => "\n" + nomeModelo(m) + " " + curto(v)).join("");
+      } else {
+        pedacos =
+          '<rect class="fito" x="' + x + '" y="' + (util - h) + '" width="' + grossura +
+          '" height="' + h + '" rx="2"></rect>';
+      }
+
       return (
         '<g class="barra">' +
         '<rect class="alvo" x="' + i * passo + '" y="0" width="' + passo + '" height="' + util + '"></rect>' +
-        '<rect class="fito" x="' + x + '" y="' + (util - h) + '" width="' + grossura + '" height="' + h + '" rx="2"></rect>' +
-        "<title>" + diaCurto(d.dia) + " · " + curto(d.saida) + " gerados</title></g>"
+        pedacos +
+        "<title>" + dica + "</title></g>"
       );
     })
     .join("");
@@ -172,7 +215,7 @@ function grafico(serie) {
 
   return (
     '<svg viewBox="0 0 ' + larg + " " + alt + '" preserveAspectRatio="none">' + barras + pontas + "</svg>" +
-    '<div class="grafico-teto">pico de ' + curto(teto) + " num " + (faixaGrafico === "semana" ? "semana" : "dia") + "</div>"
+    '<div class="grafico-teto">pico de ' + curto(teto) + (faixaGrafico === "semana" ? " numa semana" : " num dia") + "</div>"
   );
 }
 
@@ -185,8 +228,8 @@ function pintarUsoCorpo() {
   const contas = contasDoUso();
   if (!contas.length) {
     alvo.innerHTML =
-      '<div class="vazio">Nenhum consumo encontrado ainda. O medidor le os transcript que o Claude ' +
-      "grava em disco, entao o numero aparece depois da primeira conversa.</div>";
+      '<div class="vazio">Nenhum consumo encontrado ainda. O medidor lê os transcript que o Claude ' +
+      "grava em disco, então o número aparece depois da primeira conversa.</div>";
     return;
   }
 
@@ -213,7 +256,7 @@ function pintarUsoCorpo() {
     '<div class="numeros">' +
     numero("Hoje", dados.hoje.saida || 0, (dados.hoje.mensagens || 0) + " respostas") +
     numero("Esta semana", dados.semana.saida || 0, (dados.semana.mensagens || 0) + " respostas") +
-    numero("Este mes", dados.mes.saida || 0, (dados.mes.mensagens || 0) + " respostas") +
+    numero("Este mês", dados.mes.saida || 0, (dados.mes.mensagens || 0) + " respostas") +
     "</div>";
 
   const limite = faixas
@@ -222,16 +265,16 @@ function pintarUsoCorpo() {
 
   const modelos = dados.modelos.length
     ? '<div class="modelos-uso">' +
-      dados.modelos.map(([m, v]) => '<span class="pilula-modelo">' + nomeModelo(m) + " <b>" + curto(v) + "</b></span>").join("") +
+      dados.modelos.map(([m, v]) => '<span class="pilula-modelo"><span class="bolinha" style="background:' + familiaDoModelo(m) + '"></span>' + nomeModelo(m) + " <b>" + curto(v) + "</b></span>").join("") +
       "</div>"
     : "";
 
   alvo.innerHTML =
-    '<p class="ajuda">Tokens gerados, lidos dos transcript em disco. Escolha a conta pra ver so o dela.</p>' +
+    '<p class="ajuda">Tokens gerados, lidos dos transcript em disco. Escolha a conta pra ver só o dela.</p>' +
     filtro +
     numeros +
     limite +
-    '<div class="bloco-topo"><h3>Ultimos 30 dias</h3>' +
+    '<div class="bloco-topo"><h3>Últimos 30 dias</h3>' +
     '<div class="filtro" id="filtro-grafico">' +
     '<button class="aba-filtro' + (faixaGrafico === "dia" ? " ativa" : "") + '" data-faixa="dia">Dia</button>' +
     '<button class="aba-filtro' + (faixaGrafico === "semana" ? " ativa" : "") + '" data-faixa="semana">Semana</button>' +

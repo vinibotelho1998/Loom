@@ -79,7 +79,9 @@ class PtySession(QObject):
         code = 0
         try:
             while True:
-                data = self._proc.read()
+                # o padrao do winpty e 1 kB, entao um despejo grande virava centenas de sinais
+                # enfileirados por segundo na thread da tela, cada um com o seu custo de travessia
+                data = self._proc.read(65536)
                 if not data:
                     break
                 if self._stopping:

@@ -17,9 +17,56 @@ const TEMA = {
   brightCyan: "#87dce2", brightWhite: "#eef2f8",
 };
 
+/* Teclas que a janela trata e o terminal NAO pode receber. Sem isto o xterm manda o
+   caractere pro shell e a janela executa o atalho, os dois ao mesmo tempo. */
+const ATALHOS_DA_JANELA = new Set(["KeyT", "KeyW", "KeyG"]);
+const ATALHOS_DE_CONTROLE = new Set([
+  "Comma", "Tab", "KeyF", "PageUp", "PageDown",
+  "Equal", "Minus", "Digit0", "NumpadAdd", "NumpadSubtract", "Numpad0",
+]);
+
 function pilhaDeFonte(nome) {
   const escolhida = nome || "Hack";
   return '"' + escolhida + '", Hack, "JetBrains Mono", Consolas, monospace';
+}
+
+/* Caminho de arquivo com numero de linha, que e o formato que o Claude Code imprime o dia
+   inteiro. Aceita caminho do Windows e do Unix, com ou sem coluna no fim. */
+const ARQUIVO_COM_LINHA =
+  /(?:[A-Za-z]:[\\/])?(?:[\w.@~-]+[\\/])*[\w.@-]+\.[A-Za-z0-9]{1,8}:\d+(?::\d+)?/g;
+
+function abrirExterno(alvo, aba) {
+  /* URL vai pro navegador; caminho com linha vai pro editor. O caminho impresso costuma ser
+     relativo, entao vai junto a pasta da sessao daquela aba pra ele ser resolvido. */
+  if (!bridge || !alvo) return;
+  const base = aba && aba.sessao ? aba.sessao.pasta || "" : "";
+  bridge.abrirExterno(alvo, base, (erro) => {
+    if (erro) piscarAviso(erro);
+  });
+}
+
+function provedorDeArquivos(aba) {
+  return {
+    provideLinks(numero, entregar) {
+      const linha = aba.term.buffer.active.getLine(numero - 1);
+      if (!linha) return entregar(undefined);
+      const texto = linha.translateToString(true);
+      const achados = [];
+      ARQUIVO_COM_LINHA.lastIndex = 0;
+      let m;
+      while ((m = ARQUIVO_COM_LINHA.exec(texto)) !== null) {
+        // url tem porta e viraria falso positivo aqui; dela cuida o addon de links
+        if (texto.slice(Math.max(0, m.index - 8), m.index).includes("//")) continue;
+        const inicio = m.index + 1;
+        achados.push({
+          range: { start: { x: inicio, y: numero }, end: { x: inicio + m[0].length - 1, y: numero } },
+          text: m[0],
+          activate: (ev, alvo) => abrirExterno(alvo, aba),
+        });
+      }
+      entregar(achados.length ? achados : undefined);
+    },
+  };
 }
 
 const el = (id) => document.getElementById(id);
@@ -34,6 +81,8 @@ let ferramentas = [];
 let elevacao = { disponivel: false, motivo: "sem sudo" };
 let cfg = {};
 const porSessao = new Map();
+// saida que chegou antes de a aba saber o proprio id, guardada por sessao
+const pendentes = new Map();
 const ordem = [];
 let abaAtiva = null;
 let removendo = null;
@@ -113,7 +162,6 @@ class Aba extends AbaBase {
     this.shell = shell;
     this.perfil = perfil || null;
     this.elevado = !!elevado;
-    this.pendentes = [];
 
 
     this.term = new Terminal(opcoesTerminal());
@@ -121,7 +169,18 @@ class Aba extends AbaBase {
     this.term.loadAddon(this.fit);
     this.busca = new SearchAddon.SearchAddon();
     this.term.loadAddon(this.busca);
-    this.term.loadAddon(new WebLinksAddon.WebLinksAddon());
+    // quantas ocorrencias e em qual voce esta; sem isso a busca so dizia "nada"
+    this.busca.onDidChangeResults((r) => {
+      if (abaAtiva !== this || elBusca.hidden) return;
+      el("busca-conta").textContent =
+        r && r.resultCount ? r.resultIndex + 1 + " de " + r.resultCount : "nada";
+    });
+    // sem handler proprio o addon chama window.open, que dentro do QWebEngineView devolve
+    // nulo e o clique so virava uma linha no console
+    this.term.loadAddon(
+      new WebLinksAddon.WebLinksAddon((ev, uri) => abrirExterno(uri, this))
+    );
+    this.term.registerLinkProvider(provedorDeArquivos(this));
     this.chapeu = document.createElement("div");
     this.chapeu.className = "chapeu";
     this.chapeu.innerHTML =
@@ -148,45 +207,81 @@ class Aba extends AbaBase {
     this.tela.addEventListener("mousedown", () => {
       if (emGrade && abaAtiva !== this) ativar(this);
     });
-    // na grade o botao direito abre o menu da aba; fora dela o xterm continua dono do clique
+    /* O botao direito abre o nosso menu, sempre. Deixando passar, quem respondia era o
+       menu do Chromium, com Recarregar dentro: recarregar a pagina largaria todos os
+       ConPTY vivos sem tela. O xterm ja selecionou a palavra no mousedown, entao
+       Copiar a selecao chega com o que esta debaixo do cursor. */
     this.tela.addEventListener(
       "contextmenu",
       (ev) => {
-        if (!emGrade) return;
         ev.preventDefault();
         ev.stopPropagation();
-        ativar(this);
+        if (abaAtiva !== this) ativar(this);
         abrirMenuAba(this, ev.clientX, ev.clientY);
       },
       true
     );
     try {
-      this.term.loadAddon(new WebglAddon.WebglAddon());
+      this.webgl = new WebglAddon.WebglAddon();
+      // o Chromium so mantem 16 contextos WebGL por pagina e derruba o mais antigo sem avisar.
+      // Sem tratar, aquele terminal congelava no ultimo quadro pra sempre; descartando o addon,
+      // o xterm volta sozinho pro desenho por DOM e a aba continua viva.
+      this.webgl.onContextLoss(() => {
+        this.webgl.dispose();
+        this.webgl = null;
+      });
+      this.term.loadAddon(this.webgl);
     } catch (e) {
+      this.webgl = null;
       console.warn("sem webgl, caiu no canvas", e);
     }
 
     this.pintar();
 
     this.term.onData((d) => {
+      if (!this.viva) {
+        // shell encerrado: Enter sobe outro no lugar em vez de a aba virar lapide
+        if (d === "\r" || d === "\n") this.reabrir();
+        return;
+      }
       if (bridge && this.sessionId) bridge.write(this.sessionId, d);
       // apertou Enter: mandou algo, entao a lista tem que reagir junto
       if (d.charCodeAt(0) === 13 || d.charCodeAt(0) === 10) setTimeout(atualizarSessoes, 250);
+    });
+    // o pwsh, o vim e o npm anunciam o que estao fazendo por OSC; aba de shell puro
+    // deixa de se chamar PowerShell 7 pra sempre
+    this.term.onTitleChange((t) => {
+      const limpo = (t || "").trim().slice(0, 60);
+      if (limpo === this.tituloOsc) return;
+      this.tituloOsc = limpo;
+      if (this.sessao) return;
+      this.pintar();
+      if (abaAtiva === this) atualizarTituloDaJanela();
     });
     this.term.onResize((dim) => {
       if (bridge && this.sessionId) bridge.resize(this.sessionId, dim.cols, dim.rows);
     });
     this.term.attachCustomKeyEventHandler((ev) => {
       if (ev.type !== "keydown") return true;
-      if (ev.ctrlKey && ev.shiftKey && (ev.code === "KeyT" || ev.code === "KeyW")) return false;
-      if (ev.ctrlKey && (ev.code === "Comma" || ev.code === "Tab" || ev.code === "KeyF")) return false;
+      // Shift+Enter quebra linha em vez de enviar. E o que o /terminal-setup do Claude Code
+      // instala nos outros terminais, e ele nao conhece o DBX Term, entao fazemos aqui.
+      if (ev.key === "Enter" && ev.shiftKey && !ev.ctrlKey && !ev.altKey) {
+        ev.preventDefault();
+        if (bridge && this.sessionId) bridge.write(this.sessionId, "\x1b\r");
+        return false;
+      }
+      // tudo que a janela trata precisa sair daqui, senao o caractere ainda vai pro shell
+      if (ev.ctrlKey && ev.shiftKey && ATALHOS_DA_JANELA.has(ev.code)) return false;
+      if (ev.ctrlKey && ATALHOS_DE_CONTROLE.has(ev.code)) return false;
+      if (ev.altKey && !ev.ctrlKey && /^Digit[1-9]$/.test(ev.code)) return false;
+      if (ev.code === "F3") return false;
 
-      if (ev.ctrlKey && !ev.shiftKey && !ev.altKey && ev.code === "KeyV") {
+      if (ev.ctrlKey && !ev.altKey && ev.code === "KeyV") {
         ev.preventDefault();
         colarAqui(this);
         return false;
       }
-      if (ev.ctrlKey && !ev.shiftKey && ev.code === "KeyC" && this.term.hasSelection()) {
+      if (ev.ctrlKey && ev.code === "KeyC" && this.term.hasSelection()) {
         ev.preventDefault();
         navigator.clipboard.writeText(this.term.getSelection());
         this.term.clearSelection();
@@ -194,6 +289,33 @@ class Aba extends AbaBase {
       }
       return true;
     });
+
+    // Ctrl com a roda muda o tamanho da fonte, como em todo terminal e navegador
+    this.tela.addEventListener(
+      "wheel",
+      (ev) => {
+        if (!ev.ctrlKey) return;
+        ev.preventDefault();
+        zoom(ev.deltaY < 0 ? 1 : -1);
+      },
+      { passive: false }
+    );
+  }
+
+  nomeDoCartao() {
+    /* Uma fonte so pro nome da aba, em ordem de quem sabe mais: o apelido que voce deu,
+       o nome vivo que a status line manda, o nome da conversa no transcript, o titulo que
+       o proprio shell anuncia por OSC, e por fim o nome do shell. */
+    if (this.apelido) return this.apelido;
+    const vivo = tituloVivoDaAba(this);
+    if (vivo) return vivo;
+    if (this.sessao) {
+      if (this.sessao.titulo) return this.sessao.titulo;
+      const dona = this.perfil || contaPadraoCadastrada();
+      return dona ? dona.ferramentaNome : "Claude Code";
+    }
+    if (this.tituloOsc) return this.tituloOsc;
+    return this.shell.nome + (this.elevado ? " (adm)" : "");
   }
 
   pintar() {
@@ -219,8 +341,9 @@ class Aba extends AbaBase {
     if (!this.sessao) {
       this.botao.classList.remove("pensando", "rodando", "aguardando", "parada");
       const titulo = this.botao.querySelector(".rotulo");
-      titulo.textContent = this.shell.nome + (this.elevado ? " (adm)" : "");
-      titulo.title = "";
+      const nome = this.nomeDoCartao();
+      titulo.textContent = nome;
+      titulo.title = this.tituloOsc && !this.apelido ? this.shell.nome : "";
       const origem = this.botao.querySelector(".sessao-origem");
       if (origem) origem.textContent = "";
       this.botao.querySelector(".sessao-linha").textContent = this.viva ? "shell" : "closed";
@@ -231,6 +354,24 @@ class Aba extends AbaBase {
   refletir(s) {
     /* Traz pro cartao da aba o estado da sessao de Claude que roda dentro dela. */
     this.sessao = s || null;
+    const donaAgora = this.perfil || contaPadraoCadastrada();
+    // Repintar o cartao inteiro a cada ciclo era uma dezena de mutacoes de DOM por aba
+    // sem nada mudar na tela. Com a chave, so a idade anda quando o resto e igual.
+    if (this.renomeando) return;
+    const chave = s
+      ? [
+          s.estado, s.titulo, s.ferramenta, s.alvo, s.pasta, s.contexto, s.modelo,
+          this.viva, donaAgora && donaAgora.id, donaAgora && donaAgora.cor,
+          tituloVivoDaAba(this), this.apelido, this.tituloOsc,
+        ].join("|")
+      : "";
+    if (chave && chave === this.chaveRefletida) {
+      const idade = this.botao.querySelector(".sessao-idade");
+      const texto = tempoCurto(s.idade);
+      if (idade && idade.textContent !== texto) idade.textContent = texto;
+      return;
+    }
+    this.chaveRefletida = chave;
     const cartao = this.botao;
     const estados = ["pensando", "rodando", "aguardando", "parada"];
     cartao.classList.remove(...estados);
@@ -244,7 +385,7 @@ class Aba extends AbaBase {
 
     const dona = this.perfil || contaPadraoCadastrada();
     const ferramenta = dona ? dona.ferramentaNome : "Claude Code";
-    const nome = tituloVivoDaAba(this) || s.titulo || ferramenta;
+    const nome = this.nomeDoCartao();
     const titulo = cartao.querySelector(".rotulo");
     titulo.textContent = nome;
     titulo.title = nome;
@@ -272,6 +413,7 @@ class Aba extends AbaBase {
   }
 
   abrir(pedido) {
+    this.pedidoInicial = pedido || null;
     ativar(this);
     // a tela acabou de nascer: medir agora daria tamanho errado e o CLI desenharia torto
     setTimeout(() => {
@@ -286,7 +428,8 @@ class Aba extends AbaBase {
         (id) => {
           this.sessionId = id;
           porSessao.set(id, this);
-          for (const data of this.pendentes.splice(0)) this.term.write(data);
+          for (const data of pendentes.get(id) || []) this.term.write(data);
+          pendentes.delete(id);
           if (abaAtiva === this) this.term.focus();
           // o CLI leva um instante pra desenhar; remedir aqui evita quebra de layout
           setTimeout(() => this.ajustar(), 400);
@@ -296,14 +439,31 @@ class Aba extends AbaBase {
   }
 
   escrever(data) {
-    if (this.sessionId) this.term.write(data);
-    else this.pendentes.push(data);
+    this.term.write(data);
   }
 
   encerrada(code) {
     this.viva = false;
+    this.chaveRefletida = "";
     this.pintar();
-    this.term.write("\r\n\x1b[38;5;240m[sessao encerrada, codigo " + code + "]\x1b[0m\r\n");
+    this.term.write(
+      "\r\n\x1b[38;5;240m[sessao encerrada, codigo " + code + " · Enter abre outra]\x1b[0m\r\n"
+    );
+  }
+
+  reabrir() {
+    /* Sobe um shell novo na mesma aba, com a mesma conta e a mesma pasta de antes. */
+    if (this.viva) return;
+    if (this.sessionId) porSessao.delete(this.sessionId);
+    this.sessionId = null;
+    this.viva = true;
+    this.chaveRefletida = "";
+    this.term.reset();
+    // a pasta de onde ela nasceu; a de agora o shell morto nao sabe dizer.
+    // O /login nao se repete: ele era pedido daquela primeira abertura, nao desta.
+    const pedido = Object.assign({}, this.pedidoInicial);
+    delete pedido.entrar;
+    this.abrir(pedido);
   }
 
   foco() {
@@ -319,11 +479,16 @@ class Aba extends AbaBase {
   }
 
   aplicar() {
+    // trocar uma opcao do xterm remede a fonte e limpa o atlas de glifos, entao so
+    // vale mexer no que de fato mudou
     const o = opcoesTerminal();
+    let mudou = false;
     for (const chave of ["fontFamily", "fontSize", "lineHeight", "letterSpacing", "cursorStyle", "cursorBlink", "scrollback"]) {
+      if (this.term.options[chave] === o[chave]) continue;
       this.term.options[chave] = o[chave];
+      mudou = true;
     }
-    this.fit.fit();
+    if (mudou) this.fit.fit();
   }
 
   destruir() {
@@ -358,6 +523,7 @@ function fechar(aba) {
   const i = ordem.indexOf(aba);
   const eraAtiva = abaAtiva === aba;
   aba.destruir();
+  atualizarVazio();
   if (eraAtiva) {
     abaAtiva = null;
     const alvo = ordem[Math.min(i, ordem.length - 1)];
@@ -460,10 +626,11 @@ function limparTela(aba) {
   alvo.foco();
 }
 
-el("selecionar-tudo").addEventListener("click", () => selecionarTudo());
-
 el("abrir-stats").addEventListener("click", abrirStats);
-document.querySelectorAll(".uso-item").forEach((b) => b.addEventListener("click", abrirStats));
+// clicar em 5h, 7d, ctx ou no nome da conta abre a tela de Uso, que e o que a pessoa espera
+el("uso-barra").addEventListener("click", (ev) => {
+  if (ev.target.closest(".medidor, .uso-conta, .modelo")) abrirStats();
+});
 
 /* ------------------------------------------------------------------ veu */
 
@@ -557,6 +724,7 @@ function recarregarPerfis(depois) {
       const atual = perfis.find((p) => p.id === a.perfil.id);
       if (atual) {
         a.perfil = atual;
+        a.chaveRefletida = "";
         a.pintar();
       }
     }
@@ -568,6 +736,12 @@ function mostrarMenu() {
   recarregarPerfis(() => {
     montarMenu();
     elMenu.hidden = false;
+    // o menu nascia num ponto fixo, em cima do proprio botao que o abriu, e nao
+    // acompanhava a lateral quando ela era arrastada
+    const botao = el("novo").getBoundingClientRect();
+    const caixa = elMenu.getBoundingClientRect();
+    elMenu.style.top = Math.min(botao.bottom + 4, window.innerHeight - caixa.height - 10) + "px";
+    elMenu.style.left = Math.min(botao.left, window.innerWidth - caixa.width - 10) + "px";
   });
 }
 
@@ -751,8 +925,15 @@ function montarContas() {
 
     const info = document.createElement("span");
     info.className = "conta-info" + (p.logado ? " on" : "");
-    info.textContent = p.emprestada ? "Login de sempre" : p.logado ? "Logado · " + tamanho(p.bytes) : "Sem login";
+    info.textContent = p.emprestada ? "Login de sempre" : p.logado ? "Logado" : "Sem login";
     info.title = p.configDir;
+    // o tamanho em disco custa varrer milhares de arquivos, entao ele nao vem no
+    // listProfiles: e pedido so aqui, onde de fato aparece
+    if (p.logado && !p.emprestada) {
+      bridge.profileSize(p.id, (bytes) => {
+        info.textContent = "Logado · " + tamanho(bytes);
+      });
+    }
 
     let entrar = null;
     if (!p.logado && !p.emprestada) {
@@ -843,6 +1024,7 @@ const CAMPOS = [
   ["espacoLetra", "range"],
   ["cursor", "select"],
   ["cursorPisca", "check"],
+  ["densidade", "select"],
   ["mostrarFps", "check"],
   ["shellPadrao", "select"],
   ["perfilPadrao", "select"],
@@ -854,6 +1036,9 @@ const CAMPOS = [
   ["confiarPastas", "check"],
   ["restaurarAbas", "check"],
   ["esconderStatusLine", "check"],
+  ["avisarQuandoPronta", "check"],
+  ["fecharAoSair", "check"],
+  ["editor", "text"],
 ];
 
 function montarSelecaoPerfis() {
@@ -890,6 +1075,7 @@ function preencherCampos() {
     if (saida) saida.textContent = cfg[chave];
   }
   document.documentElement.style.setProperty("--mono", pilhaDeFonte(cfg.fonte));
+  document.documentElement.dataset.densidade = cfg.densidade || "confortavel";
   const amostra = el("amostra");
   amostra.style.fontSize = cfg.tamanhoFonte + "px";
   amostra.style.lineHeight = cfg.entrelinha;
@@ -902,13 +1088,13 @@ function aplicarTudo() {
   for (const a of ordem) a.aplicar();
   preencherCampos();
   pintarUsoDaBarra();
-  atualizarUsoDaBarra();
 }
 
 function ligarCampos() {
   for (const [chave, tipo] of CAMPOS) {
     const campo = el("cfg-" + chave);
     if (!campo) continue;
+    let atrasar = null;
     campo.addEventListener(tipo === "range" ? "input" : "change", () => {
       let valor;
       if (tipo === "check") valor = campo.checked;
@@ -916,11 +1102,20 @@ function ligarCampos() {
       else if (tipo === "range") valor = chave === "entrelinha" ? parseFloat(campo.value) : parseInt(campo.value, 10);
       else valor = campo.value;
       cfg[chave] = valor;
-      bridge.saveConfig(JSON.stringify({ [chave]: valor }), (json) => {
-        cfg = JSON.parse(json);
-        aplicarTudo();
-
-      });
+      const saida = el("out-" + chave);
+      if (saida) saida.textContent = valor;
+      // arrastando o cursor, cada pixel gravava em disco e remedia todos os terminais.
+      // A tela responde na hora; o disco espera a mao parar.
+      clearTimeout(atrasar);
+      atrasar = setTimeout(
+        () => {
+          aplicarTudo();
+          bridge.saveConfig(JSON.stringify({ [chave]: valor }), (json) => {
+            cfg = JSON.parse(json);
+          });
+        },
+        tipo === "range" ? 90 : 0
+      );
     });
   }
 }
@@ -969,6 +1164,7 @@ function abrirConfig(secao) {
 }
 
 el("abrir-config").addEventListener("click", () => abrirConfig());
+el("vazio-nova").addEventListener("click", abaPadrao);
 
 /* ------------------------------------------------------------- sessoes */
 
@@ -1037,10 +1233,17 @@ function barraContexto(valor) {
   return ctx;
 }
 
+function atualizarVazio() {
+  /* Sem nenhuma aba a janela ficava um retangulo cinza sem uma palavra. */
+  const alvo = el("palco-vazio");
+  if (alvo) alvo.hidden = ordem.some((a) => !a.ehPainel);
+}
+
 function montarSessoes() {
   const contador = el("conta-sessoes");
   const terminais = ordem.filter((a) => !a.ehPainel);
   if (contador) contador.textContent = terminais.length ? String(terminais.length) : "";
+  atualizarVazio();
 
   // Pareamento em duas passadas. Primeiro a marca exata, que so existe enquanto a aba viveu.
   // Depois, por conta, porque reiniciar o app troca o id da aba e a marca antiga fica orfa.
@@ -1072,6 +1275,8 @@ function montarSessoes() {
   }
 
   for (const aba of terminais) aba.refletir(donos.get(aba) || null);
+  // depois do refletir: e aqui que a aba passa a saber em que estado ela esta
+  avisarProntas(terminais);
   atualizarTituloDaJanela();
   anotarAbas();
 
@@ -1112,6 +1317,7 @@ function montarCartao(s) {
   {
     const cartao = document.createElement("div");
     cartao.className = "sessao externa " + s.estado;
+    cartao.dataset.sessao = s.sessao;
 
     const perfil = perfis.find((p) => p.id === contaDaSessao(s));
     const pasta = nomeDaPasta(s.pasta) || "sem pasta";
@@ -1234,6 +1440,10 @@ function abrirMenuAba(aba, x, y) {
   grade.hidden = emGrade || ordem.filter((a) => !a.ehPainel).length < 2;
   const copiar = elMenuAba.querySelector('[data-aba="copiar"]');
   copiar.disabled = !(aba.sessao && aba.sessao.pasta);
+  const temTermo = !aba.ehPainel && aba.term.hasSelection();
+  elMenuAba.querySelector('[data-aba="copiar-selecao"]').hidden = !temTermo;
+  elMenuAba.querySelector('[data-aba="colar"]').hidden = aba.ehPainel;
+  elMenuAba.querySelector('[data-aba="renomear"]').hidden = aba.ehPainel;
   elMenuAba.hidden = false;
   const caixa = elMenuAba.getBoundingClientRect();
   elMenuAba.style.left = Math.min(x, window.innerWidth - caixa.width - 10) + "px";
@@ -1248,6 +1458,12 @@ elMenuAba.querySelectorAll("[data-aba]").forEach((b) => {
     if (!aba) return;
     const acao = b.dataset.aba;
     if (acao === "fechar") fecharComCuidado(aba);
+    else if (acao === "copiar-selecao") {
+      navigator.clipboard.writeText(aba.term.getSelection());
+      aba.term.clearSelection();
+      aba.foco();
+    } else if (acao === "colar") colarAqui(aba);
+    else if (acao === "renomear") renomearAba(aba);
     else if (acao === "selecionar") selecionarTudo(aba);
     else if (acao === "copiar-tudo") copiarTudo(aba);
     else if (acao === "limpar") limparTela(aba);
@@ -1269,6 +1485,46 @@ document.addEventListener("mousedown", (ev) => {
     abaDoMenu = null;
   }
 });
+
+function renomearAba(aba) {
+  /* Nome proprio pra aba, que ganha de tudo. Vazio devolve o nome automatico. */
+  const topo = aba.botao.querySelector(".sessao-topo");
+  const alvo = aba.botao.querySelector(".rotulo");
+  if (!topo || !alvo || aba.renomeando) return;
+  aba.renomeando = true;
+
+  const campo = document.createElement("input");
+  campo.className = "rotulo-campo";
+  campo.value = aba.apelido || alvo.textContent || "";
+  campo.spellcheck = false;
+  campo.placeholder = "Nome da aba";
+  alvo.hidden = true;
+  topo.insertBefore(campo, alvo);
+  campo.focus();
+  campo.select();
+
+  const encerrar = (salvar) => {
+    if (!aba.renomeando) return;
+    aba.renomeando = false;
+    if (salvar) aba.apelido = campo.value.trim();
+    campo.remove();
+    alvo.hidden = false;
+    aba.chaveRefletida = "";
+    if (aba.sessao) aba.refletir(aba.sessao);
+    else aba.pintar();
+    anotarAbas();
+    atualizarTituloDaJanela();
+    aba.foco();
+  };
+
+  campo.addEventListener("keydown", (ev) => {
+    ev.stopPropagation();
+    if (ev.key === "Enter") encerrar(true);
+    else if (ev.key === "Escape") encerrar(false);
+  });
+  campo.addEventListener("blur", () => encerrar(true));
+  campo.addEventListener("mousedown", (ev) => ev.stopPropagation());
+}
 
 const elMenuSessao = el("menu-sessao");
 
@@ -1326,16 +1582,32 @@ function retomarSessao(s) {
 
 function novaAbaEm(s) {
   const perfil = perfis.find((p) => p.id === contaDaSessao(s));
-  novaAba("", perfil ? perfil.id : "");
-  if (s.pasta) {
-    const alvo = ordem[ordem.length - 1];
-    setTimeout(() => {
-      if (alvo && alvo.sessionId) bridge.write(alvo.sessionId, 'cd "' + s.pasta + '"' + String.fromCharCode(13));
-    }, 900);
-  }
+  // a pasta vai no proprio ConPTY, entao o shell ja nasce la dentro
+  novaAba("", perfil ? perfil.id : "", { pasta: s.pasta || "" });
 }
 
 let janelaAtiva = true;
+const estadoAnterior = new Map();
+
+function avisarProntas(terminais) {
+  /* Sessao que termina e passa a esperar por voce com a janela atras vira notificacao do
+     Windows. So a virada avisa: repetir a cada ciclo seria alarme, nao aviso. */
+  const vistas = new Set();
+  for (const aba of terminais) {
+    const s = aba.sessao;
+    if (!s) continue;
+    vistas.add(s.sessao);
+    const antes = estadoAnterior.get(s.sessao);
+    estadoAnterior.set(s.sessao, s.estado);
+    if (antes === undefined || antes === s.estado) continue;
+    if (s.estado !== "aguardando") continue;
+    if (antes !== "pensando" && antes !== "rodando") continue;
+    if (janelaAtiva && abaAtiva === aba) continue;
+    if (!cfg.avisarQuandoPronta) continue;
+    if (bridge) bridge.notificar(aba.nomeDoCartao(), "Terminou e está esperando você");
+  }
+  for (const id of [...estadoAnterior.keys()]) if (!vistas.has(id)) estadoAnterior.delete(id);
+}
 
 window.addEventListener("focus", () => {
   janelaAtiva = true;
@@ -1351,23 +1623,61 @@ let relogioSessoes = null;
 
 let assinaturaSessoes = "";
 
+let pedidoPendente = false;
+
 function atualizarSessoes() {
-  if (!bridge || varrendo) return;
+  if (!bridge) return;
+  if (varrendo) {
+    // aviso que chega no meio de uma varredura nao pode sumir, senao a mudanca de estado
+    // so aparece no proximo relogio, ate 2,5 s depois
+    pedidoPendente = true;
+    return;
+  }
   varrendo = true;
   bridge.getSessions((json) => {
     varrendo = false;
-    // redesenhar a lista igual a cada segundo custa layout e reflow a toa
-    if (json !== assinaturaSessoes) {
-      assinaturaSessoes = json;
-      try {
-        sessoes = JSON.parse(json);
-      } catch (e) {
-        sessoes = [];
-      }
+    try {
+      sessoes = JSON.parse(json);
+    } catch (e) {
+      sessoes = [];
+    }
+    // A idade anda a cada segundo, entao comparar o JSON cru NUNCA casava e a lateral
+    // inteira era refeita a cada ciclo: a animacao do thinking reiniciava e soluçava.
+    // Fora a idade, o texto so muda quando algo de verdade mudou.
+    const chave = json.replace(/"idade":\s*\d+/g, '"idade":0');
+    if (chave !== assinaturaSessoes) {
+      assinaturaSessoes = chave;
       montarSessoes();
+    } else {
+      envelhecer();
     }
     reagendarSessoes();
+    if (pedidoPendente) {
+      pedidoPendente = false;
+      setTimeout(atualizarSessoes, 60);
+    }
   });
+}
+
+function envelhecer() {
+  /* Nada mudou de verdade: so o relogio de cada cartao anda, sem refazer a lista. */
+  const porId = new Map(sessoes.map((s) => [s.sessao, s]));
+  const escrever = (raiz, s) => {
+    const alvo = raiz.querySelector(".sessao-idade");
+    const texto = tempoCurto(s.idade);
+    if (alvo && alvo.textContent !== texto) alvo.textContent = texto;
+  };
+  for (const aba of ordem) {
+    if (aba.ehPainel || !aba.sessao) continue;
+    const s = porId.get(aba.sessao.sessao);
+    if (!s) continue;
+    aba.sessao = s;
+    escrever(aba.botao, s);
+  }
+  for (const cartao of elListaExternas.querySelectorAll("[data-sessao]")) {
+    const s = porId.get(cartao.dataset.sessao);
+    if (s) escrever(cartao, s);
+  }
 }
 
 function reagendarSessoes() {
@@ -1524,7 +1834,7 @@ const PINTURA = {
   },
 };
 
-function buscar(paraTras) {
+function buscar(paraTras, digitando) {
   if (!abaAtiva || abaAtiva.ehPainel || !abaAtiva.busca) return;
   const termo = elBuscaTermo.value;
   if (!termo) {
@@ -1532,13 +1842,16 @@ function buscar(paraTras) {
     el("busca-conta").textContent = "";
     return;
   }
+  // digitando a busca fica na ocorrencia atual em vez de pular a cada letra
+  const opcoes = digitando ? Object.assign({ incremental: true }, PINTURA) : PINTURA;
   const achou = paraTras
-    ? abaAtiva.busca.findPrevious(termo, PINTURA)
-    : abaAtiva.busca.findNext(termo, PINTURA);
-  el("busca-conta").textContent = achou ? "" : "nada";
+    ? abaAtiva.busca.findPrevious(termo, opcoes)
+    : abaAtiva.busca.findNext(termo, opcoes);
+  // onDidChangeResults escreve a contagem; aqui so o caso de nao achar nada
+  if (!achou) el("busca-conta").textContent = "nada";
 }
 
-elBuscaTermo.addEventListener("input", () => buscar(false));
+elBuscaTermo.addEventListener("input", () => buscar(false, true));
 elBuscaTermo.addEventListener("keydown", (ev) => {
   if (ev.key === "Enter") {
     ev.preventDefault();
@@ -1581,6 +1894,7 @@ el("confirmar-fechamento").addEventListener("click", () => {
 /* --------------------------------------------------- guardar as abas */
 
 let gravarAbas = null;
+let ultimaAnotacao = "";
 
 function anotarAbas() {
   if (!bridge || !cfg.restaurarAbas) return;
@@ -1591,11 +1905,16 @@ function anotarAbas() {
       .map((a) => ({
         shell: a.shell.id,
         perfil: a.perfil ? a.perfil.id : "",
-        pasta: a.sessao ? a.sessao.pasta || "" : "",
+        pasta: a.sessao ? a.sessao.pasta || "" : (a.pedidoInicial || {}).pasta || "",
         conversa: a.sessao ? a.sessao.sessao || "" : "",
+        apelido: a.apelido || "",
         ativa: a === abaAtiva,
       }));
-    bridge.saveTabs(JSON.stringify(lista));
+    // sem comparar, abas.json era reescrito em disco a cada ciclo de sessoes, o dia inteiro
+    const texto = JSON.stringify(lista);
+    if (texto === ultimaAnotacao) return;
+    ultimaAnotacao = texto;
+    bridge.saveTabs(texto);
   }, 600);
 }
 
@@ -1617,6 +1936,11 @@ function restaurarAbas(depois) {
       // de acertar o tempo de subida do CLI e falhava calado. Retomar e escolha sua,
       // pelo botao direito na sessao.
       const aba = novaAba(s.shell, s.perfil, { pasta: s.pasta });
+      if (aba && s.apelido) {
+        aba.apelido = s.apelido;
+        aba.chaveRefletida = "";
+        aba.pintar();
+      }
       if (aba && s.ativa) ativa = aba;
     }
     if (ativa) ativar(ativa);
@@ -1629,12 +1953,8 @@ function restaurarAbas(depois) {
 let emGrade = false;
 
 function nomeDaTela(aba) {
-  const s = aba.sessao;
-  const vivo = tituloVivoDaAba(aba);
-  if (vivo) return vivo;
-  if (s && s.titulo) return s.titulo;
-  if (s && s.pasta) return nomeDaPasta(s.pasta);
-  return aba.shell.nome;
+  if (aba.ehPainel) return "Uso";
+  return aba.nomeDoCartao();
 }
 
 function medida(rotulo, valor, classe) {
@@ -1842,7 +2162,6 @@ alcaLateral.addEventListener("mousedown", (ev) => ev.stopPropagation());
 
 /* ------------------------------------------------------ limite do plano */
 
-let usoPorPerfil = {};
 let limitesPorPerfil = {};
 let limitesPorAba = {};
 
@@ -1907,11 +2226,16 @@ function atualizarTituloDaJanela() {
     }
     return;
   }
-  const vivo = aba ? tituloVivoDaAba(aba) : "";
-  if (vivo) texto = vivo;
-  else if (s && s.titulo) texto = s.titulo;
-  else if (aba) texto = (aba.perfil ? aba.perfil.nome + " · " : "") + aba.shell.nome;
+  if (aba) texto = aba.nomeDoCartao();
   else if (abaAtiva && abaAtiva.ehPainel) texto = "Uso";
+
+  // quantas sessoes estao te esperando aparece na barra de tarefas, sem precisar
+  // trazer a janela pra frente
+  const prontas = ordem.filter(
+    (a) => !a.ehPainel && a.sessao && a.sessao.estado === "aguardando"
+  ).length;
+  if (prontas) texto = prontas + " ready · " + texto;
+
   if (texto === tituloNaJanela) return;
   tituloNaJanela = texto;
   if (bridge) bridge.setTitle(texto);
@@ -2001,7 +2325,6 @@ function pintarUsoDaBarra() {
   const barra = el("uso-barra");
   // sem aba de terminal aberta nao ha conta em uso, e mostrar limite ali seria invencao
   const semAba = !abaAtiva || abaAtiva.ehPainel;
-  el("selecionar-tudo").hidden = semAba;
   const estava = barra.hidden;
   if (!cfg.mostrarUsoNaBarra || emGrade || semAba) {
     barra.hidden = true;
@@ -2060,33 +2383,30 @@ function atualizarLimites() {
     atualizarTituloDaJanela();
     if (emGrade) pintarGrade();
     for (const aba of ordem) {
-      if (aba.ehPainel || !aba.sessao) continue;
-      const nome = tituloVivoDaAba(aba);
+      if (aba.ehPainel || !aba.sessao || aba.renomeando) continue;
+      const nome = aba.nomeDoCartao();
       const rotulo = aba.botao.querySelector(".rotulo");
       if (nome && rotulo && rotulo.textContent !== nome) {
         rotulo.textContent = nome;
         rotulo.title = nome;
+        aba.chaveRefletida = "";
       }
     }
   });
 }
 
-function atualizarUsoDaBarra() {
-  if (!bridge || !cfg.mostrarUsoNaBarra) return;
-  bridge.getUsage((json) => {
-    try {
-      usoPorPerfil = JSON.parse(json);
-    } catch (e) {
-      usoPorPerfil = {};
-    }
-    pintarUsoDaBarra();
-  });
-}
-
-setInterval(atualizarUsoDaBarra, 30000);
+/* O vigia de arquivos e quem avisa de verdade: o coletor grava na pasta de sessoes e a tela
+   sabe na hora. Este relogio e so rede de seguranca. Antes ele batia a cada 1,2 s e, junto,
+   um getUsage a cada 30 s varria todos os transcript e regravava o cache pra encher uma
+   variavel que ninguem lia. */
 setInterval(() => {
   if (janelaAtiva) atualizarLimites();
-}, 1200);
+}, 4000);
+
+// o "zera daqui a 2h13m" precisa andar mesmo sem leitura nova, e isso nao custa disco
+setInterval(() => {
+  if (janelaAtiva) pintarUsoDaBarra();
+}, 30000);
 
 /* ------------------------------------------------------------- atalhos */
 
@@ -2106,6 +2426,18 @@ window.addEventListener("keydown", (ev) => {
   }
   if (veuAberto()) return;
 
+  if (ev.key === "F3") {
+    ev.preventDefault();
+    if (elBusca.hidden) abrirBusca();
+    else buscar(ev.shiftKey);
+    return;
+  }
+  if (ev.altKey && !ev.ctrlKey && /^Digit[1-9]$/.test(ev.code)) {
+    ev.preventDefault();
+    pularParaAba(Number(ev.code.slice(5)));
+    return;
+  }
+
   if (ev.ctrlKey && ev.shiftKey && ev.code === "KeyT") {
     ev.preventDefault();
     abaPadrao();
@@ -2121,14 +2453,51 @@ window.addEventListener("keydown", (ev) => {
   } else if (ev.ctrlKey && !ev.shiftKey && ev.code === "Comma") {
     ev.preventDefault();
     abrirConfig();
-  } else if (ev.ctrlKey && ev.code === "Tab") {
+  } else if (ev.ctrlKey && (ev.code === "Equal" || ev.code === "NumpadAdd")) {
     ev.preventDefault();
-    if (ordem.length > 1) {
-      const i = ordem.indexOf(abaAtiva);
-      ativar(ordem[(i + 1) % ordem.length]);
-    }
+    zoom(1);
+  } else if (ev.ctrlKey && (ev.code === "Minus" || ev.code === "NumpadSubtract")) {
+    ev.preventDefault();
+    zoom(-1);
+  } else if (ev.ctrlKey && (ev.code === "Digit0" || ev.code === "Numpad0")) {
+    ev.preventDefault();
+    zoom(0);
+  } else if (ev.ctrlKey && (ev.code === "Tab" || ev.code === "PageUp" || ev.code === "PageDown")) {
+    ev.preventDefault();
+    const paraTras = ev.code === "PageUp" || (ev.code === "Tab" && ev.shiftKey);
+    andarNasAbas(paraTras ? -1 : 1);
   }
 });
+
+function andarNasAbas(passo) {
+  if (ordem.length < 2) return;
+  const i = ordem.indexOf(abaAtiva);
+  ativar(ordem[(i + passo + ordem.length) % ordem.length]);
+}
+
+function pularParaAba(numero) {
+  /* Alt e o numero pula direto. Alt+9 e sempre a ultima, que e o costume do Windows Terminal. */
+  const terminais = ordem.filter((a) => !a.ehPainel);
+  const alvo = numero === 9 ? terminais[terminais.length - 1] : terminais[numero - 1];
+  if (alvo) ativar(alvo);
+  else piscarAviso(numero === 9 ? "Nenhuma aba aberta" : "Não há aba " + numero);
+}
+
+const FONTE_PADRAO = 14;
+
+function zoom(passo) {
+  /* Ctrl com mais, menos e zero, e Ctrl com a roda. Mexe no tamanho da fonte do terminal,
+     que e o que a pessoa quer dizer com zoom aqui. Zero volta ao padrao. */
+  const atual = cfg.tamanhoFonte || FONTE_PADRAO;
+  const novo = passo === 0 ? FONTE_PADRAO : Math.min(Math.max(atual + passo, 9), 22);
+  if (novo === atual) return;
+  cfg.tamanhoFonte = novo;
+  aplicarTudo();
+  piscarAviso("Fonte em " + novo + " px");
+  bridge.saveConfig(JSON.stringify({ tamanhoFonte: novo }), (json) => {
+    cfg = JSON.parse(json);
+  });
+}
 
 let pendenteResize = null;
 window.addEventListener("resize", () => {
@@ -2180,8 +2549,16 @@ new QWebChannel(qt.webChannelTransport, (channel) => {
 
   bridge.output.connect((id, data) => {
     const aba = porSessao.get(id);
-    if (aba) aba.escrever(data);
-    else for (const a of ordem) if (!a.ehPainel && !a.sessionId) a.pendentes.push(data);
+    if (aba) {
+      aba.escrever(data);
+      return;
+    }
+    // A aba ainda nao recebeu o proprio id de volta. Guardar POR SESSAO, nunca em todas as
+    // que estao sem id: restaurando varias abas de uma vez, o banner de cada shell caia
+    // dentro de todas as irmas e cada terminal nascia com a saida das outras.
+    const fila = pendentes.get(id);
+    if (fila) fila.push(data);
+    else pendentes.set(id, [data]);
   });
 
   bridge.arquivosSoltos.connect((json) => {
@@ -2198,9 +2575,14 @@ new QWebChannel(qt.webChannelTransport, (channel) => {
   });
 
   bridge.exited.connect((id, code) => {
+    pendentes.delete(id);
     const aba = porSessao.get(id);
     if (aba) {
       aba.encerrada(code);
+      if (cfg.fecharAoSair && code === 0) {
+        fechar(aba);
+        return;
+      }
       montarSessoes();
     }
   });
@@ -2241,7 +2623,6 @@ new QWebChannel(qt.webChannelTransport, (channel) => {
             if (!tinha) abaPadrao();
           });
           atualizarSessoes();
-          atualizarUsoDaBarra();
           atualizarLimites();
 
           const parametros = new URLSearchParams(location.search);

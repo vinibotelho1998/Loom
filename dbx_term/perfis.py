@@ -4,6 +4,7 @@ import json
 import os
 import shutil
 import subprocess
+import time
 import uuid
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -141,10 +142,44 @@ def logado(perfil: Perfil) -> bool:
     return (perfil.config_dir / mod_ferramentas.por_id(perfil.ferramenta).login).exists()
 
 
+_TAMANHO: dict[str, tuple[float, int]] = {}
+VALIDADE_DO_TAMANHO = 60
+
+
 def tamanho(perfil: Perfil) -> int:
-    if not perfil.config_dir.is_dir():
+    """Quanto a pasta de login daquela conta ocupa em disco.
+
+    So a tela de Contas mostra este numero, e a pasta da conta principal passa de tres mil
+    arquivos. Por isso e medido com scandir, que no Windows ja traz o tamanho junto do
+    listagem, e o resultado vale por um minuto.
+    """
+    raiz = perfil.config_dir
+    chave = str(raiz)
+    lembrado = _TAMANHO.get(chave)
+    agora = time.monotonic()
+    if lembrado and agora - lembrado[0] < VALIDADE_DO_TAMANHO:
+        return lembrado[1]
+    if not raiz.is_dir():
         return 0
-    return sum(f.stat().st_size for f in perfil.config_dir.rglob("*") if f.is_file())
+
+    total = 0
+    pilha = [str(raiz)]
+    while pilha:
+        atual = pilha.pop()
+        try:
+            entradas = list(os.scandir(atual))
+        except OSError:
+            continue
+        for entrada in entradas:
+            try:
+                if entrada.is_dir(follow_symlinks=False):
+                    pilha.append(entrada.path)
+                elif entrada.is_file(follow_symlinks=False):
+                    total += entrada.stat().st_size
+            except OSError:
+                continue
+    _TAMANHO[chave] = (agora, total)
+    return total
 
 
 def ambiente(perfil: Perfil) -> dict[str, str]:
@@ -321,13 +356,42 @@ def confiar(perfil: Perfil, pasta: str) -> bool:
 
 
 _IDENTIDADE: dict[str, tuple[float, dict]] = {}
+CACHE_IDENTIDADE = RAIZ / "identidade.json"
+
+
+def _identidade_do_disco() -> dict:
+    if _IDENTIDADE:
+        return {}
+    try:
+        salvo = json.loads(CACHE_IDENTIDADE.read_text(encoding="utf-8"))
+    except (ValueError, OSError):
+        return {}
+    if not isinstance(salvo, dict):
+        return {}
+    for chave, valor in salvo.items():
+        if isinstance(valor, dict) and isinstance(valor.get("carimbo"), (int, float)):
+            _IDENTIDADE[chave] = (valor["carimbo"], valor.get("resumo") or {})
+    return {}
+
+
+def _gravar_identidade() -> None:
+    try:
+        RAIZ.mkdir(parents=True, exist_ok=True)
+        CACHE_IDENTIDADE.write_text(
+            json.dumps({k: {"carimbo": c, "resumo": r} for k, (c, r) in _IDENTIDADE.items()}),
+            encoding="utf-8",
+        )
+    except OSError:
+        pass
 
 
 def identidade(perfil: Perfil) -> dict:
     """Descobre de quem e o login daquela pasta, perguntando ao proprio CLI.
 
-    `claude auth status` nao gasta token nenhum, so le o que esta no disco. O resultado
-    fica guardado ate a credencial mudar, senao seria um processo novo a cada desenho da tela.
+    `claude auth status` nao gasta token nenhum, so le o que esta no disco. Mesmo assim ele
+    sobe um processo Node e leva perto de um segundo, entao o resultado e guardado ate a
+    credencial mudar E tambem em disco: sem isso, todo start do app esperava esse processo
+    por conta antes de a primeira aba aparecer.
     """
     credencial = perfil.config_dir / mod_ferramentas.por_id(perfil.ferramenta).login
     try:
@@ -335,6 +399,7 @@ def identidade(perfil: Perfil) -> dict:
     except OSError:
         return {}
 
+    _identidade_do_disco()
     chave = str(perfil.config_dir)
     lembrado = _IDENTIDADE.get(chave)
     if lembrado and lembrado[0] == carimbo:
@@ -357,6 +422,8 @@ def identidade(perfil: Perfil) -> dict:
             timeout=15,
             env=ambiente,
             shell=True,
+            # com pythonw nao ha console, e sem isto o cmd.exe do shell pisca uma janela preta
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         dados = json.loads(saida.stdout or "{}")
     except (OSError, subprocess.SubprocessError, ValueError):
@@ -368,6 +435,7 @@ def identidade(perfil: Perfil) -> dict:
         "logado": bool(dados.get("loggedIn")),
     }
     _IDENTIDADE[chave] = (carimbo, resumo)
+    _gravar_identidade()
     return resumo
 
 

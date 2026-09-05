@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import sys
 import unittest
 import unittest.mock
@@ -91,7 +92,11 @@ class ColetorDeLimite(ComPastaPropria):
         entrada = io.StringIO(json.dumps(payload, ensure_ascii=False))
         saida = io.StringIO()
         antigo_in, antigo_out, antigo_argv = sys.stdin, sys.stdout, sys.argv
-        with unittest.mock.patch.dict("os.environ", ambiente or {}, clear=False):
+        # o teste pode estar rodando dentro do proprio DBX Term, e ai o shell ja traz a marca
+        # da aba. Sem limpar, uma sessao "de fora" nasceria marcada e o teste mentiria.
+        limpo = {k: v for k, v in os.environ.items() if not k.startswith("DBX_TERM_")}
+        limpo.update(ambiente or {})
+        with unittest.mock.patch.dict("os.environ", limpo, clear=True):
             sys.stdin, sys.stdout = entrada, saida
             sys.argv = ["coletar.py"] + (argumentos or ["conta1"])
             try:

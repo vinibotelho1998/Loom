@@ -3,6 +3,8 @@ from __future__ import annotations
 import base64
 import json
 import os
+import re
+import subprocess
 import sys
 import time
 import uuid
@@ -48,6 +50,7 @@ class Bridge(QObject):
     tituloPedido = Signal(str)
     mexeram = Signal()
     arquivosSoltos = Signal(str)
+    notificacaoPedida = Signal(str, str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -92,23 +95,36 @@ class Bridge(QObject):
 
     @Slot(result=str)
     def listProfiles(self) -> str:
-        return json.dumps([
-            {
-                "id": p.id,
-                "nome": p.nome,
-                "cor": p.cor,
-                "ferramenta": p.ferramenta,
-                "ferramentaNome": mod_ferramentas.por_id(p.ferramenta).nome,
-                "logado": mod_perfis.logado(p),
-                "configDir": str(p.config_dir),
-                "bytes": mod_perfis.tamanho(p),
-                "emprestada": p.emprestada,
-                "padrao": p.e_padrao,
-                "email": mod_perfis.identidade(p).get("email", ""),
-                "plano": mod_perfis.identidade(p).get("plano", ""),
-            }
-            for p in mod_perfis.listar()
-        ])
+        """Cadastro das contas. Rapido de proposito: a tela chama isto a cada menu aberto.
+
+        O tamanho em disco NAO entra aqui. Ele custava uma varredura de milhares de arquivos
+        por chamada e so a tela de Contas mostra o numero, entao virou o slot profileSize.
+        """
+        catalogo = {f.id: f.nome for f in mod_ferramentas.listar()}
+        achados = []
+        for p in mod_perfis.listar():
+            identidade = mod_perfis.identidade(p)
+            achados.append(
+                {
+                    "id": p.id,
+                    "nome": p.nome,
+                    "cor": p.cor,
+                    "ferramenta": p.ferramenta,
+                    "ferramentaNome": catalogo.get(p.ferramenta, p.ferramenta),
+                    "logado": mod_perfis.logado(p),
+                    "configDir": str(p.config_dir),
+                    "emprestada": p.emprestada,
+                    "padrao": p.e_padrao,
+                    "email": identidade.get("email", ""),
+                    "plano": identidade.get("plano", ""),
+                }
+            )
+        return json.dumps(achados)
+
+    @Slot(str, result=float)
+    def profileSize(self, perfil_id: str) -> float:
+        perfil = mod_perfis.por_id(perfil_id)
+        return float(mod_perfis.tamanho(perfil)) if perfil is not None else 0.0
 
     @Slot(str, str, result=str)
     def salvarColagem(self, base64_dados: str, extensao: str) -> str:
@@ -191,6 +207,62 @@ class Bridge(QObject):
     def setTitle(self, texto: str) -> None:
         self.tituloPedido.emit(texto or "")
 
+    @Slot(str, str)
+    def notificar(self, titulo: str, texto: str) -> None:
+        self.notificacaoPedida.emit(titulo or "DBX Term", texto or "")
+
+    @Slot(str, str, result=str)
+    def abrirExterno(self, alvo: str, pasta: str) -> str:
+        """Abre link e caminho de arquivo fora do app. Devolve o motivo quando nao da.
+
+        URL vai pro navegador de sempre. Caminho com numero de linha, que e o que o Claude Code
+        imprime o tempo todo, vai pro editor configurado. O caminho impresso costuma ser
+        relativo, entao ele e resolvido a partir da pasta da sessao daquela aba.
+        """
+        alvo = (alvo or "").strip().strip("\"'")
+        if not alvo:
+            return ""
+
+        if alvo.startswith(("http://", "https://")):
+            from PySide6.QtCore import QUrl
+            from PySide6.QtGui import QDesktopServices
+
+            QDesktopServices.openUrl(QUrl(alvo))
+            return ""
+
+        # caminho:linha ou caminho:linha:coluna, sem confundir com a letra do drive
+        casado = re.match(r"^(.+?):(\d+)(?::\d+)?$", alvo)
+        caminho, linha = (casado.group(1), casado.group(2)) if casado else (alvo, "")
+
+        arquivo = Path(caminho)
+        if not arquivo.is_absolute() and pasta:
+            arquivo = Path(pasta) / caminho
+        try:
+            existe = arquivo.exists()
+        except OSError:
+            existe = False
+        if not existe:
+            return f"Não achei {caminho}"
+
+        editor = (mod_config.carregar().get("editor") or "").strip()
+        if not editor:
+            from PySide6.QtCore import QUrl
+            from PySide6.QtGui import QDesktopServices
+
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(arquivo)))
+            return ""
+
+        destino = f"{arquivo}:{linha}" if linha else str(arquivo)
+        try:
+            subprocess.Popen(
+                f'{editor} -g "{destino}"',
+                shell=True,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+        except (OSError, ValueError):
+            return f"Não consegui abrir o {editor}"
+        return ""
+
     @Slot(result=str)
     def getHome(self) -> str:
         return os.path.expanduser("~")
@@ -227,16 +299,24 @@ class Bridge(QObject):
             pedido_bruto = json.loads(extra) if extra else {}
         except ValueError:
             pedido_bruto = {}
-        self._sem_autoabrir = bool(pedido_bruto.get("conversa"))
+        pedido = pedido_bruto
+        conversa = pedido.get("conversa")
+
+        # a pasta vai pro proprio ConPTY. Digitar `cd` depois de 700 ms deixava o comando
+        # escrito na tela, competia com o prompt sendo desenhado e errava quando o shell
+        # demorava a subir. Pasta que nao existe mais cai na de sempre em vez de derrubar a aba.
+        pasta = str(pedido.get("pasta") or "")
+        inicio = pasta if pasta and Path(pasta).is_dir() else None
+
+        self._sem_autoabrir = bool(conversa)
         try:
-            session_id = self._abrir(shell_id, perfil_id, cols, rows, bool(pedido_bruto.get("elevar")))
+            session_id = self._abrir(
+                shell_id, perfil_id, cols, rows, bool(pedido_bruto.get("elevar")), inicio
+            )
         finally:
             self._sem_autoabrir = False
-        pedido = pedido_bruto
 
-        pasta = pedido.get("pasta")
-        conversa = pedido.get("conversa")
-        if not pasta and not conversa and not pedido.get("entrar"):
+        if not conversa and not pedido.get("entrar"):
             return session_id
 
         perfil = mod_perfis.por_id(perfil_id) if perfil_id else None
@@ -246,14 +326,8 @@ class Bridge(QObject):
             if ferramenta:
                 comando = f"{ferramenta} --resume {conversa}"
 
-        linhas = []
-        if pasta:
-            linhas.append(f'cd "{pasta}"')
         if comando:
-            linhas.append(comando)
-        if linhas:
-            texto = chr(13).join(linhas) + chr(13)
-            QTimer.singleShot(700, lambda: self.write(session_id, texto))
+            QTimer.singleShot(700, lambda: self.write(session_id, comando + chr(13)))
 
         if pedido.get("entrar"):
             # o /login e digitado dentro do CLI, entao precisa esperar ele terminar de subir
@@ -262,8 +336,13 @@ class Bridge(QObject):
 
     @Slot(result=str)
     def getLimits(self) -> str:
+        # uma leitura da pasta de sessoes por chamada, nao duas: as duas visoes saem do mesmo dado
+        vistas = mod_coletor.ler_todas()
         return json.dumps(
-            {"porConta": mod_coletor.limites_por_perfil(), "porAba": mod_coletor.por_aba()}
+            {
+                "porConta": mod_coletor.limites_por_perfil(vistas),
+                "porAba": mod_coletor.por_aba(vistas),
+            }
         )
 
     @Slot(result=str)
@@ -331,7 +410,15 @@ class Bridge(QObject):
     def openElevated(self, shell_id: str, perfil_id: str, cols: int, rows: int, elevar: bool) -> str:
         return self._abrir(shell_id, perfil_id, cols, rows, elevar)
 
-    def _abrir(self, shell_id: str, perfil_id: str, cols: int, rows: int, elevar: bool) -> str:
+    def _abrir(
+        self,
+        shell_id: str,
+        perfil_id: str,
+        cols: int,
+        rows: int,
+        elevar: bool,
+        pasta: str | None = None,
+    ) -> str:
         shell = next((s for s in self._shells if s.id == shell_id), None)
         if shell is None:
             shell = mod_shells.padrao(self._shells)
@@ -359,6 +446,7 @@ class Bridge(QObject):
         session = PtySession(
             session_id,
             argv=argv,
+            cwd=pasta,
             env=env,
             cols=cols,
             rows=rows,
@@ -483,6 +571,9 @@ class Bridge(QObject):
         faltando = alvos - atuais
         if faltando:
             self._vigia.addPaths(list(faltando))
+
+    def sessoes_vivas(self) -> int:
+        return sum(1 for s in self._sessions.values() if s.alive)
 
     def shutdown(self) -> None:
         self._flush_timer.stop()
