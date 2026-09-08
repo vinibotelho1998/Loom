@@ -4,6 +4,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import time
 import uuid
 from dataclasses import asdict, dataclass, field
@@ -214,7 +215,23 @@ def _statusline_anterior(pasta: Path) -> str:
         return ""
     linha = atual.get("statusLine") or {}
     comando = linha.get("command", "")
-    return "" if "coletar.py" in comando or "dbx_term.coletor" in comando else comando
+    return "" if _nosso_comando(comando) else comando
+
+
+def _nosso_comando(comando: str) -> bool:
+    return any(marca in comando for marca in ("coletar.py", "dbx_term.coletor", "dbx-coletor"))
+
+
+def _chamada_coletor(python: str, projeto: str) -> str:
+    """Como o Claude Code chama o coletor.
+
+    No app instalado quem responde e o dbx-coletor.exe, ao lado do executavel da
+    janela: la nao existe Python nem o coletar.py do repositorio. Rodando daqui,
+    continua sendo o interpretador atual com o script.
+    """
+    if getattr(sys, "frozen", False):
+        return f'"{Path(python).with_name("dbx-coletor.exe")}"'
+    return f'"{python}" "{Path(projeto) / "coletar.py"}"'
 
 
 def pasta_principal() -> Path:
@@ -239,23 +256,24 @@ def instalar_coletor(perfil: Perfil, python: str, projeto: str) -> bool:
         atual = {}
 
     anterior = _statusline_anterior(perfil.config_dir)
-    entrada = str(Path(projeto) / "coletar.py")
-    comando = f'"{python}" "{entrada}" {perfil.id}'
+    chamada = _chamada_coletor(python, projeto)
+    comando = f"{chamada} {perfil.id}"
     if anterior:
         comando += f' "{anterior}"'
 
     antes = json.dumps(atual, sort_keys=True)
     atual["statusLine"] = {"type": "command", "command": comando, "padding": 0}
-    atual.setdefault("env", {})["PYTHONPATH"] = projeto
+    if not getattr(sys, "frozen", False):
+        atual.setdefault("env", {})["PYTHONPATH"] = projeto
 
-    marcador = f'"{python}" "{entrada}" --hook {perfil.id}'
+    marcador = f"{chamada} --hook {perfil.id}"
     ganchos = atual.setdefault("hooks", {})
 
     def nosso(grupo) -> bool:
         if not isinstance(grupo, dict):
             return False
         return any(
-            "coletar.py" in (h or {}).get("command", "") or "dbx_term.coletor" in (h or {}).get("command", "")
+            _nosso_comando((h or {}).get("command", ""))
             for h in (grupo.get("hooks") or [])
             if isinstance(h, dict)
         )

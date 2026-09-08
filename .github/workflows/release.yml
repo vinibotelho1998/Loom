@@ -1,0 +1,82 @@
+name: Build e Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+
+      - name: Instalar dependencias
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Rodar a bateria de testes
+        run: python testes/rodar.py
+
+      - name: Incrementar versao
+        id: versao
+        run: |
+          $conteudo = Get-Content -Path "dbx_term/__init__.py" -Raw
+          $m = [regex]::Match($conteudo, '__version__\s*=\s*"(\d+)\.(\d+)\.(\d+)"')
+          if (-not $m.Success) { throw "Nao achei __version__ no formato X.Y.Z" }
+          $major = [int]$m.Groups[1].Value
+          $minor = [int]$m.Groups[2].Value
+          $patch = [int]$m.Groups[3].Value + 1
+          $nova = "$major.$minor.$patch"
+
+          $conteudo = $conteudo -replace '__version__\s*=\s*"\d+\.\d+\.\d+"', "__version__ = `"$nova`""
+          Set-Content -Path "dbx_term/__init__.py" -Value $conteudo -NoNewline
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add dbx_term/__init__.py
+          git commit -m "chore: incrementa versao para $nova [skip ci]"
+          git push origin HEAD:main
+
+          echo "numero=$nova" >> $env:GITHUB_OUTPUT
+
+      - name: Build do app (PyInstaller)
+        run: pyinstaller packaging/DbxTerm.spec --noconfirm --distpath dist --workpath build
+
+      - name: Baixar dependencias de runtime (VC++)
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File packaging/prepare_prereqs.ps1
+
+      - name: Instalar Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Compilar instalador
+        run: |
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DMyAppVersion=${{ steps.versao.outputs.numero }}" packaging\DbxTerm_Setup.iss
+
+      - name: Publicar release "latest"
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest --cleanup-tag --yes 2>$null
+          gh release create latest "dist/DbxTerm-Setup.exe" `
+            --title "DBX Term v${{ steps.versao.outputs.numero }}" `
+            --notes "Instalador gerado automaticamente do commit ${{ github.sha }} (versao ${{ steps.versao.outputs.numero }}). Traz o terminal, o coletor de consumo e o runtime do Qt; nao exige Python na maquina." `
+            --latest

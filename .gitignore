@@ -6,3 +6,9 @@ __pycache__/
 
 # arquivos de apoio que nascem durante o desenvolvimento
 ui/_teste_*.html
+
+# saida e apoio do empacotamento
+.venv-build/
+build/
+dist/
+prereqs/
