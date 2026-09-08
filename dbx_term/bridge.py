@@ -47,7 +47,6 @@ class Bridge(QObject):
 
     output = Signal(str, str)
     exited = Signal(str, int)
-    tituloPedido = Signal(str)
     mexeram = Signal()
     arquivosSoltos = Signal(str)
     notificacaoPedida = Signal(str, str)
@@ -202,10 +201,6 @@ class Bridge(QObject):
         bruto = bytes(buffer.data())
         buffer.close()
         return self.salvarColagem(base64.b64encode(bruto).decode("ascii"), "png")
-
-    @Slot(str)
-    def setTitle(self, texto: str) -> None:
-        self.tituloPedido.emit(texto or "")
 
     @Slot(str, str)
     def notificar(self, titulo: str, texto: str) -> None:

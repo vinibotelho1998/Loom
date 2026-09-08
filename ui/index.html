@@ -119,22 +119,6 @@
     </div>
   </div>
 
-  <!-- confirmacao de colagem -->
-  <div class="veu" id="veu-colar" hidden>
-    <div class="caixa">
-      <div class="caixa-titulo">Colar <span id="colar-linhas"></span></div>
-      <p class="caixa-texto">
-        Isso vai para o terminal como se você tivesse digitado. Se o programa aberto tratar cada
-        quebra de linha como Enter, ele executa uma linha de cada vez.
-      </p>
-      <pre class="previa" id="colar-previa"></pre>
-      <div class="caixa-botoes">
-        <button class="botao" data-fecha="veu-colar">Cancelar</button>
-        <button class="botao botao-forte" id="confirmar-colagem">Colar</button>
-      </div>
-    </div>
-  </div>
-
   <!-- confirmacao de fechar aba -->
   <div class="veu" id="veu-fechar" hidden>
     <div class="caixa">
@@ -260,11 +244,6 @@
           <div class="linha">
             <div class="rot"><span>Histórico</span><small>Linhas guardadas pra rolar pra trás</small></div>
             <div class="ctrl"><input type="number" id="cfg-historico" class="campo campo-curto" min="1000" max="200000" step="1000"></div>
-          </div>
-
-          <div class="linha">
-            <div class="rot"><span>Avisar ao colar</span><small>Pergunta antes de colar acima desse tanto de linhas, 0 desliga</small></div>
-            <div class="ctrl"><input type="number" id="cfg-avisarColagemLinhas" class="campo campo-curto" min="0" max="100" step="1"></div>
           </div>
 
           <div class="linha">

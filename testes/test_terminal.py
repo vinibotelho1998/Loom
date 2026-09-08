@@ -23,6 +23,13 @@ from dbx_term.pty_session import CORES_LIGADAS, PtySession, ambiente_limpo  # no
 LIMPAR = re.compile(r"\x1b\[[0-9;?]*[a-zA-Z]|\x1b\][^\x07]*\x07")
 
 
+# O runner do GitHub nao tem console interativo: o pseudo terminal sobe e o shell
+# conversa, mas o tamanho pedido nao chega no processo filho, e o WindowWidth do
+# pwsh devolve o padrao dele. E do ambiente, nao do app, entao a prova de tamanho
+# fica so na maquina de quem desenvolve.
+SEM_CONSOLE = os.environ.get("CI") == "true"
+
+
 class Ambiente(unittest.TestCase):
     def test_marcas_do_claude_nao_passam_pro_shell(self):
         """Herdar CLAUDE_CODE_CHILD_SESSION faz o Claude de dentro parar de gravar transcript."""
@@ -72,6 +79,7 @@ class TerminalDeVerdade(unittest.TestCase):
         saida = self.conversar([(1500, lambda s: lambda: s.write("echo DBX-MARCA-OK\r"))], segundos=5)
         self.assertIn("DBX-MARCA-OK", saida)
 
+    @unittest.skipIf(SEM_CONSOLE, "o runner nao repassa o tamanho do pseudo terminal")
     def test_redimensionar_chega_no_processo_filho(self):
         passos = [
             (1500, lambda s: lambda: s.write('"L=$([Console]::WindowWidth)"\r')),

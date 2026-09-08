@@ -17,7 +17,6 @@ PADRAO = {
     "shellPadrao": "",
     "perfilPadrao": "",
     "mostrarFps": False,
-    "avisarColagemLinhas": 5,
     "confirmarFechar": True,
     "abrirCliDaConta": True,
     "mostrarUsoNaBarra": True,
@@ -36,7 +35,7 @@ PADRAO = {
 
 # range e number chegam da tela como inteiro mesmo quando o padrao e decimal, e o contrario
 # tambem acontece. Sem isto, arrastar a entrelinha ate 1 nao gravava e a tela voltava sozinha.
-NUMERICOS = {"tamanhoFonte", "entrelinha", "espacoLetra", "historico", "avisarColagemLinhas",
+NUMERICOS = {"tamanhoFonte", "entrelinha", "espacoLetra", "historico",
              "alturaExternas", "larguraLateral"}
 
 

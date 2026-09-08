@@ -36,7 +36,9 @@ class LoggingPage(QWebEnginePage):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("DBX Term")
+        # nome fixo de proposito: mostrar a conversa da aba ali em cima fazia o titulo
+        # trocar toda hora, o que incomodava mais do que ajudava
+        self.setWindowTitle("Dbx Terminal")
         self.resize(1180, 720)
 
         self.view = QWebEngineView(self)
@@ -50,7 +52,6 @@ class MainWindow(QMainWindow):
         settings.setAttribute(QWebEngineSettings.JavascriptCanPaste, True)
 
         self.bridge = Bridge(self)
-        self.bridge.tituloPedido.connect(self._trocar_titulo)
         self.bridge.notificacaoPedida.connect(self._notificar)
         self.bandeja = self._montar_bandeja()
 
@@ -135,10 +136,6 @@ class MainWindow(QMainWindow):
     def showEvent(self, event):
         super().showEvent(event)
         self._pintar_barra_de_titulo()
-
-    def _trocar_titulo(self, texto: str) -> None:
-        """A janela mostra em que conversa voce esta, que e o que a barra de tarefas precisa dizer."""
-        self.setWindowTitle(f"{texto} · DBX Term" if texto else "DBX Term")
 
     def _montar_bandeja(self):
         """Icone ao lado do relogio. Serve pra avisar e pra trazer a janela de volta."""

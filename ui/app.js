@@ -192,18 +192,6 @@ class Aba extends AbaBase {
     this.tela.appendChild(this.chapeu);
 
     this.term.open(this.tela);
-    this.tela.addEventListener(
-      "paste",
-      (ev) => {
-        const limite = cfg.avisarColagemLinhas || 0;
-        const texto = ev.clipboardData ? ev.clipboardData.getData("text") : "";
-        if (!limite || !texto || contarLinhas(texto) <= limite) return;
-        ev.preventDefault();
-        ev.stopPropagation();
-        pedirColagem(texto, this);
-      },
-      true
-    );
     this.tela.addEventListener("mousedown", () => {
       if (emGrade && abaAtiva !== this) ativar(this);
     });
@@ -256,7 +244,6 @@ class Aba extends AbaBase {
       this.tituloOsc = limpo;
       if (this.sessao) return;
       this.pintar();
-      if (abaAtiva === this) atualizarTituloDaJanela();
     });
     this.term.onResize((dim) => {
       if (bridge && this.sessionId) bridge.resize(this.sessionId, dim.cols, dim.rows);
@@ -512,7 +499,6 @@ function ativar(aba) {
   aba.tela.classList.add("ativa");
   aba.botao.classList.add("ativa");
   pintarUsoDaBarra();
-  atualizarTituloDaJanela();
   requestAnimationFrame(() => {
     aba.ajustar();
     aba.foco();
@@ -532,7 +518,6 @@ function fechar(aba) {
   montarSessoes();
   anotarAbas();
   pintarUsoDaBarra();
-  atualizarTituloDaJanela();
   if (emGrade) {
     pintarGrade();
     ajustarTodas();
@@ -645,7 +630,7 @@ function fecharVeu(id) {
 }
 
 function veuAberto() {
-  return ["veu-conta", "veu-remover", "veu-config", "veu-colar", "veu-fechar"].find((id) => !el(id).hidden);
+  return ["veu-conta", "veu-remover", "veu-config", "veu-fechar"].find((id) => !el(id).hidden);
 }
 
 document.querySelectorAll("[data-fecha]").forEach((b) => {
@@ -1029,7 +1014,6 @@ const CAMPOS = [
   ["shellPadrao", "select"],
   ["perfilPadrao", "select"],
   ["historico", "number"],
-  ["avisarColagemLinhas", "number"],
   ["confirmarFechar", "check"],
   ["abrirCliDaConta", "check"],
   ["mostrarUsoNaBarra", "check"],
@@ -1277,7 +1261,6 @@ function montarSessoes() {
   for (const aba of terminais) aba.refletir(donos.get(aba) || null);
   // depois do refletir: e aqui que a aba passa a saber em que estado ela esta
   avisarProntas(terminais);
-  atualizarTituloDaJanela();
   anotarAbas();
 
   if (emGrade) pintarGrade();
@@ -1513,7 +1496,6 @@ function renomearAba(aba) {
     if (aba.sessao) aba.refletir(aba.sessao);
     else aba.pintar();
     anotarAbas();
-    atualizarTituloDaJanela();
     aba.foco();
   };
 
@@ -1758,11 +1740,6 @@ function soltarArquivos(caminhos) {
 }
 
 function entregarColagem(aba, texto) {
-  const limite = cfg.avisarColagemLinhas || 0;
-  if (limite && contarLinhas(texto) > limite) {
-    pedirColagem(texto, aba);
-    return;
-  }
   aba.term.paste(texto);
 }
 
@@ -1775,32 +1752,11 @@ function paraBase64(blob) {
   });
 }
 
-
-
-let colagemPendente = null;
-
 const QUEBRA_DE_LINHA = new RegExp('\\r\\n|\\r|\\n', 'g');
 
 function contarLinhas(texto) {
   return texto.split(QUEBRA_DE_LINHA).length;
 }
-
-function pedirColagem(texto, aba) {
-  colagemPendente = { texto, aba };
-  const partes = texto.split(QUEBRA_DE_LINHA);
-  el("colar-linhas").textContent = partes.length + " linhas";
-  const mostra = partes.slice(0, 8).join("\n");
-  const resto = partes.length > 8 ? "\n… mais " + (partes.length - 8) + " linhas" : "";
-  el("colar-previa").textContent = mostra + resto;
-  abrirVeu("veu-colar");
-}
-
-el("confirmar-colagem").addEventListener("click", () => {
-  const pedido = colagemPendente;
-  colagemPendente = null;
-  fecharVeu("veu-colar");
-  if (pedido && pedido.aba) pedido.aba.term.paste(pedido.texto);
-});
 
 /* ------------------------------------------------------------- busca */
 
@@ -2213,34 +2169,6 @@ function detalharContexto() {
     (typeof viva.contextoSobra === "number" ? "sobram " + Math.round(viva.contextoSobra) + "% ate compactar" : "");
 }
 
-let tituloNaJanela = "";
-
-function atualizarTituloDaJanela() {
-  const s = sessaoDaAba();
-  const aba = abaAtiva && !abaAtiva.ehPainel ? abaAtiva : null;
-  let texto = "";
-  if (!abaAtiva) {
-    if (tituloNaJanela !== "") {
-      tituloNaJanela = "";
-      if (bridge) bridge.setTitle("");
-    }
-    return;
-  }
-  if (aba) texto = aba.nomeDoCartao();
-  else if (abaAtiva && abaAtiva.ehPainel) texto = "Uso";
-
-  // quantas sessoes estao te esperando aparece na barra de tarefas, sem precisar
-  // trazer a janela pra frente
-  const prontas = ordem.filter(
-    (a) => !a.ehPainel && a.sessao && a.sessao.estado === "aguardando"
-  ).length;
-  if (prontas) texto = prontas + " ready · " + texto;
-
-  if (texto === tituloNaJanela) return;
-  tituloNaJanela = texto;
-  if (bridge) bridge.setTitle(texto);
-}
-
 function tituloVivoDaAba(aba) {
   const viva = leituraDaAba(aba);
   return viva && viva.titulo ? viva.titulo : "";
@@ -2354,7 +2282,6 @@ function pintarUsoDaBarra() {
   detalharContexto();
 
   pintarModelo();
-  atualizarTituloDaJanela();
 }
 
 function refazerEncaixe() {
@@ -2380,7 +2307,6 @@ function atualizarLimites() {
       limitesPorAba = {};
     }
     pintarUsoDaBarra();
-    atualizarTituloDaJanela();
     if (emGrade) pintarGrade();
     for (const aba of ordem) {
       if (aba.ehPainel || !aba.sessao || aba.renomeando) continue;

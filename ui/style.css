@@ -1045,20 +1045,6 @@ svg { display: block; }
 }
 .busca button:hover { background: #1f232b; color: var(--texto); }
 
-.previa {
-  max-height: 150px;
-  margin: 0 0 4px;
-  padding: 10px 12px;
-  border: 1px solid var(--linha);
-  border-radius: 8px;
-  background: #121419;
-  color: var(--apagado);
-  font: 11.5px/1.6 var(--mono);
-  overflow: auto;
-  white-space: pre;
-  user-select: text;
-}
-
 .conta-acao.entrar { border-color: #1d4a7d; background: #12233a; color: #9dc9ff; }
 .conta-acao.entrar:hover { background: #17304f; color: #cfe4ff; }
 
