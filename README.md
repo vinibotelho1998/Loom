@@ -81,3 +81,7 @@ vale.
 ## Licença
 
 MIT. Veja [LICENSE](LICENSE).
+
+O Loom inclui xterm.js, qwebchannel.js e as fontes Hack e JetBrains Mono, cada um
+sob a própria licença. O [NOTICE.md](NOTICE.md) lista todos, e o qwebchannel.js em
+particular não é MIT: ele vem do Qt, sob LGPL v3.
