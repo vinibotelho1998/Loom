@@ -219,18 +219,18 @@ def _statusline_anterior(pasta: Path) -> str:
 
 
 def _nosso_comando(comando: str) -> bool:
-    return any(marca in comando for marca in ("coletar.py", "dbx_term.coletor", "dbx-coletor"))
+    return any(marca in comando for marca in ("coletar.py", "loom.coletor", "loom-coletor"))
 
 
 def _chamada_coletor(python: str, projeto: str) -> str:
     """Como o Claude Code chama o coletor.
 
-    No app instalado quem responde e o dbx-coletor.exe, ao lado do executavel da
+    No app instalado quem responde e o loom-coletor.exe, ao lado do executavel da
     janela: la nao existe Python nem o coletar.py do repositorio. Rodando daqui,
     continua sendo o interpretador atual com o script.
     """
     if getattr(sys, "frozen", False):
-        return f'"{Path(python).with_name("dbx-coletor.exe")}"'
+        return f'"{Path(python).with_name("loom-coletor.exe")}"'
     return f'"{python}" "{Path(projeto) / "coletar.py"}"'
 
 
@@ -239,7 +239,7 @@ def pasta_principal() -> Path:
 
 
 def instalar_coletor(perfil: Perfil, python: str, projeto: str) -> bool:
-    """Registra o DBX Term como status line daquele perfil.
+    """Registra o Loom como status line daquele perfil.
 
     E assim que descobrimos quanto do plano ja foi gasto: o numero nao existe em disco,
     o Claude Code so o entrega pra status line. Se o perfil ja tinha uma, ela continua
@@ -460,7 +460,7 @@ def identidade(perfil: Perfil) -> dict:
 def blindar_status_line(python: str, projeto: str, anterior: str) -> Path:
     """Cria um atalho que sobrevive ao projeto sumir.
 
-    O settings do Claude guarda caminho absoluto. Se a pasta do DBX Term for movida ou
+    O settings do Claude guarda caminho absoluto. Se a pasta do Loom for movida ou
     apagada, a status line quebraria em TODAS as sessoes, inclusive fora deste app.
     Este arquivo mora na pasta de dados, confere se o coletor ainda existe e, se nao existe,
     chama direto a status line de sempre. O pior caso deixa de ser perder a barra.
@@ -471,7 +471,7 @@ def blindar_status_line(python: str, projeto: str, anterior: str) -> Path:
 
     linhas = [
         "@echo off",
-        "rem Gerado pelo DBX Term. Se o projeto sumir, a status line de sempre continua.",
+        "rem Gerado pelo Loom. Se o projeto sumir, a status line de sempre continua.",
         f'if exist "{entrada}" (',
         f'  "{python}" "{entrada}" %*',
         ") else (",

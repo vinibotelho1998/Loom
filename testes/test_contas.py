@@ -10,7 +10,7 @@ from pathlib import Path
 
 from base import ComPastaPropria
 
-from dbx_term import ferramentas, perfis
+from loom import ferramentas, perfis
 
 
 class Ferramentas(ComPastaPropria):

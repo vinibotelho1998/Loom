@@ -12,7 +12,7 @@ import time
 
 from base import ComPastaPropria
 
-from dbx_term import coletor, config, perfis, sessao_salva, uso
+from loom import coletor, config, perfis, sessao_salva, uso
 
 
 class LeituraIncremental(ComPastaPropria):
@@ -284,7 +284,7 @@ class IdentidadeGuardada(ComPastaPropria):
 class AmbienteDoTerminal(ComPastaPropria):
     def test_marcas_do_claude_nao_sao_herdadas(self):
         """Rodando de dentro do Claude Code, o filho parava de gravar transcript."""
-        from dbx_term import pty_session
+        from loom import pty_session
 
         with_env = {
             "CLAUDE_CODE_CHILD_SESSION": "1",

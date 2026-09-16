@@ -1,4 +1,4 @@
-"""Ponto de entrada do DBX Term.
+"""Ponto de entrada do Loom.
 
 As flags do Chromium precisam ser definidas antes de qualquer coisa do Qt subir,
 por isso elas moram aqui e nao dentro do pacote.
@@ -18,6 +18,6 @@ SEM_LIMITE = ["--disable-frame-rate-limit", "--disable-gpu-vsync"]
 flags = list(BASE) + SEM_LIMITE
 os.environ.setdefault("QTWEBENGINE_CHROMIUM_FLAGS", " ".join(flags))
 
-from dbx_term.app import main  # noqa: E402
+from loom.app import main  # noqa: E402
 
 raise SystemExit(main())

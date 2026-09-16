@@ -25,7 +25,7 @@ class NaTela:
     """Sobe a janela de verdade e deixa rodar javascript dentro dela."""
 
     def __enter__(self):
-        from dbx_term.app import MainWindow
+        from loom.app import MainWindow
 
         QApplication.instance() or QApplication([])
         self.janela = MainWindow()

@@ -38,7 +38,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         # nome fixo de proposito: mostrar a conversa da aba ali em cima fazia o titulo
         # trocar toda hora, o que incomodava mais do que ajudava
-        self.setWindowTitle("Dbx Terminal")
+        self.setWindowTitle("Loominal")
         self.resize(1180, 720)
 
         self.view = QWebEngineView(self)
@@ -67,13 +67,13 @@ class MainWindow(QMainWindow):
 
         endereco = QUrl.fromLocalFile(str(UI_DIR / "index.html"))
         consulta = []
-        if os.environ.get("DBX_TERM_DEMO"):
+        if os.environ.get("LOOM_DEMO"):
             # sobe algumas abas e liga a grade, pra conferir layout sem clicar em nada
-            consulta.append("demo=" + os.environ["DBX_TERM_DEMO"])
-        if os.environ.get("DBX_TERM_BUSCA"):
-            consulta.append("busca=" + os.environ["DBX_TERM_BUSCA"])
-        if os.environ.get("DBX_TERM_CONFIG"):
-            consulta.append("config=" + os.environ["DBX_TERM_CONFIG"])
+            consulta.append("demo=" + os.environ["LOOM_DEMO"])
+        if os.environ.get("LOOM_BUSCA"):
+            consulta.append("busca=" + os.environ["LOOM_BUSCA"])
+        if os.environ.get("LOOM_CONFIG"):
+            consulta.append("config=" + os.environ["LOOM_CONFIG"])
         if consulta:
             endereco.setQuery("&".join(consulta))
         self.view.load(endereco)
@@ -139,11 +139,11 @@ class MainWindow(QMainWindow):
 
     def _montar_bandeja(self):
         """Icone ao lado do relogio. Serve pra avisar e pra trazer a janela de volta."""
-        icone = UI_DIR / "dbx-term.ico"
+        icone = UI_DIR / "loom.ico"
         if not icone.exists() or not QSystemTrayIcon.isSystemTrayAvailable():
             return None
         bandeja = QSystemTrayIcon(QIcon(str(icone)), self)
-        bandeja.setToolTip("DBX Term")
+        bandeja.setToolTip("Loom")
         menu = QMenu()
         menu.addAction("Mostrar a janela", self._trazer_pra_frente)
         menu.addSeparator()
@@ -181,7 +181,7 @@ class MainWindow(QMainWindow):
             quantos = f"{vivos} shells ainda abertos" if vivos > 1 else "1 shell ainda aberto"
             resposta = QMessageBox.question(
                 self,
-                "Fechar o DBX Term",
+                "Fechar o Loom",
                 f"{quantos}. Fechar a janela encerra tudo que estiver rodando dentro.",
                 QMessageBox.StandardButton.Cancel | QMessageBox.StandardButton.Close,
                 QMessageBox.StandardButton.Cancel,
@@ -197,10 +197,10 @@ class MainWindow(QMainWindow):
 
 def main() -> int:
     app = QApplication(sys.argv)
-    app.setApplicationName("DBX Term")
-    app.setApplicationDisplayName("DBX Term")
+    app.setApplicationName("Loom")
+    app.setApplicationDisplayName("Loom")
 
-    icone = UI_DIR / "dbx-term.ico"
+    icone = UI_DIR / "loom.ico"
     if icone.exists():
         app.setWindowIcon(QIcon(str(icone)))
         if sys.platform == "win32":
@@ -208,7 +208,7 @@ def main() -> int:
             import ctypes
 
             try:
-                ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("dbx.term.app")
+                ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("Loom")
             except (AttributeError, OSError):
                 pass
     window = MainWindow()

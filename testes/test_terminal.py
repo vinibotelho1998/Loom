@@ -17,8 +17,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from PySide6.QtCore import QCoreApplication, QTimer  # noqa: E402
 
-from dbx_term import shells  # noqa: E402
-from dbx_term.pty_session import CORES_LIGADAS, PtySession, ambiente_limpo  # noqa: E402
+from loom import shells  # noqa: E402
+from loom.pty_session import CORES_LIGADAS, PtySession, ambiente_limpo  # noqa: E402
 
 LIMPAR = re.compile(r"\x1b\[[0-9;?]*[a-zA-Z]|\x1b\][^\x07]*\x07")
 
@@ -64,7 +64,7 @@ class TerminalDeVerdade(unittest.TestCase):
     def conversar(self, passos, segundos=9):
         app = QCoreApplication.instance() or QCoreApplication([])
         recebido = []
-        sessao = PtySession("teste", cols=100, rows=28, env={"DBX_TERM_TESTE": "1"})
+        sessao = PtySession("teste", cols=100, rows=28, env={"LOOM_TESTE": "1"})
         sessao.output.connect(lambda _sid, dado: recebido.append(dado))
         sessao.start()
 
@@ -76,8 +76,8 @@ class TerminalDeVerdade(unittest.TestCase):
         return LIMPAR.sub("", "".join(recebido))
 
     def test_o_shell_responde_ao_que_e_digitado(self):
-        saida = self.conversar([(1500, lambda s: lambda: s.write("echo DBX-MARCA-OK\r"))], segundos=5)
-        self.assertIn("DBX-MARCA-OK", saida)
+        saida = self.conversar([(1500, lambda s: lambda: s.write("echo LOOM-MARCA-OK\r"))], segundos=5)
+        self.assertIn("LOOM-MARCA-OK", saida)
 
     @unittest.skipIf(SEM_CONSOLE, "o runner nao repassa o tamanho do pseudo terminal")
     def test_redimensionar_chega_no_processo_filho(self):
@@ -91,7 +91,7 @@ class TerminalDeVerdade(unittest.TestCase):
         self.assertIn("D=60", saida, "redimensionar a aba tem que chegar no processo")
 
     def test_variavel_da_aba_chega_no_shell(self):
-        saida = self.conversar([(1500, lambda s: lambda: s.write('"V=$env:DBX_TERM_TESTE"\r'))], segundos=5)
+        saida = self.conversar([(1500, lambda s: lambda: s.write('"V=$env:LOOM_TESTE"\r'))], segundos=5)
         self.assertIn("V=1", saida)
 
     def test_encerrar_derruba_o_processo(self):

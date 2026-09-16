@@ -4,7 +4,7 @@ import os
 from PyInstaller.utils.hooks import collect_dynamic_libs, get_module_file_attribute
 
 ROOT = os.path.dirname(SPECPATH)
-ICONE = os.path.join(ROOT, "ui", "dbx-term.ico")
+ICONE = os.path.join(ROOT, "ui", "loom.ico")
 
 # A tela e HTML dentro do QtWebEngine, entao quase nada do Qt pode ser podado:
 # o motor web puxa Quick, Qml, Positioning, Network e Pdf por dentro. Aqui so
@@ -61,7 +61,7 @@ exe_app = EXE(
     app.scripts,
     [],
     exclude_binaries=True,
-    name="DbxTerm",
+    name="Loom",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -80,7 +80,7 @@ exe_coletor = EXE(
     coletor.scripts,
     [],
     exclude_binaries=True,
-    name="dbx-coletor",
+    name="loom-coletor",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -104,5 +104,5 @@ coll = COLLECT(
     strip=False,
     upx=False,
     upx_exclude=[],
-    name="DbxTerm",
+    name="Loom",
 )

@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 
 from base import ComPastaPropria
 
-from dbx_term import sessoes
+from loom import sessoes
 
 
 def agora_menos(segundos: int) -> str:

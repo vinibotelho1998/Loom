@@ -251,7 +251,7 @@ class Aba extends AbaBase {
     this.term.attachCustomKeyEventHandler((ev) => {
       if (ev.type !== "keydown") return true;
       // Shift+Enter quebra linha em vez de enviar. E o que o /terminal-setup do Claude Code
-      // instala nos outros terminais, e ele nao conhece o DBX Term, entao fazemos aqui.
+      // instala nos outros terminais, e ele nao conhece o Loom, entao fazemos aqui.
       if (ev.key === "Enter" && ev.shiftKey && !ev.ctrlKey && !ev.altKey) {
         ev.preventDefault();
         if (bridge && this.sessionId) bridge.write(this.sessionId, "\x1b\r");
@@ -1245,7 +1245,7 @@ function montarSessoes() {
   // so entra na segunda passada quem nasceu numa aba deste app: sessao de outro terminal
   // pode ser da mesma conta e seria adotada por engano
   const vivas = sessoes
-    .filter((s) => !usadas.has(s.sessao) && s.estado !== "parada" && s.terminal === "dbx-term")
+    .filter((s) => !usadas.has(s.sessao) && s.estado !== "parada" && s.terminal === "loom")
     .sort((a, b) => a.idade - b.idade);
 
   for (const aba of terminais) {
@@ -1267,8 +1267,8 @@ function montarSessoes() {
 
   // sessao que nasceu aqui e cuja aba nao existe mais esta morta: o shell dela morreu junto
   // com o app. Nao e de outro terminal nem esta rodando, entao e historico e sai da lista.
-  const deFora = sessoes.filter((s) => !usadas.has(s.sessao) && s.terminal !== "dbx-term");
-  const orfas = sessoes.filter((s) => !usadas.has(s.sessao) && s.terminal === "dbx-term");
+  const deFora = sessoes.filter((s) => !usadas.has(s.sessao) && s.terminal !== "loom");
+  const orfas = sessoes.filter((s) => !usadas.has(s.sessao) && s.terminal === "loom");
 
   const rotulo = el("divisor-rotulo");
   if (rotulo) {
@@ -1343,7 +1343,7 @@ function montarCartao(s) {
       conta.style.color = perfil.cor;
     } else {
       conta.textContent = "Principal";
-      conta.title = "A conta que já estava logada antes deste app, fora dos perfis do DBX Term";
+      conta.title = "A conta que já estava logada antes deste app, fora dos perfis do Loom";
     }
     rodape.appendChild(conta);
     if (typeof s.contexto === "number") rodape.appendChild(barraContexto(s.contexto));
@@ -1517,7 +1517,7 @@ function abrirMenuSessao(s, x, y) {
   const encerrar = elMenuSessao.querySelector('[data-acao="encerrar"]');
   encerrar.disabled = !daCasa;
   encerrar.title = daCasa
-    ? "fecha a aba desta sessao aqui no DBX Term"
+    ? "fecha a aba desta sessao aqui no Loom"
     : "essa sessao nao e deste app, entao quem fecha e o terminal onde ela roda";
   elMenuSessao.hidden = false;
   const caixa = elMenuSessao.getBoundingClientRect();
@@ -2536,7 +2536,7 @@ new QWebChannel(qt.webChannelTransport, (channel) => {
           if (raiz) {
             raiz.textContent = perfis.length
               ? perfis[0].configDir.replace(/[\\/]perfis[\\/].*$/, "")
-              : "~/.dbx-term";
+              : "~/.loom";
           }
           montarSelecaoShells();
           montarSelecaoPerfis();

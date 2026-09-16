@@ -145,7 +145,7 @@ def _idade_da_conversa(leitura: dict, mtime: float) -> float:
 _LEMBRADO: dict[str, tuple[float, int, dict]] = {}
 
 
-PASTAS_DE_SERVICO = (".claude", ".dbx-term", ".codex", ".gemini")
+PASTAS_DE_SERVICO = (".claude", ".loom", ".codex", ".gemini")
 
 
 def _de_servico(caminho: str) -> bool:

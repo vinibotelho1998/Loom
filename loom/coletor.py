@@ -1,15 +1,15 @@
 """Coletor de estado da sessao.
 
 O Claude Code nao grava em disco quanto do plano ja foi gasto, mas entrega esse numero
-para a status line junto com o id da sessao. Entao o DBX Term se registra como status line
+para a status line junto com o id da sessao. Entao o Loom se registra como status line
 daquele perfil, guarda o que chegou e repassa a bola para a status line que ja existia,
 sem tirar nada de ninguem.
 
 De quebra isso resolve a identidade da sessao: o processo do Claude herda do shell as marcas
-DBX_TERM_ABA e DBX_TERM_PERFIL, entao sabemos qual sessao nasceu aqui dentro e em qual conta.
+LOOM_ABA e LOOM_PERFIL, entao sabemos qual sessao nasceu aqui dentro e em qual conta.
 Sessao sem marca e de outro terminal.
 
-Uso: python -m dbx_term.coletor <perfil> [comando da status line anterior]
+Uso: python -m loom.coletor <perfil> [comando da status line anterior]
 Le o JSON da sessao no stdin e escreve a saida da status line original no stdout.
 """
 
@@ -37,8 +37,8 @@ def guardar(perfil: str, dados: dict) -> None:
     resumo = {
         "sessao": sessao,
         "perfil": perfil,
-        "aba": os.environ.get("DBX_TERM_ABA", ""),
-        "terminal": "dbx-term" if os.environ.get("DBX_TERM_ABA") else "",
+        "aba": os.environ.get("LOOM_ABA", ""),
+        "terminal": "loom" if os.environ.get("LOOM_ABA") else "",
         "lido": time.time(),
         "faixas": {},
     }
@@ -85,11 +85,11 @@ def guardar(perfil: str, dados: dict) -> None:
 
 
 def esconder_aqui() -> bool:
-    """Dentro do DBX Term a barra de cima ja diz tudo, entao a status line vira repeticao.
+    """Dentro do Loom a barra de cima ja diz tudo, entao a status line vira repeticao.
 
     Fora dele nada muda: a status line de sempre continua sendo chamada.
     """
-    if not os.environ.get("DBX_TERM_ABA"):
+    if not os.environ.get("LOOM_ABA"):
         return False
     try:
         from . import config as mod_config
@@ -139,8 +139,8 @@ def marcar(perfil: str, dados: dict) -> None:
         {
             "sessao": sessao,
             "perfil": perfil,
-            "aba": os.environ.get("DBX_TERM_ABA", atual.get("aba", "")),
-            "terminal": "dbx-term" if os.environ.get("DBX_TERM_ABA") else atual.get("terminal", ""),
+            "aba": os.environ.get("LOOM_ABA", atual.get("aba", "")),
+            "terminal": "loom" if os.environ.get("LOOM_ABA") else atual.get("terminal", ""),
             "lido": time.time(),
         }
     )
@@ -156,7 +156,7 @@ def confiar_na_pasta(perfil: str, dados: dict) -> None:
     O dialogo de confiar aparece antes deste gancho rodar, entao aqui nao adianta pra
     sessao de agora. Adianta pra proxima vez que voce abrir o Claude na mesma pasta.
     """
-    if perfil == "__padrao__" or not os.environ.get("DBX_TERM_ABA"):
+    if perfil == "__padrao__" or not os.environ.get("LOOM_ABA"):
         return
     pasta = (dados.get("workspace") or {}).get("current_dir") or dados.get("cwd") or ""
     if not pasta:
@@ -188,7 +188,7 @@ def main() -> int:
         argumentos.remove("--hook")
     # o settings da pasta pode chamar o coletor com um perfil fixo enquanto a aba roda
     # em outra conta. Quem sabe a verdade e o ambiente da aba, entao ele decide.
-    perfil = os.environ.get("DBX_TERM_PERFIL") or (argumentos[0] if argumentos else "__padrao__")
+    perfil = os.environ.get("LOOM_PERFIL") or (argumentos[0] if argumentos else "__padrao__")
     anterior = argumentos[1] if len(argumentos) > 1 else ""
     bruto = sys.stdin.read()
 

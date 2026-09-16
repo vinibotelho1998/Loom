@@ -39,7 +39,7 @@ CORES_LIGADAS = {
 def ambiente_limpo() -> dict[str, str]:
     """O terminal nao pode herdar o ambiente de quem abriu o app.
 
-    Se o DBX Term for iniciado de dentro de uma sessao do Claude Code, o shell filho
+    Se o Loom for iniciado de dentro de uma sessao do Claude Code, o shell filho
     herda marcadores como CLAUDE_CODE_CHILD_SESSION e o Claude que roda ali dentro
     se acha um subprocesso, para de gravar transcript e some do medidor de uso.
     Tambem tiramos as variaveis do Qt, que sao nossas e nao dizem respeito ao shell.

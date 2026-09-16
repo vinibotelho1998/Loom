@@ -204,7 +204,7 @@ class Bridge(QObject):
 
     @Slot(str, str)
     def notificar(self, titulo: str, texto: str) -> None:
-        self.notificacaoPedida.emit(titulo or "DBX Term", texto or "")
+        self.notificacaoPedida.emit(titulo or "Loom", texto or "")
 
     @Slot(str, str, result=str)
     def abrirExterno(self, alvo: str, pasta: str) -> str:
@@ -428,10 +428,10 @@ class Bridge(QObject):
             if self._elevacao.get("disponivel"):
                 argv = mod_shells.elevado(shell, self._elevacao["comando"])
 
-        env = {"DBX_TERM_ABA": session_id}
+        env = {"LOOM_ABA": session_id}
         if perfil is not None:
             env.update(mod_perfis.ambiente(perfil))
-            env["DBX_TERM_PERFIL"] = perfil.id
+            env["LOOM_PERFIL"] = perfil.id
             if perfil.ferramenta == "claude":
                 ajustes = mod_config.carregar()
                 mod_perfis.instalar_coletor(perfil, sys.executable, str(RAIZ_PROJETO))

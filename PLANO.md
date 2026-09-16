@@ -1,4 +1,4 @@
-# DBX Term
+# Loom
 
 Gerenciador de console proprio, no espirito do Warp, feito pra rodar Claude Code e outros CLI.
 Duas coisas que nenhum terminal de mercado faz hoje e sao o motivo do projeto:
@@ -18,7 +18,7 @@ Por que assim:
 
 - xterm.js e o emulador de terminal do VS Code. Escrever emulador ANSI do zero e trabalho de meses e da bug pra sempre. Ele entra como arquivo estatico baixado uma vez, sem npm e sem Node.
 - pywinpty da o ConPTY do Windows, que e a unica forma de rodar um shell de verdade com cor, redimensionamento e Ctrl+C.
-- PySide6 e a stack do DBX Wire, entao a casa ja e conhecida.
+- PySide6 e a stack do Conduit, entao a casa ja e conhecida.
 - Python 3.14, o que ja esta na maquina. Confirmado em 01/09/2026 que PySide6 6.11.2 e pywinpty 3.0.5 sao instalaveis nele, entao nao precisa de segundo Python.
 
 Descartado Electron. Exigiria instalar Node so pra isso e o ganho seria zero.
@@ -46,7 +46,7 @@ Confirmado na maquina em 01/09/2026:
 - o binario aceita a variavel de ambiente `CLAUDE_CONFIG_DIR`
 - a credencial fica em arquivo comum, `~/.claude/.credentials.json`, e nao no Credential Manager do Windows
 
-Entao cada conta vira uma pasta propria de config, por exemplo `~/.dbx-term/perfis/trabalho` e `~/.dbx-term/perfis/pessoal`.
+Entao cada conta vira uma pasta propria de config, por exemplo `~/.loom/perfis/trabalho` e `~/.loom/perfis/pessoal`.
 Abrir uma aba naquela conta e so exportar `CLAUDE_CONFIG_DIR` apontando pra pasta dela antes de subir o shell.
 
 Consequencias boas de graca:
@@ -106,7 +106,7 @@ O terminal comum trata aba como aba. Aqui aba que roda Claude Code e uma sessao 
 Uma barra lateral lista tudo que esta aberto e, pra cada sessao de Claude, mostra sem voce precisar entrar nela:
 
 - **Estado.** Tres estados que importam: pensando, esperando voce, parada. Quem esta esperando resposta sobe pro topo e pisca discreto, porque e a unica que trava o teu tempo.
-- **No que esta.** Ultima ferramenta chamada e em que arquivo, tipo "editando itbi.xml" ou "rodando maven". E o que o transcript ja grava.
+- **No que esta.** Ultima ferramenta chamada e em que arquivo, tipo "editando build.gradle" ou "rodando maven". E o que o transcript ja grava.
 - **Andamento.** Lista de tarefas da sessao, quantas fechadas de quantas, quando existir.
 - **Peso.** Quanto de contexto ja foi usado naquela sessao e quanto ela ja gastou.
 - **Conta e pasta.** Qual perfil e qual repositorio, com a cor do perfil na borda.

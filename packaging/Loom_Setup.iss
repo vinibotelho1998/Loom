@@ -1,16 +1,16 @@
-﻿; Instalador do DBX Term.
+﻿; Instalador do Loom.
 ;
 ; Compile por packaging/build.ps1 (ou BUILD.bat): e' de la' que vem a versao,
-; lida de dbx_term/__init__.py, para nao existir numero repetido em dois
+; lida de loom/__init__.py, para nao existir numero repetido em dois
 ; lugares. Compilar este arquivo na mao tambem funciona, usando a reserva.
 
-#define MyAppName "DBX Term"
+#define MyAppName "Loom"
 #ifndef MyAppVersion
   #define MyAppVersion "1.0.0"
 #endif
-#define MyAppPublisher "Dbx"
-#define MyAppExeName "DbxTerm.exe"
-#define MyAppUrl "https://github.com/vinibotelho1998/Dbx-Term"
+#define MyAppPublisher "Vinicius Botelho"
+#define MyAppExeName "Loom.exe"
+#define MyAppUrl "https://github.com/vinibotelho1998/Loom"
 
 [Setup]
 ; AppId fixo e unico: e' por ele que o Windows reconhece uma atualizacao no
@@ -36,11 +36,11 @@ DisableProgramGroupPage=yes
 DisableDirPage=auto
 
 OutputDir=..\dist
-OutputBaseFilename=DbxTerm-Setup
+OutputBaseFilename=Loom-Setup
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
-SetupIconFile=..\ui\dbx-term.ico
+SetupIconFile=..\ui\loom.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 UninstallDisplayName={#MyAppName} {#MyAppVersion}
 
@@ -54,7 +54,7 @@ MinVersion=10.0
 ; Fecha o app antes de sobrescrever os arquivos, em vez de falhar no meio.
 CloseApplications=yes
 RestartApplications=no
-SetupMutex=DbxTermSetupMutex
+SetupMutex=LoomSetupMutex
 
 [Languages]
 Name: "brazilianportuguese"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"
@@ -63,7 +63,7 @@ Name: "brazilianportuguese"; MessagesFile: "compiler:Languages\BrazilianPortugue
 Name: "desktopicon"; Description: "Criar atalho na area de trabalho"; GroupDescription: "Atalhos:"
 
 [Files]
-Source: "..\dist\DbxTerm\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\dist\Loom\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\prereqs\vc_redist.x64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall
 
 [Icons]
@@ -77,7 +77,7 @@ Filename: "{tmp}\vc_redist.x64.exe"; Parameters: "/install /quiet /norestart"; S
 Filename: "{app}\{#MyAppExeName}"; Description: "Abrir o {#MyAppName} agora"; Flags: nowait postinstall skipifsilent
 
 [Messages]
-FinishedLabel=A instalação do [name] terminou.%n%nAs contas, sessões salvas e o histórico de consumo ficam em %USERPROFILE%\.dbx-term e continuam lá depois de atualizar.
+FinishedLabel=A instalação do [name] terminou.%n%nAs contas, sessões salvas e o histórico de consumo ficam em %USERPROFILE%\.loom e continuam lá depois de atualizar.
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}\_internal\__pycache__"
@@ -92,7 +92,7 @@ begin
 end;
 
 // As contas do Claude Code, as sessoes salvas e o consumo do plano moram em
-// %USERPROFILE%\.dbx-term. Apagar isso sem perguntar seria derrubar o login de
+// %USERPROFILE%\.loom. Apagar isso sem perguntar seria derrubar o login de
 // quem so' queria reinstalar.
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
@@ -100,7 +100,7 @@ var
 begin
   if CurUninstallStep <> usPostUninstall then
     Exit;
-  Dados := ExpandConstant('{%USERPROFILE}\.dbx-term');
+  Dados := ExpandConstant('{%USERPROFILE}\.loom');
   if not DirExists(Dados) then
     Exit;
   if MsgBox('Apagar tambem as contas, sessoes salvas e o historico de consumo?'

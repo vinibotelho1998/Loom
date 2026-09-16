@@ -39,7 +39,7 @@ jobs:
       - name: Incrementar versao
         id: versao
         run: |
-          $conteudo = Get-Content -Path "dbx_term/__init__.py" -Raw
+          $conteudo = Get-Content -Path "loom/__init__.py" -Raw
           $m = [regex]::Match($conteudo, '__version__\s*=\s*"(\d+)\.(\d+)\.(\d+)"')
           if (-not $m.Success) { throw "Nao achei __version__ no formato X.Y.Z" }
           $major = [int]$m.Groups[1].Value
@@ -48,18 +48,18 @@ jobs:
           $nova = "$major.$minor.$patch"
 
           $conteudo = $conteudo -replace '__version__\s*=\s*"\d+\.\d+\.\d+"', "__version__ = `"$nova`""
-          Set-Content -Path "dbx_term/__init__.py" -Value $conteudo -NoNewline
+          Set-Content -Path "loom/__init__.py" -Value $conteudo -NoNewline
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add dbx_term/__init__.py
+          git add loom/__init__.py
           git commit -m "chore: incrementa versao para $nova [skip ci]"
           git push origin HEAD:main
 
           echo "numero=$nova" >> $env:GITHUB_OUTPUT
 
       - name: Build do app (PyInstaller)
-        run: pyinstaller packaging/DbxTerm.spec --noconfirm --distpath dist --workpath build
+        run: pyinstaller packaging/Loom.spec --noconfirm --distpath dist --workpath build
 
       - name: Baixar dependencias de runtime (VC++)
         run: powershell -NoProfile -ExecutionPolicy Bypass -File packaging/prepare_prereqs.ps1
@@ -69,14 +69,14 @@ jobs:
 
       - name: Compilar instalador
         run: |
-          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DMyAppVersion=${{ steps.versao.outputs.numero }}" packaging\DbxTerm_Setup.iss
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DMyAppVersion=${{ steps.versao.outputs.numero }}" packaging\Loom_Setup.iss
 
       - name: Publicar release "latest"
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release delete latest --cleanup-tag --yes 2>$null
-          gh release create latest "dist/DbxTerm-Setup.exe" `
-            --title "DBX Term v${{ steps.versao.outputs.numero }}" `
+          gh release create latest "dist/Loom-Setup.exe" `
+            --title "Loom v${{ steps.versao.outputs.numero }}" `
             --notes "Instalador gerado automaticamente do commit ${{ github.sha }} (versao ${{ steps.versao.outputs.numero }}). Traz o terminal, o coletor de consumo e o runtime do Qt; nao exige Python na maquina." `
             --latest

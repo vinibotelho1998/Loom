@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 
 from base import ComPastaPropria
 
-from dbx_term import coletor, config, sessao_salva, uso
+from loom import coletor, config, sessao_salva, uso
 
 
 def hoje_as(hora: int = 12) -> str:
@@ -92,9 +92,9 @@ class ColetorDeLimite(ComPastaPropria):
         entrada = io.StringIO(json.dumps(payload, ensure_ascii=False))
         saida = io.StringIO()
         antigo_in, antigo_out, antigo_argv = sys.stdin, sys.stdout, sys.argv
-        # o teste pode estar rodando dentro do proprio DBX Term, e ai o shell ja traz a marca
+        # o teste pode estar rodando dentro do proprio Loom, e ai o shell ja traz a marca
         # da aba. Sem limpar, uma sessao "de fora" nasceria marcada e o teste mentiria.
-        limpo = {k: v for k, v in os.environ.items() if not k.startswith("DBX_TERM_")}
+        limpo = {k: v for k, v in os.environ.items() if not k.startswith("LOOM_")}
         limpo.update(ambiente or {})
         with unittest.mock.patch.dict("os.environ", limpo, clear=True):
             sys.stdin, sys.stdout = entrada, saida
@@ -136,10 +136,10 @@ class ColetorDeLimite(ComPastaPropria):
         self.assertEqual(guardado["contexto"], 25.0)
 
     def test_marca_a_aba_quando_a_sessao_nasce_aqui(self):
-        self.rodar({"session_id": "s1", "cwd": r"C:\p"}, {"DBX_TERM_ABA": "aba7"}, ["conta1", "--hook"])
+        self.rodar({"session_id": "s1", "cwd": r"C:\p"}, {"LOOM_ABA": "aba7"}, ["conta1", "--hook"])
         guardado = json.loads((coletor.PASTA / "s1.json").read_text(encoding="utf-8"))
         self.assertEqual(guardado["aba"], "aba7")
-        self.assertEqual(guardado["terminal"], "dbx-term")
+        self.assertEqual(guardado["terminal"], "loom")
 
     def test_sessao_de_fora_nao_ganha_marca_de_aba(self):
         self.rodar({"session_id": "s1", "cwd": r"C:\p"}, {}, ["conta1", "--hook"])
@@ -148,7 +148,7 @@ class ColetorDeLimite(ComPastaPropria):
 
     def test_ambiente_da_aba_manda_mais_que_o_argumento(self):
         """O settings da pasta chama sempre com o mesmo perfil fixo."""
-        self.rodar({"session_id": "s1"}, {"DBX_TERM_PERFIL": "conta-certa", "DBX_TERM_ABA": "a"}, ["conta-errada"])
+        self.rodar({"session_id": "s1"}, {"LOOM_PERFIL": "conta-certa", "LOOM_ABA": "a"}, ["conta-errada"])
         guardado = json.loads((coletor.PASTA / "s1.json").read_text(encoding="utf-8"))
         self.assertEqual(guardado["perfil"], "conta-certa")
 

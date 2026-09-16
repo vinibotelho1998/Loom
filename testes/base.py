@@ -15,7 +15,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from dbx_term import (  # noqa: E402
+from loom import (  # noqa: E402
     caminhos,
     coletor,
     config,
@@ -31,7 +31,7 @@ class ComPastaPropria(unittest.TestCase):
     """Base que troca a pasta de dados do app por uma descartavel."""
 
     def setUp(self) -> None:
-        self.raiz = Path(tempfile.mkdtemp(prefix="dbx-teste-"))
+        self.raiz = Path(tempfile.mkdtemp(prefix="loom-teste-"))
         self.casa = self.raiz / "casa"
         (self.casa / ".claude").mkdir(parents=True)
 

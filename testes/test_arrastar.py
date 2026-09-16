@@ -20,7 +20,7 @@ from PySide6.QtWidgets import QApplication  # noqa: E402
 
 
 def soltar_na_janela(dados: QMimeData) -> tuple[bool, list[str]]:
-    from dbx_term.app import MainWindow
+    from loom.app import MainWindow
 
     QApplication.instance() or QApplication([])
     janela = MainWindow()

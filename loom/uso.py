@@ -14,7 +14,7 @@ CAMPOS = ("entrada", "saida", "raciocinio", "cacheEscrito", "cacheLido", "mensag
 
 
 def _pasta_padrao() -> Path:
-    """Onde mora a conta que ja estava logada antes do DBX Term existir."""
+    """Onde mora a conta que ja estava logada antes do Loom existir."""
     return Path(os.environ.get("CLAUDE_CONFIG_DIR") or (Path(os.path.expanduser("~")) / ".claude"))
 
 
