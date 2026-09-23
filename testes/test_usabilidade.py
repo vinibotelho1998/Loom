@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import threading
 import time
@@ -23,6 +24,7 @@ from base import ComPastaPropria  # noqa: E402
 from PySide6.QtCore import QCoreApplication  # noqa: E402
 
 import loom  # noqa: E402
+from loom import app as mod_app  # noqa: E402
 from loom import bridge as mod_bridge  # noqa: E402
 from loom import caminhos, config, ferramentas, perfis, pty_session, sessoes, shells, uso  # noqa: E402
 
@@ -363,6 +365,85 @@ class SobreENotificacao(ComPonte):
         self.ponte.notificacaoPedida.connect(lambda *args: recebido.append(args))
         self.ponte.notificar("Build", "Terminou", "a1")
         self.assertEqual(recebido, [("Build", "Terminou", "a1")])
+
+
+class JanelaQueFecha:
+    """So o que o closeEvent usa da MainWindow, com uma aba ainda rodando."""
+
+    closeEvent = mod_app.MainWindow.closeEvent
+
+    def _pergunta_ao_fechar(self) -> str:
+        return "1 aba com programa rodando."
+
+
+class VersaoNoTopo(ComPonte):
+    """A versao so aparecia escondida em Configuracoes, Sobre. A pagina roda no QJSEngine."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        from test_pagina import NAVEGADOR_FALSO, texto_da_pagina
+        from PySide6.QtQml import QJSEngine
+
+        garantir_app()
+        cls.motor = QJSEngine()
+        cls.motor.evaluate(NAVEGADOR_FALSO)
+        carga = cls.motor.evaluate(texto_da_pagina(), "pagina.js")
+        assert not carga.isError(), carga.toString()
+
+    def mostrado(self) -> dict:
+        """O texto de cada elemento depois que a resposta da ponte chega na pagina."""
+        resultado = self.motor.evaluate(
+            "(() => { const vistos = {}; const antes = document;"
+            " document = {getElementById: (id) => vistos[id] || (vistos[id] = {textContent: ''})};"
+            f" try {{ mostrarSobre({json.dumps(self.ponte.sobre())}); }} finally {{ document = antes; }}"
+            " const texto = {}; for (const id in vistos) texto[id] = vistos[id].textContent;"
+            " return JSON.stringify(texto); })()"
+        )
+        self.assertFalse(resultado.isError(), resultado.toString())
+        return json.loads(resultado.toString())
+
+    def test_topo_mostra_a_versao_do_pacote(self):
+        mostrado = self.mostrado()
+        self.assertEqual(mostrado["versao-topo"], "v" + loom.__version__)
+        self.assertEqual(mostrado["sobre-versao"], loom.__version__)
+
+    def test_rotulo_fica_ao_lado_do_nome_sem_numero_escrito(self):
+        html = (UI / "index.html").read_text(encoding="utf-8")
+        cabecalho = re.search(r'<header class="cromo">(.*?)</header>', html, re.S).group(1)
+        self.assertRegex(
+            cabecalho, r'<span class="marca">Loom</span>\s*<span class="versao" id="versao-topo"[^>]*></span>'
+        )
+        for nome in ("index.html", "app.js", "style.css"):
+            self.assertNotIn(loom.__version__, (UI / nome).read_text(encoding="utf-8"), nome)
+
+    def test_rotulo_some_inteiro_antes_de_empurrar_a_engrenagem(self):
+        """Com o fps ligado, o cromo com a versao precisa de 303px, medido na tela renderizada.
+
+        Mais estreito que isso a engrenagem saia pela direita e o fps quebrava em duas linhas.
+        """
+        css = (UI / "style.css").read_text(encoding="utf-8")
+        regra = re.search(r"@media \(max-width: (\d+)px\) \{ \.versao \{ display: none; \} \}", css)
+        self.assertIsNotNone(regra, "sem regra que esconde a versao na janela estreita")
+        self.assertGreaterEqual(int(regra.group(1)), 303)
+
+    def test_titulo_da_janela_leva_a_versao(self):
+        self.assertEqual(mod_app.TITULO, "Loom " + loom.__version__)
+
+    def test_nenhum_titulo_ganha_o_nome_da_aplicacao_no_fim(self):
+        """No Windows o Qt pendura " - <nome de exibicao>" em todo titulo que nao termina nele.
+
+        Com o nome de exibicao igual ao titulo, a caixa de fechar saia "Fechar o Loom - Loom" e a versao.
+        """
+        with unittest.mock.patch.object(mod_app, "QApplication") as aplicacao, unittest.mock.patch.object(
+            mod_app.mod_instancia, "chamar_quem_ja_esta_aberto", return_value=True
+        ):
+            self.assertEqual(mod_app.main(), 0)
+        with unittest.mock.patch.object(mod_app, "QMessageBox") as caixa:
+            JanelaQueFecha().closeEvent(unittest.mock.MagicMock())
+        titulos = (mod_app.TITULO, caixa.call_args.args[1])
+        for chamada in aplicacao.return_value.setApplicationDisplayName.call_args_list:
+            for titulo in titulos:
+                self.assertTrue(titulo.endswith(chamada.args[0]), f"{titulo!r} ganharia {chamada.args[0]!r} no fim")
 
 
 class GraficoDeTrintaDias(ComPastaPropria):

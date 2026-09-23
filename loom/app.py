@@ -15,6 +15,7 @@ from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineSettings
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import QApplication, QMainWindow, QMenu, QMessageBox, QSystemTrayIcon
 
+from . import __version__
 from . import config as mod_config
 from . import instancia as mod_instancia
 from . import perfis as mod_perfis
@@ -29,6 +30,9 @@ COR_LINHA = "#333843"
 COR_TEXTO = "#c8cfda"
 
 UI_DIR = Path(__file__).resolve().parent.parent / "ui"
+
+# a barra de tarefas mostra a versao que esta rodando, lida do pacote
+TITULO = f"Loom {__version__}"
 
 # Tela refeita mais que isto dentro de um minuto e sinal de que o motor nao se recupera,
 # e insistir so pisca a janela
@@ -46,9 +50,9 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         # nome fixo de proposito: mostrar a conversa da aba ali em cima fazia o titulo
-        # trocar toda hora, o que incomodava mais do que ajudava. Igual ao nome da aplicacao,
-        # o Qt nao acrescenta o sufixo e a barra mostra so Loom
-        self.setWindowTitle("Loom")
+        # trocar toda hora, o que incomodava mais do que ajudava. Sem nome de exibicao na
+        # aplicacao, o Qt nao acrescenta sufixo e a barra mostra so o nome com a versao
+        self.setWindowTitle(TITULO)
         self.resize(1180, 720)
 
         self.bridge = Bridge(self)
@@ -388,7 +392,8 @@ class MainWindow(QMainWindow):
 def main() -> int:
     app = QApplication(sys.argv)
     app.setApplicationName("Loom")
-    app.setApplicationDisplayName("Loom")
+    # sem nome de exibicao de proposito: no Windows o Qt pendura " - <nome>" em todo titulo que
+    # nao termina nele, e a caixa de fechar ganhava o nome e a versao pendurados no fim
 
     if mod_instancia.chamar_quem_ja_esta_aberto():
         return 0

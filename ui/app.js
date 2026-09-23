@@ -3436,6 +3436,20 @@ function medirFps(ligar) {
   }
 }
 
+/* ---------------------------------------------------------------- sobre */
+
+function mostrarSobre(json) {
+  // a versao vem do app, e o topo e a tela Sobre mostram a mesma que esta rodando
+  try {
+    const sobre = JSON.parse(json);
+    el("versao-topo").textContent = sobre.versao ? "v" + sobre.versao : "";
+    el("sobre-versao").textContent = sobre.versao || "";
+    el("sobre-raiz").textContent = sobre.raiz || "";
+  } catch (e) {
+    console.warn("sobre ilegivel", e);
+  }
+}
+
 /* ---------------------------------------------------------------- canal */
 
 new QWebChannel(qt.webChannelTransport, (channel) => {
@@ -3491,15 +3505,7 @@ new QWebChannel(qt.webChannelTransport, (channel) => {
     });
   });
 
-  bridge.sobre((json) => {
-    try {
-      const sobre = JSON.parse(json);
-      el("sobre-versao").textContent = sobre.versao || "";
-      el("sobre-raiz").textContent = sobre.raiz || "";
-    } catch (e) {
-      console.warn("sobre ilegivel", e);
-    }
-  });
+  bridge.sobre(mostrarSobre);
 
   bridge.exited.connect((id, code) => {
     pendentes.delete(id);

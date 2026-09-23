@@ -93,6 +93,18 @@ html, body {
   color: var(--texto);
 }
 .marca-fraca { color: var(--apagado); margin-left: 3px; }
+/* pequena e apagada, mas legivel: o --apagado ficava em 3,6 pra 1 sobre o cromo */
+.versao {
+  flex: 0 0 auto;
+  margin-left: -6px;
+  font: 500 10.5px/1 var(--mono);
+  letter-spacing: .04em;
+  white-space: nowrap;
+  color: var(--apagado-3);
+}
+/* numa janela estreita a versao some de vez, em vez de empurrar a engrenagem pra fora da
+   barra: com o fps ligado o cromo precisa de 303px pra caber tudo */
+@media (max-width: 320px) { .versao { display: none; } }
 
 .folga { flex: 1; }
 /* a pessoa liga o contador pra ler: em #2f3540 sobre o cromo ele ficava em 1,3 pra 1 */
