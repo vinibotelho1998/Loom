@@ -10,8 +10,11 @@ const CAMPOS_SOMA = ["entrada", "saida", "raciocinio", "cacheEscrito", "cacheLid
 let usoBruto = {};
 let usoPerfis = [];
 let usoLimites = {};
+let usoParcial = false;
 let contaEscolhida = "todas";
 let faixaGrafico = "dia";
+
+const DIAS_DO_GRAFICO = 30;
 
 function curto(n) {
   if (!n) return "0";
@@ -64,6 +67,26 @@ function porSemana(serie) {
   return [...baldes.values()].sort((a, b) => a.dia.localeCompare(b.dia));
 }
 
+function diaLocal(d) {
+  const doisDigitos = (n) => String(n).padStart(2, "0");
+  return d.getFullYear() + "-" + doisDigitos(d.getMonth() + 1) + "-" + doisDigitos(d.getDate());
+}
+
+function comDiasVazios(serie, hoje) {
+  /* A serie so traz os dias com gasto e o grafico dividia a largura entre eles: dez dias
+     espalhados no mes viravam dez barras coladas e pareciam dez dias seguidos. Aqui cada um
+     dos 30 dias ganha a sua barra, zerada quando nao houve uso. */
+  const porDia = new Map(serie.map((p) => [p.dia, p]));
+  const fim = hoje ? new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate()) : new Date();
+  const cheia = [];
+  for (let i = DIAS_DO_GRAFICO - 1; i >= 0; i -= 1) {
+    const d = new Date(fim.getFullYear(), fim.getMonth(), fim.getDate() - i);
+    const chave = diaLocal(d);
+    cheia.push(porDia.get(chave) || { dia: chave, saida: 0, porModelo: {} });
+  }
+  return cheia;
+}
+
 function familiaDoModelo(id) {
   const nome = String(id).toLowerCase();
   const familia = Object.keys(CORES_MODELO).find((f) => nome.includes(f));
@@ -94,9 +117,10 @@ function contasDoUso() {
     if (dona && perfil && perfil.id === dona.id && usoBruto["__padrao__"]) chaves.push("__padrao__");
     lista.push({
       id: chave,
-      nome: perfil ? perfil.nome : "Pasta padrão",
+      // o mesmo nome que o cartao e a barra dao pra conta de sempre
+      nome: perfil ? perfil.nome : "Principal",
       cor: perfil ? perfil.cor : "#5b6371",
-      email: perfil ? perfil.email || "" : "Gasto da pasta de sempre, de antes de existir conta cadastrada",
+      email: perfil ? perfil.email || "" : "A conta que já estava logada antes do Loom, na pasta de login de sempre",
       chaves,
     });
   }
@@ -127,6 +151,22 @@ function totalDe(chaves) {
   soma.serie = [...serie.values()].sort((a, b) => a.dia.localeCompare(b.dia));
   soma.modelos = [...modelos.entries()].filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
   return soma;
+}
+
+function faixasDaConta(conta) {
+  /* A leitura do plano pelo id da conta. A conta de sempre que virou cadastrada junta o
+     proprio id com o gasto antigo de __padrao__, e com duas chaves o bloco sumia pra ela;
+     sem leitura no id, vale a mais recente entre as que ela junta. */
+  const limites = usoLimites || {};
+  const propria = (limites[conta.id] || {}).faixas;
+  if (propria && Object.keys(propria).length) return propria;
+  let melhor = null;
+  for (const chave of conta.chaves) {
+    const lido = limites[chave];
+    if (!lido || !lido.faixas || !Object.keys(lido.faixas).length) continue;
+    if (!melhor || (lido.lido || 0) > (melhor.lido || 0)) melhor = lido;
+  }
+  return melhor ? melhor.faixas : {};
 }
 
 function selecionadas() {
@@ -161,7 +201,7 @@ function regua(rotulo, faixa) {
 }
 
 function grafico(serie) {
-  if (!serie.length) return '<div class="vazio">Sem consumo no período.</div>';
+  if (!serie.some((d) => d.saida)) return '<div class="vazio">Sem consumo no período.</div>';
 
   const larg = 620;
   const alt = 110;
@@ -236,9 +276,10 @@ function pintarUsoCorpo() {
 
   const contas = contasDoUso();
   if (!contas.length) {
-    alvo.innerHTML =
-      '<div class="vazio">Nenhum consumo encontrado ainda. O medidor lê os transcript que o Claude ' +
-      "grava em disco, então o número aparece depois da primeira conversa.</div>";
+    alvo.innerHTML = usoParcial
+      ? '<div class="vazio">Lendo o histórico das conversas. Os números aparecem em instantes.</div>'
+      : '<div class="vazio">Nenhum consumo encontrado ainda. O medidor lê os transcripts que o Claude ' +
+        "grava em disco, então o número aparece depois da primeira conversa.</div>";
     return;
   }
 
@@ -259,7 +300,7 @@ function pintarUsoCorpo() {
 
   const dados = totalDe(selecionadas());
   const uma = contaEscolhida !== "todas" ? contas.find((c) => c.id === contaEscolhida) : null;
-  const faixas = uma && uma.chaves.length === 1 ? ((usoLimites || {})[uma.chaves[0]] || {}).faixas || {} : null;
+  const faixas = uma && uma.id !== "__removidas__" ? faixasDaConta(uma) : null;
 
   const numeros =
     '<div class="numeros">' +
@@ -278,8 +319,15 @@ function pintarUsoCorpo() {
       "</div>"
     : "";
 
+  const serie = comDiasVazios(dados.serie);
+  // a varredura le um pedaco por vez de historico grande; ate terminar, o numero e menor que
+  // o real, e a tela dizia isso com a mesma cara de numero medido
+  const ajuda = usoParcial
+    ? '<p class="ajuda ajuda-lendo">Ainda lendo o histórico, os números vão subir até terminar.</p>'
+    : '<p class="ajuda">Tokens gerados, lidos dos transcripts em disco. Escolha a conta pra ver só o dela.</p>';
+
   alvo.innerHTML =
-    '<p class="ajuda">Tokens gerados, lidos dos transcript em disco. Escolha a conta pra ver só o dela.</p>' +
+    ajuda +
     filtro +
     numeros +
     limite +
@@ -288,7 +336,7 @@ function pintarUsoCorpo() {
     '<button class="aba-filtro' + (faixaGrafico === "dia" ? " ativa" : "") + '" data-faixa="dia">Dia</button>' +
     '<button class="aba-filtro' + (faixaGrafico === "semana" ? " ativa" : "") + '" data-faixa="semana">Semana</button>' +
     "</div></div>" +
-    '<div id="area-grafico">' + grafico(faixaGrafico === "semana" ? porSemana(dados.serie) : dados.serie) + "</div>" +
+    '<div id="area-grafico">' + grafico(faixaGrafico === "semana" ? porSemana(serie) : serie) + "</div>" +
     modelos;
 
   alvo.querySelectorAll("[data-conta]").forEach((b) => {
@@ -305,9 +353,10 @@ function pintarUsoCorpo() {
   });
 }
 
-function renderStats(dados, perfis, limites) {
+function renderStats(dados, perfis, limites, parcial) {
   usoBruto = dados || {};
   usoPerfis = perfis || [];
   usoLimites = limites || {};
+  usoParcial = !!parcial;
   pintarUsoCorpo();
 }

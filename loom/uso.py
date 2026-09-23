@@ -127,11 +127,12 @@ def _somar(registro: dict, alvo: Counter) -> str | None:
     return f"{quando.date()}|{mensagem.get('model', 'desconhecido')}"
 
 
-def coletar(pastas: dict[str, Path]) -> dict:
+def coletar(pastas: dict[str, Path], estado: dict | None = None) -> dict:
     """Varre os transcript de cada conta e devolve o consumo agregado.
 
     A leitura e incremental: guardamos ate onde cada arquivo ja foi lido e,
-    na proxima passada, so o que cresceu entra na conta.
+    na proxima passada, so o que cresceu entra na conta. Com `estado`, diz em
+    estado["parcial"] se algum arquivo ficou pela metade por causa do teto da passada.
     """
     cache = _carregar_cache()
     arquivos = cache["arquivos"]
@@ -141,6 +142,7 @@ def coletar(pastas: dict[str, Path]) -> dict:
     if not isinstance(ultimos, dict):
         ultimos = {}
     mudou = False
+    parcial = False
 
     for chave_perfil, pasta in pastas.items():
         raiz = Path(pasta) / "projects"
@@ -152,6 +154,13 @@ def coletar(pastas: dict[str, Path]) -> dict:
             registros, novo_fim = _ler_novidades(arquivo, desde)
             if not registros and novo_fim == desde:
                 continue
+            # andou mas nao chegou no fim: o resto entra na proxima passada, e ate la o numero
+            # da tela e menor que o real. A linha que o Claude ainda esta escrevendo nao conta.
+            try:
+                if novo_fim > desde and arquivo.stat().st_size - desde > TETO_POR_PASSADA:
+                    parcial = True
+            except OSError:
+                pass
             vistos = defaultdict(Counter)
             ids = set()
             # Cada bloco da resposta vira uma linha com o mesmo id e o mesmo consumo, e elas
@@ -174,10 +183,10 @@ def coletar(pastas: dict[str, Path]) -> dict:
                     if identificador in ids:
                         continue
                     ids.add(identificador)
-                parcial = Counter()
-                chave_dia = _somar(registro, parcial)
+                soma = Counter()
+                chave_dia = _somar(registro, soma)
                 if chave_dia:
-                    vistos[chave_dia].update(parcial)
+                    vistos[chave_dia].update(soma)
             for chave_dia, contagem in vistos.items():
                 destino = dias.setdefault(f"{chave_perfil}|{chave_dia}", {})
                 for campo in CAMPOS:
@@ -190,11 +199,13 @@ def coletar(pastas: dict[str, Path]) -> dict:
     # sem novidade nao ha o que gravar: antes o arquivo inteiro era reescrito a cada leitura
     if mudou:
         _gravar_cache({"arquivos": arquivos, "dias": dias, "ultimos": ultimos})
+    if estado is not None:
+        estado["parcial"] = parcial
     return dias
 
 
-def relatorio(pastas: dict[str, Path]) -> dict:
-    dias = coletar(pastas)
+def relatorio(pastas: dict[str, Path], estado: dict | None = None) -> dict:
+    dias = coletar(pastas, estado)
 
     hoje = datetime.now().date()
     inicio_semana = hoje - timedelta(days=hoje.weekday())
@@ -233,7 +244,9 @@ def relatorio(pastas: dict[str, Path]) -> dict:
 
         if dia >= trinta:
             serie[perfil][dia_texto].update(contagem)
-            modelos[perfil][modelo] += contagem["saida"] + contagem["entrada"]
+            # as pilulas sao a legenda do grafico, e o grafico e os numeros de cima contam so
+            # o que foi gerado; somando a entrada junto, a legenda nao batia com as barras
+            modelos[perfil][modelo] += contagem["saida"]
             dia_por_modelo[perfil][dia_texto][modelo] += contagem["saida"]
 
     saida = {}
