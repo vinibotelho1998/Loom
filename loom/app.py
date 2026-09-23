@@ -4,16 +4,20 @@ import ctypes.wintypes
 import json
 import os
 import sys
+import time
 from pathlib import Path
 
-from PySide6.QtCore import QEvent, QUrl
-from PySide6.QtGui import QColor, QIcon
+from PySide6.QtCore import QEvent, Qt, QTimer, QUrl
+from PySide6.QtGui import QColor, QIcon, QPalette
+from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWebChannel import QWebChannel
 from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineSettings
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import QApplication, QMainWindow, QMenu, QMessageBox, QSystemTrayIcon
 
 from . import config as mod_config
+from . import instancia as mod_instancia
+from . import vigia as mod_vigia
 from .bridge import Bridge
 
 # Tres niveis de cinza, do mais claro pro mais escuro, pra dar profundidade:
@@ -24,6 +28,10 @@ COR_LINHA = "#333843"
 COR_TEXTO = "#c8cfda"
 
 UI_DIR = Path(__file__).resolve().parent.parent / "ui"
+
+# Tela refeita mais que isto dentro de um minuto e sinal de que o motor nao se recupera,
+# e insistir so pisca a janela
+TETO_DE_RECUPERACAO = 3
 
 
 class LoggingPage(QWebEnginePage):
@@ -41,19 +49,11 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Loominal")
         self.resize(1180, 720)
 
-        self.view = QWebEngineView(self)
-        self.view.setPage(LoggingPage(self.view))
-        self.view.page().setBackgroundColor(QColor(COR_FUNDO))
-        settings = self.view.settings()
-        settings.setAttribute(QWebEngineSettings.LocalContentCanAccessFileUrls, True)
-        settings.setAttribute(QWebEngineSettings.ScrollAnimatorEnabled, False)
-        # sem estes dois o navigator.clipboard nem existe, e o Ctrl+V da pagina nao le nada
-        settings.setAttribute(QWebEngineSettings.JavascriptCanAccessClipboard, True)
-        settings.setAttribute(QWebEngineSettings.JavascriptCanPaste, True)
-
         self.bridge = Bridge(self)
         self.bridge.notificacaoPedida.connect(self._notificar)
         self.bandeja = self._montar_bandeja()
+        self._recuperacoes: list[float] = []
+        self._servidor: QLocalServer | None = None
 
         # o filtro precisa ser da aplicacao inteira: o widget que recebe o arrasto
         # e criado por dentro do motor web e nao existe ainda neste ponto
@@ -61,9 +61,46 @@ class MainWindow(QMainWindow):
         app = QApplication.instance()
         if app is not None:
             app.installEventFilter(self)
-        self.channel = QWebChannel(self)
-        self.channel.registerObject("bridge", self.bridge)
-        self.view.page().setWebChannel(self.channel)
+
+        # por tras da pagina fica uma cor que ela nunca pinta: e por ela que a vigia percebe,
+        # lendo a tela, quando a pagina sumiu e so sobrou o fundo da janela
+        self.setStyleSheet(f"QMainWindow {{ background: {mod_vigia.COR_SENTINELA}; }}")
+        self._vigia = mod_vigia.Vigia(time.monotonic())
+        self._relogio_da_vigia = QTimer(self)
+        self._relogio_da_vigia.setInterval(mod_vigia.INTERVALO_MS)
+        self._relogio_da_vigia.timeout.connect(self._vigiar)
+        self._relogio_da_vigia.start()
+
+        self.view = None
+        self.channel = None
+        self._montar_tela()
+
+    def _montar_tela(self) -> None:
+        """Monta o motor web e carrega a tela. Os shells ficam no Bridge, fora daqui.
+
+        Por isso a tela pode ser jogada fora e montada de novo sem derrubar nada: a pagina
+        nova pede ao Bridge os shells vivos e cada aba volta ligada ao seu.
+        """
+        view = QWebEngineView(self)
+        view.setPage(LoggingPage(view))
+        view.page().setBackgroundColor(QColor(COR_FUNDO))
+        # o fundo do proprio widget tambem, porque e ele que aparece quando o motor para
+        fundo = view.palette()
+        fundo.setColor(QPalette.ColorRole.Window, QColor(mod_vigia.COR_SENTINELA))
+        view.setPalette(fundo)
+        settings = view.settings()
+        settings.setAttribute(QWebEngineSettings.LocalContentCanAccessFileUrls, True)
+        settings.setAttribute(QWebEngineSettings.ScrollAnimatorEnabled, False)
+        # sem estes dois o navigator.clipboard nem existe, e o Ctrl+V da pagina nao le nada
+        settings.setAttribute(QWebEngineSettings.JavascriptCanAccessClipboard, True)
+        settings.setAttribute(QWebEngineSettings.JavascriptCanPaste, True)
+        # quando o motor da pagina morre, a janela ficava preta pra sempre com os shells vivos
+        # por baixo, sem nenhum jeito de voltar a eles
+        view.page().renderProcessTerminated.connect(self._pagina_caiu)
+
+        channel = QWebChannel(view)
+        channel.registerObject("bridge", self.bridge)
+        view.page().setWebChannel(channel)
 
         endereco = QUrl.fromLocalFile(str(UI_DIR / "index.html"))
         consulta = []
@@ -76,8 +113,90 @@ class MainWindow(QMainWindow):
             consulta.append("config=" + os.environ["LOOM_CONFIG"])
         if consulta:
             endereco.setQuery("&".join(consulta))
-        self.view.load(endereco)
-        self.setCentralWidget(self.view)
+        view.load(endereco)
+
+        antiga = self.view
+        self.view, self.channel = view, channel
+        # setCentralWidget apaga a tela anterior, e o canal dela vai junto por ser filho
+        self.setCentralWidget(view)
+        if antiga is not None:
+            view.setFocus()
+        self._vigia.recomecar(time.monotonic())
+
+    def recuperar_tela(self) -> bool:
+        """Joga a tela fora e monta outra, com as mesmas abas ligadas aos mesmos shells.
+
+        Serve pra tela preta: quando o driver de video reinicia, o motor web as vezes nao
+        volta a desenhar e so uma tela nova resolve. Devolve False quando ja tentou demais.
+        """
+        agora = time.monotonic()
+        self._recuperacoes = [t for t in self._recuperacoes if agora - t < 60]
+        if len(self._recuperacoes) >= TETO_DE_RECUPERACAO:
+            return False
+        self._recuperacoes.append(agora)
+        self._montar_tela()
+        return True
+
+    def _vigiar(self) -> None:
+        visivel = self.isVisible() and not self.isMinimized()
+        motivo = self._vigia.tique(
+            time.monotonic(), visivel, self.bridge.ultimo_pulso, self._so_fundo_na_tela
+        )
+        if not motivo:
+            return
+        print(f"[tela] refazendo a tela sozinho: {motivo}", flush=True)
+        self.recuperar_tela()
+        # no teto de tentativas a tela nao e refeita; mesmo assim espera uma carencia inteira
+        # antes de julgar de novo, em vez de insistir a cada volta do relogio
+        self._vigia.recomecar(time.monotonic())
+
+    def _so_fundo_na_tela(self) -> bool | None:
+        """Le a janela direto da tela e diz se ali aparece so o fundo, sem a pagina.
+
+        None quando nao da pra ler com seguranca: janela atras de outra, coberta ou pequena.
+        """
+        if self.view is None:
+            return None
+        pixels = mod_vigia.ler_janela(int(self.winId()))
+        return None if pixels is None else mod_vigia.so_fundo(pixels)
+
+    def _pagina_caiu(self, status, codigo: int) -> None:
+        print(f"[tela] motor da pagina caiu: {status} {codigo}", flush=True)
+        # fora do sinal: o motor ainda esta desmontando a pagina que morreu
+        QTimer.singleShot(300, self.recuperar_tela)
+
+    def escutar_outras_instancias(self) -> None:
+        """Abrir o Loom de novo com ele aberto traz esta janela, com a tela refeita.
+
+        Os shells moram neste processo. Uma segunda janela nasceria com shells novos e nunca
+        acharia as conversas que estao rodando aqui, que era justamente o que se queria de volta.
+        """
+        nome = mod_instancia.nome()
+        servidor = QLocalServer(self)
+        if not servidor.listen(nome):
+            # sobrou o nome de um Loom que morreu sem fechar; liberado, a segunda tentativa pega
+            QLocalServer.removeServer(nome)
+            if not servidor.listen(nome):
+                return
+        servidor.newConnection.connect(self._outra_instancia)
+        self._servidor = servidor
+
+    def _outra_instancia(self) -> None:
+        while self._servidor is not None and self._servidor.hasPendingConnections():
+            conexao = self._servidor.nextPendingConnection()
+            conexao.readyRead.connect(lambda c=conexao: self._atender(c))
+            conexao.disconnected.connect(conexao.deleteLater)
+
+    def _atender(self, conexao: QLocalSocket) -> None:
+        pedido = bytes(conexao.readAll()).strip()
+        if pedido != mod_instancia.PEDIDO:
+            conexao.disconnectFromServer()
+            return
+        self._recuperacoes.clear()
+        self.recuperar_tela()
+        self._trazer_pra_frente()
+        conexao.write(b"ok\n")
+        conexao.flush()
 
     def eventFilter(self, obj, evento):
         """Pega o arquivo arrastado antes do motor web.
@@ -146,6 +265,7 @@ class MainWindow(QMainWindow):
         bandeja.setToolTip("Loom")
         menu = QMenu()
         menu.addAction("Mostrar a janela", self._trazer_pra_frente)
+        menu.addAction("Recarregar a tela", self._recarregar_pela_bandeja)
         menu.addSeparator()
         menu.addAction("Sair", self.close)
         bandeja.setContextMenu(menu)
@@ -159,9 +279,17 @@ class MainWindow(QMainWindow):
         return bandeja
 
     def _trazer_pra_frente(self) -> None:
-        self.showNormal()
+        # showNormal tirava a janela de maximizada; aqui so sai do minimizado
+        self.setWindowState(self.windowState() & ~Qt.WindowState.WindowMinimized)
+        self.show()
         self.raise_()
         self.activateWindow()
+
+    def _recarregar_pela_bandeja(self) -> None:
+        # pedido da pessoa passa por cima do teto, que existe so pra recuperacao sozinha
+        self._recuperacoes.clear()
+        self.recuperar_tela()
+        self._trazer_pra_frente()
 
     def _notificar(self, titulo: str, texto: str) -> None:
         """Sessao que terminou e esta esperando avisa mesmo com a janela atras de tudo."""
@@ -191,6 +319,7 @@ class MainWindow(QMainWindow):
                 return
         if self.bandeja is not None:
             self.bandeja.hide()
+        self._relogio_da_vigia.stop()
         self.bridge.shutdown()
         super().closeEvent(event)
 
@@ -199,6 +328,9 @@ def main() -> int:
     app = QApplication(sys.argv)
     app.setApplicationName("Loom")
     app.setApplicationDisplayName("Loom")
+
+    if mod_instancia.chamar_quem_ja_esta_aberto():
+        return 0
 
     icone = UI_DIR / "loom.ico"
     if icone.exists():
@@ -212,6 +344,7 @@ def main() -> int:
             except (AttributeError, OSError):
                 pass
     window = MainWindow()
+    window.escutar_outras_instancias()
     window.show()
     return app.exec()
 

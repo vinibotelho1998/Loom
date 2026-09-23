@@ -433,6 +433,20 @@ class Aba extends AbaBase {
     }, 0);
   }
 
+  ligar(viva) {
+    /* Reencontra um shell que continuou rodando enquanto a tela era refeita, em vez de subir
+       outro. O terminal e redesenhado com o que o shell ja tinha mostrado. */
+    this.pedidoInicial = { pasta: viva.pasta || "" };
+    this.sessionId = viva.id;
+    porSessao.set(viva.id, this);
+    // o historico ja traz tudo que estava na fila; repetir a fila escreveria duas vezes
+    pendentes.delete(viva.id);
+    // redesenha no tamanho em que o shell escreveu. Medir aqui nao serve: aba escondida nao
+    // tem tamanho, e mandar isso pro shell espremeria o CLI. Quem acerta a medida e o ativar.
+    if (viva.cols > 0 && viva.rows > 0) this.term.resize(viva.cols, viva.rows);
+    if (viva.historico) this.term.write(viva.historico);
+  }
+
   escrever(data) {
     this.term.write(data);
   }
@@ -548,6 +562,42 @@ function novaAba(shellId, perfilId, pedido) {
   }
   setTimeout(atualizarSessoes, 300);
   return aba;
+}
+
+function reconectarAbas(depois) {
+  /* Os shells moram no processo do app, nao na pagina. Quando a tela e refeita, porque o
+     motor web caiu ou porque o Loom foi aberto de novo, cada aba volta ligada ao shell que
+     continuou rodando. No start normal a lista vem vazia e segue a restauracao de sempre. */
+  bridge.liveSessions((json) => {
+    let vivas = [];
+    try {
+      vivas = JSON.parse(json);
+    } catch (e) {
+      vivas = [];
+    }
+    let ativa = null;
+    for (const v of vivas) {
+      const shell = shells.find((s) => s.id === v.shell) || shells[0];
+      if (!shell) continue;
+      const perfil = perfis.find((p) => p.id === v.perfil) || null;
+      const aba = new Aba(shell, perfil, v.elevado);
+      if (v.apelido) {
+        aba.apelido = v.apelido;
+        aba.chaveRefletida = "";
+        aba.pintar();
+      }
+      aba.ligar(v);
+      if (v.ativa || !ativa) ativa = aba;
+    }
+    if (!ativa) {
+      depois(false);
+      return;
+    }
+    ativar(ativa);
+    montarSessoes();
+    setTimeout(atualizarSessoes, 300);
+    depois(true);
+  });
 }
 
 function abaPadrao() {
@@ -1864,12 +1914,15 @@ let gravarAbas = null;
 let ultimaAnotacao = "";
 
 function anotarAbas() {
-  if (!bridge || !cfg.restaurarAbas) return;
+  // vai sempre pro app, que guarda em memoria a ordem e o apelido de cada shell pra tela
+  // refeita; o disco so recebe quando restaurar abas esta ligado
+  if (!bridge) return;
   clearTimeout(gravarAbas);
   gravarAbas = setTimeout(() => {
     const lista = ordem
       .filter((a) => !a.ehPainel && a.viva)
       .map((a) => ({
+        sessao: a.sessionId || "",
         shell: a.shell.id,
         perfil: a.perfil ? a.perfil.id : "",
         pasta: a.sessao ? a.sessao.pasta || "" : (a.pedidoInicial || {}).pasta || "",
@@ -2556,8 +2609,11 @@ new QWebChannel(qt.webChannelTransport, (channel) => {
           ligarCampos();
           aplicarAlturaExternas();
           aplicarLarguraLateral();
-          restaurarAbas((tinha) => {
-            if (!tinha) abaPadrao();
+          reconectarAbas((reconectou) => {
+            if (reconectou) return;
+            restaurarAbas((tinha) => {
+              if (!tinha) abaPadrao();
+            });
           });
           atualizarSessoes();
           atualizarLimites();
@@ -2584,6 +2640,16 @@ new QWebChannel(qt.webChannelTransport, (channel) => {
   });
 });
 
-window.addEventListener("beforeunload", () => {
-  for (const a of ordem) if (bridge && a.sessionId) bridge.closeSession(a.sessionId);
-});
+/* Recarregar a pagina NAO fecha os shells: eles moram no app, e a pagina nova se liga a eles
+   de volta. Fechar a janela e que encerra tudo, pelo lado do app. */
+
+function pulsar() {
+  /* Prova pro app que a pagina continua sendo desenhada. O requestAnimationFrame so roda
+     quando um quadro sai de verdade, entao pagina travada ou motor que parou de desenhar
+     param de pulsar, e a vigia do app refaz a tela sozinha. Um quadro por segundo, nao mais. */
+  requestAnimationFrame(() => {
+    if (bridge) bridge.pulso();
+    setTimeout(pulsar, 1000);
+  });
+}
+pulsar();

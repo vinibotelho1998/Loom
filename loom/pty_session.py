@@ -111,6 +111,11 @@ class PtySession(QObject):
             self._proc.setwinsize(self._rows, self._cols)
 
     @property
+    def tamanho(self) -> tuple[int, int]:
+        """Colunas e linhas que o shell usa agora."""
+        return self._cols, self._rows
+
+    @property
     def alive(self) -> bool:
         return self._proc is not None and self._proc.isalive()
 

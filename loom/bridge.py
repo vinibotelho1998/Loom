@@ -8,6 +8,7 @@ import subprocess
 import sys
 import time
 import uuid
+from collections import deque
 from pathlib import Path
 
 from PySide6.QtCore import QFileSystemWatcher, QObject, QTimer, Qt, Signal, Slot
@@ -33,6 +34,8 @@ TAXA_PRA_AGRUPAR = 12 * 1024  # bytes por segundo
 # tudo que a lista mostra fica sob observacao, senao a sessao volta a viver sem avisar
 JANELA_DE_VIGIA = 24 * 3600
 TETO_DE_VIGIA = 400
+# o que cada shell ja mostrou, pra tela refeita redesenhar o terminal como estava
+HISTORICO_POR_SESSAO = 512 * 1024  # caracteres
 RAIZ_PROJETO = Path(__file__).resolve().parent.parent
 RAIZ_DADOS = mod_caminhos.RAIZ
 
@@ -55,6 +58,15 @@ class Bridge(QObject):
         super().__init__(parent)
         self._sessions: dict[str, PtySession] = {}
         self._buffers: dict[str, list[str]] = {}
+        # Os shells moram neste processo, nao na pagina. Se a tela cai e e refeita, cada aba
+        # nova precisa achar o seu shell de volta, entao guardamos de onde ele nasceu e o fim
+        # do que ele ja mostrou.
+        self._origem: dict[str, dict] = {}
+        self._historico: dict[str, deque[str]] = {}
+        self._tamanho_historico: dict[str, int] = {}
+        self._historico_cortado: set[str] = set()
+        self._abas: list[dict] = []
+        self.ultimo_pulso = 0.0
         self._volume_recente = 0
         self._marco_volume = time.monotonic()
         self._shells = mod_shells.descobrir()
@@ -280,12 +292,85 @@ class Bridge(QObject):
 
     @Slot(str)
     def saveTabs(self, bruto: str) -> None:
+        """Guarda a ordem, o apelido e a ativa. Em memoria sempre, no disco se a pessoa quis."""
         try:
             dados = json.loads(bruto)
         except ValueError:
             return
-        if isinstance(dados, list):
+        if not isinstance(dados, list):
+            return
+        self._abas = [a for a in dados if isinstance(a, dict)]
+        if mod_config.carregar().get("restaurarAbas"):
             mod_salvas.gravar(dados)
+
+    @Slot(result=str)
+    def liveSessions(self) -> str:
+        """Shells que continuam vivos, na ordem das abas, com o que cada um ja mostrou.
+
+        E o que a tela pede ao nascer. Vazio no start normal; depois de a tela ser refeita,
+        traz tudo que estava aberto, e a aba volta ligada ao mesmo shell em vez de subir outro.
+        """
+        # o que esta no buffer ainda nao entrou no historico e nao pode ficar pra tras
+        self._flush()
+        anotadas = {a.get("sessao"): a for a in self._abas if a.get("sessao")}
+        ordem = [s for s in anotadas if s in self._sessions]
+        ordem += [s for s in self._sessions if s not in anotadas]
+
+        vivas = []
+        for session_id in ordem:
+            sessao = self._sessions[session_id]
+            if not sessao.alive:
+                continue
+            nota = anotadas.get(session_id, {})
+            cols, rows = sessao.tamanho
+            vivas.append(
+                {
+                    **self._origem.get(session_id, {}),
+                    "id": session_id,
+                    "cols": cols,
+                    "rows": rows,
+                    "apelido": str(nota.get("apelido", "")),
+                    "ativa": bool(nota.get("ativa")),
+                    "historico": self._historico_de(session_id),
+                }
+            )
+        return json.dumps(vivas)
+
+    @Slot()
+    def pulso(self) -> None:
+        """A pagina avisa que desenhou um quadro. Sem aviso por um tempo, a vigia refaz a tela."""
+        self.ultimo_pulso = time.monotonic()
+
+    def _guardar_historico(self, session_id: str, texto: str) -> None:
+        fila = self._historico.setdefault(session_id, deque())
+        fila.append(texto)
+        total = self._tamanho_historico.get(session_id, 0) + len(texto)
+        while total > HISTORICO_POR_SESSAO and len(fila) > 1:
+            saiu = fila.popleft()
+            total -= len(saiu)
+            # o pedaco que saiu fechava a linha? entao o historico ainda comeca numa linha inteira
+            if saiu.endswith("\n"):
+                self._historico_cortado.discard(session_id)
+            else:
+                self._historico_cortado.add(session_id)
+        self._tamanho_historico[session_id] = total
+
+    def _historico_de(self, session_id: str) -> str:
+        texto = "".join(self._historico.get(session_id, ()))
+        if session_id in self._historico_cortado:
+            # o corte caiu no meio de uma linha, as vezes no meio de uma sequencia de cor;
+            # comecar na linha seguinte evita lixo no topo do terminal redesenhado
+            quebra = texto.find("\n")
+            if quebra >= 0:
+                texto = texto[quebra + 1 :]
+        return texto
+
+    def _esquecer(self, session_id: str) -> None:
+        self._buffers.pop(session_id, None)
+        self._origem.pop(session_id, None)
+        self._historico.pop(session_id, None)
+        self._tamanho_historico.pop(session_id, None)
+        self._historico_cortado.discard(session_id)
 
     @Slot(str, str, int, int, str, result=str)
     def openSessionWith(self, shell_id: str, perfil_id: str, cols: int, rows: int, extra: str) -> str:
@@ -451,6 +536,12 @@ class Bridge(QObject):
         session.exited.connect(self._on_exit, Qt.QueuedConnection)
         session.start()
         self._sessions[session_id] = session
+        self._origem[session_id] = {
+            "shell": shell.id,
+            "perfil": perfil.id if perfil is not None else "",
+            "pasta": pasta or "",
+            "elevado": bool(elevar),
+        }
 
         if perfil is not None and not self._sem_autoabrir and mod_config.carregar().get("abrirCliDaConta"):
             comando = mod_ferramentas.por_id(perfil.ferramenta).comando
@@ -476,7 +567,7 @@ class Bridge(QObject):
     @Slot(str)
     def closeSession(self, session_id: str) -> None:
         session = self._sessions.pop(session_id, None)
-        self._buffers.pop(session_id, None)
+        self._esquecer(session_id)
         if session is not None:
             session.stop()
 
@@ -514,6 +605,7 @@ class Bridge(QObject):
         for session_id, pedacos in pendentes.items():
             texto = "".join(pedacos)
             volume += len(texto)
+            self._guardar_historico(session_id, texto)
             self.output.emit(session_id, texto)
         self._ritmo(volume)
 
@@ -521,6 +613,7 @@ class Bridge(QObject):
     def _on_exit(self, session_id: str, code: int) -> None:
         self._flush()
         session = self._sessions.pop(session_id, None)
+        self._esquecer(session_id)
         if session is not None:
             # o shell saiu, mas o pseudo console continua aberto enquanto alguem segura o PTY,
             # e o que o shell deixou rodando em segundo plano segue preso nele
@@ -587,3 +680,7 @@ class Bridge(QObject):
             session.stop()
         self._sessions.clear()
         self._buffers.clear()
+        self._origem.clear()
+        self._historico.clear()
+        self._tamanho_historico.clear()
+        self._historico_cortado.clear()
