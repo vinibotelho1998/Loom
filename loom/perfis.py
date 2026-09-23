@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -463,21 +464,76 @@ def blindar_status_line(python: str, projeto: str, anterior: str) -> Path:
     Este arquivo mora na pasta de dados, confere se o coletor ainda existe e, se nao existe,
     chama direto a status line de sempre. O pior caso deixa de ser perder a barra.
     """
-    entrada = Path(projeto) / "coletar.py"
     destino = RAIZ / "status-line.cmd"
     RAIZ.mkdir(parents=True, exist_ok=True)
+    _gravar_atalho(destino, _texto_do_atalho(python, projeto, anterior))
+    return destino
 
+
+def _texto_do_atalho(python: str, projeto: str, anterior: str) -> str:
+    """O status-line.cmd: chama o coletor se ele existe, senao a status line de sempre."""
+    if getattr(sys, "frozen", False):
+        # no app instalado o coletor e o exe ao lado da janela, e nao existe coletar.py
+        entrada = Path(python).with_name("loom-coletor.exe")
+        chamada = f'"{entrada}" %*'
+    else:
+        entrada = Path(projeto) / "coletar.py"
+        chamada = f'"{python}" "{entrada}" %*'
     linhas = [
         "@echo off",
         "rem Gerado pelo Loom. Se o projeto sumir, a status line de sempre continua.",
         f'if exist "{entrada}" (',
-        f'  "{python}" "{entrada}" %*',
+        f"  {chamada}",
         ") else (",
         f"  {anterior}",
         ")",
     ]
+    quebra = chr(13) + chr(10)
+    return quebra.join(linhas) + quebra
+
+
+def _gravar_atalho(destino: Path, texto: str) -> None:
     # newline vazio: sem isso o Windows converte de novo e o arquivo sai com quebra dupla
     with open(destino, "w", encoding="utf-8", newline="") as fh:
-        quebra = chr(13) + chr(10)
-        fh.write(quebra.join(linhas) + quebra)
-    return destino
+        fh.write(texto)
+
+
+def reparar_status_line_principal(python: str, projeto: str) -> bool:
+    """Aponta pro coletor de agora o atalho de status line que a conta principal ja usa.
+
+    A conta principal nao e do Loom e ele nao instala nada nela. Mas quando o settings dela
+    ja chama um status-line.cmd gerado por este app, inclusive o de antes da troca de nome,
+    e o atalho aponta pra um coletor que nao existe mais, ele cai calado na status line de
+    sempre e o uso da conta fica sem leitura pra sempre. So o atalho e reescrito, com a
+    mesma status line de sempre no caminho de fuga; o settings da conta nao e tocado.
+    """
+    try:
+        atual = json.loads((pasta_principal() / "settings.json").read_text(encoding="utf-8"))
+    except (ValueError, OSError):
+        return False
+    linha = atual.get("statusLine") if isinstance(atual, dict) else None
+    comando = linha.get("command", "") if isinstance(linha, dict) else ""
+    casado = re.match(r'\s*"([^"]+status-line\.cmd)"', comando if isinstance(comando, str) else "")
+    if not casado:
+        return False
+    atalho = Path(casado.group(1))
+    try:
+        texto = atalho.read_text(encoding="utf-8")
+    except OSError:
+        return False
+    linhas = texto.splitlines()
+    # so atalho gerado por nos: o de outra ferramenta com o mesmo nome fica como esta
+    if len(linhas) < 2 or linhas[0] != "@echo off" or not linhas[1].startswith("rem Gerado pelo "):
+        return False
+    try:
+        anterior = linhas[linhas.index(") else (") + 1].strip()
+    except (ValueError, IndexError):
+        return False
+    novo = _texto_do_atalho(python, projeto, anterior)
+    if texto.replace("\r\n", "\n") == novo.replace("\r\n", "\n"):
+        return False
+    try:
+        _gravar_atalho(atalho, novo)
+    except OSError:
+        return False
+    return True

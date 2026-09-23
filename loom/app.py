@@ -17,6 +17,7 @@ from PySide6.QtWidgets import QApplication, QMainWindow, QMenu, QMessageBox, QSy
 
 from . import config as mod_config
 from . import instancia as mod_instancia
+from . import perfis as mod_perfis
 from . import vigia as mod_vigia
 from .bridge import Bridge
 
@@ -331,6 +332,10 @@ def main() -> int:
 
     if mod_instancia.chamar_quem_ja_esta_aberto():
         return 0
+
+    # a barra de uso da conta principal vem do atalho de status line; se ele ficou apontando
+    # pra um coletor que nao existe mais, a barra fica sem leitura ate alguem notar
+    mod_perfis.reparar_status_line_principal(sys.executable, str(UI_DIR.parent))
 
     icone = UI_DIR / "loom.ico"
     if icone.exists():
