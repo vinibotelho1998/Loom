@@ -29,9 +29,9 @@ por id de mensagem, converte o horário de UTC para o fuso local e agrega por di
 semana, modelo e perfil. Leitura incremental: guarda o deslocamento de cada
 arquivo e nunca relê o que já contou.
 
-**Terminal de verdade.** xterm.js na tela, pywinpty no ConPTY do Windows, ponte
-em WebSocket no localhost com porta efêmera e token por execução. Nada escuta
-fora da máquina.
+**Terminal de verdade.** xterm.js na tela, pywinpty no ConPTY do Windows, e a
+tela fala com os shells pelo canal interno do Qt, dentro do mesmo processo, sem
+porta de rede nenhuma.
 
 ## Instalação
 
@@ -55,8 +55,10 @@ python -m venv .venv
 .venv\Scripts\python testes\rodar.py rapido    pula o que abre processo
 ```
 
-Nenhum teste encosta na pasta de dados de verdade: cada um roda numa pasta
-temporária própria.
+Os testes de dados rodam cada um numa pasta temporária própria. Os de colar,
+seleção e arrastar sobem a janela, que lê a configuração real e abre a aba
+padrão com um shell, e o do terminal sobe um shell direto: por isso os quatro
+ficam fora do `rapido`.
 
 ## Gerar o instalador
 
