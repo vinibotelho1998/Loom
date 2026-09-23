@@ -61,6 +61,9 @@ def elevacao() -> dict:
         prova = subprocess.run(
             [caminho, "--help"], capture_output=True, text=True, encoding="utf-8",
             errors="replace", timeout=8,
+            # a janela do app nao tem console, e sem isto o sudo abria uma janela preta
+            # que piscava a cada start: o Windows 11 traz o sudo.exe mesmo desligado
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
     except (OSError, subprocess.SubprocessError):
         return {"disponivel": False, "motivo": "sem sudo", "comando": ""}
