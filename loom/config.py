@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from .caminhos import RAIZ
+from .caminhos import RAIZ, gravar_texto
 
 ARQUIVO = RAIZ / "config.json"
 
@@ -63,6 +63,9 @@ def carregar() -> dict:
             salvo = json.loads(ARQUIVO.read_text(encoding="utf-8"))
         except (ValueError, OSError):
             salvo = {}
+        # JSON valido mas sem ser objeto, tipo null, derrubava o getConfig e a tela nao subia
+        if not isinstance(salvo, dict):
+            salvo = {}
         for chave, valor in salvo.items():
             if chave in PADRAO and _valido(chave, valor):
                 dados[chave] = _ajustar(chave, valor)
@@ -74,6 +77,5 @@ def salvar(novo: dict) -> dict:
     for chave, valor in novo.items():
         if chave in PADRAO and _valido(chave, valor):
             atual[chave] = _ajustar(chave, valor)
-    RAIZ.mkdir(parents=True, exist_ok=True)
-    ARQUIVO.write_text(json.dumps(atual, indent=2, ensure_ascii=False), encoding="utf-8")
+    gravar_texto(ARQUIVO, json.dumps(atual, indent=2, ensure_ascii=False))
     return atual

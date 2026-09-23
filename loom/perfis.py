@@ -11,7 +11,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from . import ferramentas as mod_ferramentas
-from .caminhos import PERFIS, RAIZ
+from .caminhos import PERFIS, RAIZ, gravar_texto
 
 ARQUIVO = RAIZ / "perfis.json"
 
@@ -56,15 +56,16 @@ def _carregar_bruto() -> list[dict]:
     if not ARQUIVO.exists():
         return []
     try:
-        return json.loads(ARQUIVO.read_text(encoding="utf-8"))
+        bruto = json.loads(ARQUIVO.read_text(encoding="utf-8"))
     except (ValueError, OSError):
         return []
+    return bruto if isinstance(bruto, list) else []
 
 
 def listar() -> list[Perfil]:
     achados = []
     for d in _carregar_bruto():
-        if {"id", "nome", "cor"} <= d.keys():
+        if isinstance(d, dict) and {"id", "nome", "cor"} <= d.keys():
             achados.append(
                 Perfil(d["id"], d["nome"], d["cor"], d.get("ferramenta", "claude"), d.get("pasta", ""))
             )
@@ -72,10 +73,7 @@ def listar() -> list[Perfil]:
 
 
 def _gravar(perfis: list[Perfil]) -> None:
-    RAIZ.mkdir(parents=True, exist_ok=True)
-    ARQUIVO.write_text(
-        json.dumps([asdict(p) for p in perfis], indent=2, ensure_ascii=False), encoding="utf-8"
-    )
+    gravar_texto(ARQUIVO, json.dumps([asdict(p) for p in perfis], indent=2, ensure_ascii=False))
 
 
 def criar(nome: str, ferramenta: str = "claude", cor: str | None = None, pasta: str = "") -> Perfil:
@@ -285,7 +283,7 @@ def instalar_coletor(perfil: Perfil, python: str, projeto: str) -> bool:
     if json.dumps(atual, sort_keys=True) == antes:
         return False
     try:
-        alvo.write_text(json.dumps(atual, indent=2, ensure_ascii=False), encoding="utf-8")
+        gravar_texto(alvo, json.dumps(atual, indent=2, ensure_ascii=False))
     except OSError:
         return False
     return True
@@ -335,7 +333,7 @@ def herdar_confianca(perfil: Perfil) -> int:
 
     atual.setdefault("hasCompletedOnboarding", True)
     try:
-        alvo.write_text(json.dumps(atual, indent=2, ensure_ascii=False), encoding="utf-8")
+        gravar_texto(alvo, json.dumps(atual, indent=2, ensure_ascii=False))
     except OSError:
         return 0
     return novas
@@ -367,7 +365,7 @@ def confiar(perfil: Perfil, pasta: str) -> bool:
     entrada["hasTrustDialogAccepted"] = True
     atual.setdefault("hasCompletedOnboarding", True)
     try:
-        alvo.write_text(json.dumps(atual, indent=2, ensure_ascii=False), encoding="utf-8")
+        gravar_texto(alvo, json.dumps(atual, indent=2, ensure_ascii=False))
     except OSError:
         return False
     return True

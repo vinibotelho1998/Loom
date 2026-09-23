@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import asdict, dataclass
 
-from .caminhos import RAIZ
+from .caminhos import RAIZ, gravar_texto
 
 ARQUIVO = RAIZ / "ferramentas.json"
 
@@ -44,10 +44,12 @@ def listar() -> list[Ferramenta]:
         bruto = json.loads(ARQUIVO.read_text(encoding="utf-8"))
     except (ValueError, OSError):
         return list(EMBUTIDAS)
+    if not isinstance(bruto, list):
+        return list(EMBUTIDAS)
     conhecidas = {f.id: f for f in EMBUTIDAS}
     achadas = []
     for d in bruto:
-        if not {"id", "nome", "env", "login"} <= d.keys():
+        if not isinstance(d, dict) or not {"id", "nome", "env", "login"} <= d.keys():
             continue
         # campo que o arquivo nao tem vem do embutido, senao um cadastro antigo perde
         # informacao nova, tipo a pasta padrao da ferramenta
@@ -60,11 +62,7 @@ def listar() -> list[Ferramenta]:
 
 
 def gravar(ferramentas: list[Ferramenta]) -> None:
-    RAIZ.mkdir(parents=True, exist_ok=True)
-    ARQUIVO.write_text(
-        json.dumps([f.como_dict() for f in ferramentas], indent=2, ensure_ascii=False),
-        encoding="utf-8",
-    )
+    gravar_texto(ARQUIVO, json.dumps([f.como_dict() for f in ferramentas], indent=2, ensure_ascii=False))
 
 
 def por_id(ferramenta_id: str) -> Ferramenta:
