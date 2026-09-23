@@ -111,6 +111,8 @@ class SudoSemJanela(ComPastaPropria):
         with (
             unittest.mock.patch.object(shells.shutil, "which", return_value=r"C:\Windows\System32\sudo.exe"),
             unittest.mock.patch.object(shells.subprocess, "run", falso_run),
+            # o registro de verdade nao entra no teste: sem o modo gravado, vale a prova
+            unittest.mock.patch.object(shells, "_modo_do_sudo", return_value=None),
         ):
             resposta = shells.elevacao()
 
