@@ -1918,7 +1918,7 @@ function montarSessoes() {
   const nomeDoBotao = el("mostrar-fora-rotulo");
   if (nomeDoBotao) nomeDoBotao.textContent = nomeDaLista;
   elListaExternas.innerHTML = "";
-  const mostrar = cfg.mostrarSessoesDeFora !== false;
+  const mostrar = cfg.mostrarSessoesDeFora === true;
   const temFora = lista.length > 0;
 
   el("divisor-fora").hidden = !temFora || !mostrar;

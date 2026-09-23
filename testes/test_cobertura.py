@@ -1114,6 +1114,7 @@ class ConversaDaAbaSemPrograma(ComPaginaInteira):
             "const aba = {viva: true, sessionId: 'a1', elevado: %s, refletir(s) { this.dono = s ? s.sessao : null; }};"
             " deDentro.ordem.length = 0; deDentro.ordem.push(aba);"
             " deDentro.sessoesVistas = %s; deDentro.abasComPrograma = %s;"
+            " deDentro.cfg = {mostrarSessoesDeFora: true};"
             " montarSessoes();"
             " return {dono: aba.dono, anterior: aba.conversaAnterior || '', titulo: aba.tituloAnterior || '',"
             " vivo: aba.programaVivo, cartoes: anotado};" % ("true" if elevada else "false", self.SESSOES, com_programa),

@@ -481,5 +481,20 @@ class GraficoDeTrintaDias(ComPastaPropria):
         self.assertEqual(barras, 30)
 
 
+class TestForaDasAbasOcultoPorPadrao(ComPastaPropria):
+    """A lista de conversas fora das abas ocupava a lateral de quem nunca pediu por ela."""
+
+    def test_instalacao_nova_comeca_com_a_lista_escondida(self):
+        self.assertIs(config.carregar()["mostrarSessoesDeFora"], False)
+
+    def test_tela_so_mostra_quando_a_escolha_foi_mostrar(self):
+        codigo = (UI / "app.js").read_text(encoding="utf-8")
+        self.assertIn("const mostrar = cfg.mostrarSessoesDeFora === true;", codigo)
+
+    def test_quem_escolheu_mostrar_continua_vendo(self):
+        config.salvar({"mostrarSessoesDeFora": True})
+        self.assertIs(config.carregar()["mostrarSessoesDeFora"], True)
+
+
 if __name__ == "__main__":
     unittest.main()
