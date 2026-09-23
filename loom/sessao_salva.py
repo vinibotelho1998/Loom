@@ -24,6 +24,8 @@ def gravar(abas: list[dict]) -> None:
                 "perfil": str(aba.get("perfil", "")),
                 "pasta": str(aba.get("pasta", "")),
                 "conversa": str(aba.get("conversa", "")),
+                # o nome da conversa, pro cartao reaberto dizer qual rodava ali
+                "titulo": str(aba.get("titulo", ""))[:80],
                 "apelido": str(aba.get("apelido", "")),
                 "ativa": bool(aba.get("ativa")),
             }

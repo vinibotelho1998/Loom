@@ -85,12 +85,32 @@ def _resumo(bloco: dict) -> tuple[str, str]:
     return nome, alvo
 
 
+# ferramentas que nao rodam nada: elas param o turno pra perguntar a voce, e enquanto a resposta
+# nao vem a ponta do transcript e o tool_use delas
+FERRAMENTAS_DE_PERGUNTA = ("AskUserQuestion", "ExitPlanMode")
+# fala do usuario que nao pede nada ao modelo: o Esc que interrompeu o turno e a saida de um
+# comando local, tipo /model. Depois delas a bola esta com voce, e nao com o Claude
+FALAS_QUE_DEVOLVEM = ("[Request interrupted by user", "<local-command-stdout>", "<local-command-stderr>")
+
+
+def _texto_da_fala(conteudo) -> str:
+    if isinstance(conteudo, str):
+        return conteudo.strip()
+    if isinstance(conteudo, list):
+        return " ".join(
+            str(b.get("text", "")) for b in conteudo if isinstance(b, dict) and b.get("type") == "text"
+        ).strip()
+    return ""
+
+
 def _ler_estado(registros: list[dict]) -> dict:
     """Le a cauda de tras pra frente ate achar o que a sessao estava fazendo.
 
     tool_use na ponta quer dizer ferramenta rodando. tool_result na ponta quer dizer
     que a ferramenta voltou e agora e a vez do modelo. Texto na ponta quer dizer
-    que ele terminou e a bola esta com voce.
+    que ele terminou e a bola esta com voce. A pergunta do AskUserQuestion, o plano
+    esperando aprovacao, o Esc que interrompeu e o comando local tambem esperam voce:
+    antes eles ficavam em working ou thinking por um minuto e meio.
     """
     bruto = "parada"
     ferramenta = ""
@@ -114,12 +134,16 @@ def _ler_estado(registros: list[dict]) -> dict:
             modelo = modelo or mensagem.get("model", "")
             usos = [b for b in blocos if b.get("type") == "tool_use"]
             if usos:
-                bruto = "rodando"
                 ferramenta, alvo = _resumo(usos[-1])
+                bruto = "pergunta" if ferramenta in FERRAMENTAS_DE_PERGUNTA else "rodando"
             else:
                 bruto = "respondeu"
             break
 
+        # antes do tool_result: o Esc no meio de uma ferramenta grava os dois juntos
+        if _texto_da_fala(conteudo).startswith(FALAS_QUE_DEVOLVEM):
+            bruto = "respondeu"
+            break
         if any(b.get("type") == "tool_result" for b in blocos):
             bruto = "pensando"
             break
@@ -139,9 +163,22 @@ def _decidir(bruto: str, idade: float) -> str:
         return "parada"
     if bruto in ("rodando", "pensando"):
         return bruto if idade < SEGUNDOS_ATIVO else "aguardando"
-    if bruto in ("respondeu", "aguardando"):
+    if bruto in ("respondeu", "aguardando", "pergunta"):
         return "aguardando"
     return "parada"
+
+
+def _pedindo_licenca(leitura: dict, marca: dict, mtime: float) -> bool:
+    """O Claude parou pra pedir permissao e o transcript nao andou depois do pedido.
+
+    O pedido nao vai pro transcript: a ponta continua sendo o tool_use, igual a uma ferramenta
+    rodando. Quem sabe e o gancho de aviso do Claude, que o coletor grava junto da sessao.
+    """
+    aviso = marca.get("aviso")
+    if not isinstance(aviso, dict) or leitura.get("bruto") != "rodando":
+        return False
+    quando = aviso.get("quando")
+    return isinstance(quando, (int, float)) and quando >= mtime
 
 
 def _idade(mtime: float) -> float:
@@ -349,6 +386,9 @@ def listar(pastas: dict[str, str], vistas: dict[str, dict] | None = None) -> lis
                     idade = min(idade, do_subagente)
             estado = _decidir(leitura["bruto"], idade)
             marca = (vistas or {}).get(arquivo.stem, {})
+            espera = "pergunta" if leitura["bruto"] == "pergunta" else ""
+            if estado != "parada" and _pedindo_licenca(leitura, marca, mtime):
+                estado, espera = "aguardando", "permissao"
             achadas.append(
                 {
                     "perfil": chave,
@@ -361,6 +401,8 @@ def listar(pastas: dict[str, str], vistas: dict[str, dict] | None = None) -> lis
                     "pasta": leitura.get("pasta", ""),
                     "ramo": leitura.get("ramo", ""),
                     "estado": estado,
+                    # por que ela espera voce, quando nao e so ter terminado de responder
+                    "espera": espera,
                     # o que a ponta do transcript diz, sem a regra da idade. A tela cruza isso com
                     # a saida do terminal da aba, que sabe se o Claude continua desenhando
                     "bruto": leitura["bruto"],

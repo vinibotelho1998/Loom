@@ -90,6 +90,48 @@ class Estado(ComPastaPropria):
         arquivo.touch()  # arquivo recem tocado, conversa velha
         self.assertEqual(sessoes.listar(pastas)[0]["estado"], "parada")
 
+    def ferramenta(self, nome: str, entrada: dict) -> dict:
+        return {
+            "type": "assistant",
+            "timestamp": agora_menos(5),
+            "cwd": r"C:\proj",
+            "message": {"role": "assistant", "content": [{"type": "tool_use", "name": nome, "input": entrada}]},
+        }
+
+    def test_pergunta_do_claude_espera_por_voce(self):
+        """O AskUserQuestion na ponta ficava em working, e ninguem ia responder."""
+        pastas, _ = self.montar([self.pedido(agora_menos(20), "faz"), self.ferramenta("AskUserQuestion", {})])
+        achada = sessoes.listar(pastas)[0]
+        self.assertEqual((achada["estado"], achada["espera"]), ("aguardando", "pergunta"))
+
+    def test_esc_que_interrompeu_devolve_a_vez(self):
+        registros = [
+            self.ferramenta("Bash", {"command": "x"}),
+            {
+                "type": "user",
+                "timestamp": agora_menos(3),
+                "cwd": r"C:\proj",
+                "message": {
+                    "role": "user",
+                    "content": [
+                        {"type": "tool_result", "content": "cancelado"},
+                        {"type": "text", "text": "[Request interrupted by user for tool use]"},
+                    ],
+                },
+            },
+        ]
+        pastas, _ = self.montar(registros)
+        self.assertEqual(sessoes.listar(pastas)[0]["estado"], "aguardando")
+
+    def test_aviso_de_permissao_depois_do_transcript_espera_por_voce(self):
+        pastas, arquivo = self.montar([self.pedido(agora_menos(20), "faz"), self.ferramenta("Edit", {"file_path": "a.py"})])
+        mtime = arquivo.stat().st_mtime
+        achada = sessoes.listar(pastas, {"s1": {"aviso": {"quando": mtime + 1}}})[0]
+        self.assertEqual((achada["estado"], achada["espera"]), ("aguardando", "permissao"))
+        # o transcript andou depois do aviso: a permissao ja foi dada
+        achada = sessoes.listar(pastas, {"s1": {"aviso": {"quando": mtime - 10}}})[0]
+        self.assertEqual((achada["estado"], achada["espera"]), ("rodando", ""))
+
 
 class Nome(ComPastaPropria):
     def montar(self, registros):
