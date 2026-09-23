@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -27,11 +28,33 @@ from .caminhos import RAIZ
 PASTA = RAIZ / "sessoes"
 FAIXAS = ("five_hour", "seven_day")
 VALIDADE = 12 * 3600
+# o id vira nome de arquivo: barra, dois pontos ou ".." levariam a gravacao pra fora da pasta
+ID_VALIDO = re.compile(r"^[\w-]{1,128}$")
+
+
+def _arquivo_da_sessao(sessao) -> Path | None:
+    if not isinstance(sessao, str) or not ID_VALIDO.match(sessao):
+        return None
+    return PASTA / f"{sessao}.json"
+
+
+def _gravar(alvo: Path, dados: dict) -> None:
+    PASTA.mkdir(parents=True, exist_ok=True)
+    provisorio = alvo.with_name(f"{alvo.name}.{os.getpid()}.tmp")
+    try:
+        provisorio.write_text(json.dumps(dados), encoding="utf-8")
+        provisorio.replace(alvo)
+    except OSError:
+        # o replace falha no Windows quando a janela esta lendo o arquivo naquele instante.
+        # Cada chamada e um processo novo, com pid novo, entao o que sobrava nunca era limpo.
+        provisorio.unlink(missing_ok=True)
+        raise
 
 
 def guardar(perfil: str, dados: dict) -> None:
     sessao = dados.get("session_id")
-    if not sessao:
+    alvo = _arquivo_da_sessao(sessao)
+    if alvo is None:
         return
 
     resumo = {
@@ -77,11 +100,7 @@ def guardar(perfil: str, dados: dict) -> None:
     if nome:
         resumo["titulo"] = str(nome).strip()
 
-    PASTA.mkdir(parents=True, exist_ok=True)
-    alvo = PASTA / f"{sessao}.json"
-    provisorio = alvo.with_name(f"{alvo.name}.{os.getpid()}.tmp")
-    provisorio.write_text(json.dumps(resumo), encoding="utf-8")
-    provisorio.replace(alvo)
+    _gravar(alvo, resumo)
 
 
 def esconder_aqui() -> bool:
@@ -125,15 +144,16 @@ def marcar(perfil: str, dados: dict) -> None:
     como se fosse de outro terminal. O hook de inicio fecha essa janela.
     """
     sessao = dados.get("session_id")
-    if not sessao:
+    alvo = _arquivo_da_sessao(sessao)
+    if alvo is None:
         return
-    PASTA.mkdir(parents=True, exist_ok=True)
-    alvo = PASTA / f"{sessao}.json"
     atual = {}
     if alvo.exists():
         try:
             atual = json.loads(alvo.read_text(encoding="utf-8"))
         except (ValueError, OSError):
+            atual = {}
+        if not isinstance(atual, dict):
             atual = {}
     atual.update(
         {
@@ -145,9 +165,7 @@ def marcar(perfil: str, dados: dict) -> None:
         }
     )
     atual.setdefault("faixas", {})
-    provisorio = alvo.with_name(f"{alvo.name}.{os.getpid()}.tmp")
-    provisorio.write_text(json.dumps(atual), encoding="utf-8")
-    provisorio.replace(alvo)
+    _gravar(alvo, atual)
 
 
 def confiar_na_pasta(perfil: str, dados: dict) -> None:
@@ -197,7 +215,7 @@ def main() -> int:
             dados = json.loads(bruto)
             marcar(perfil, dados)
             confiar_na_pasta(perfil, dados)
-        except (ValueError, OSError):
+        except (ValueError, OSError, TypeError, AttributeError):
             pass
         return 0
 
@@ -205,10 +223,12 @@ def main() -> int:
         dados = json.loads(bruto)
     except ValueError:
         dados = {}
-    if dados:
+    if isinstance(dados, dict) and dados:
         try:
             guardar(perfil, dados)
-        except OSError:
+        except (OSError, TypeError, ValueError, AttributeError):
+            # campo em formato inesperado derrubava o processo antes do encadear, e a
+            # status line de sempre sumia junto. Guardar e extra; a barra dela vem primeiro.
             pass
     sys.stdout.write(encadear(bruto, anterior))
     return 0
@@ -245,6 +265,10 @@ def ler_todas() -> dict[str, dict]:
             try:
                 dados = json.loads(Path(entrada.path).read_text(encoding="utf-8"))
             except (ValueError, OSError):
+                continue
+            # um arquivo so fora do formato derrubava a leitura inteira, e com ela a barra
+            # e a lista de sessoes, ate alguem apagar o arquivo na mao
+            if not isinstance(dados, dict) or not isinstance(dados.get("lido", 0), (int, float)):
                 continue
             _LIDAS[entrada.path] = (marca.st_mtime_ns, marca.st_size, dados)
 
