@@ -67,7 +67,7 @@ class NaTela:
         return json.loads(bruto)
 
 
-PREPARAR = """
+PREPARAR = r"""
 (function () {
   const QL = String.fromCharCode(13) + String.fromCharCode(10);
   if (!window.__provaTerm) {
