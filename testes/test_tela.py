@@ -21,7 +21,11 @@ from PySide6.QtCore import QCoreApplication  # noqa: E402
 from loom import bridge as mod_bridge  # noqa: E402
 from loom import config, instancia, sessao_salva, vigia  # noqa: E402
 
-APP = QCoreApplication.instance() or QCoreApplication(sys.argv)
+
+def garantir_app() -> None:
+    """Na hora do teste e nao no import: a bateria completa importa todos os modulos antes
+    de rodar, e uma aplicacao sem janela criada aqui derrubava os testes que abrem a janela."""
+    QCoreApplication.instance() or QCoreApplication([])
 
 
 class SessaoFalsa:
@@ -46,6 +50,7 @@ class ShellsVivos(ComPastaPropria):
 
     def setUp(self) -> None:
         super().setUp()
+        garantir_app()
         self.ponte = mod_bridge.Bridge()
         self.ponte._relistar.stop()
         self.ponte._flush_timer.stop()
@@ -286,6 +291,7 @@ class OutraInstancia(unittest.TestCase):
     """Abrir o Loom de novo pede ao que esta aberto pra voltar, pelo pipe da instancia."""
 
     def setUp(self) -> None:
+        garantir_app()
         self.nome_antigo = instancia.nome
         self.nome = f"loom-teste-{os.getpid()}"
         instancia.nome = lambda: self.nome
