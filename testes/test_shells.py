@@ -33,6 +33,39 @@ class DescobrirShells(unittest.TestCase):
         self.assertEqual([s.id for s in achados], ["cmd", "bash"])
         self.assertEqual((achados[1].caminho, achados[1].args), (extra, ("--login", "-i")))
 
+    def test_bash_do_wsl_antes_no_path_nao_vira_git_bash(self):
+        """No PATH de fabrica o System32 vem antes, e o Git Bash do menu abria o WSL."""
+        git_bash = r"D:\Ferramentas\Git\bin\bash.exe"
+        with (
+            achar(
+                {
+                    "bash.exe": r"C:\WINDOWS\system32\bash.exe",
+                    "git": r"D:\Ferramentas\Git\cmd\git.exe",
+                    "wsl.exe": r"C:\WINDOWS\system32\wsl.exe",
+                }
+            ),
+            unittest.mock.patch.dict(shells.os.environ, {"SystemRoot": r"C:\WINDOWS"}),
+            unittest.mock.patch.object(shells.os.path, "exists", side_effect=lambda c: c == git_bash),
+        ):
+            achados = {s.id: s.caminho for s in shells.descobrir()}
+        self.assertEqual(achados, {"bash": git_bash, "wsl": r"C:\WINDOWS\system32\wsl.exe"})
+
+    def test_so_o_bash_do_wsl_no_path_deixa_o_git_bash_fora(self):
+        for lancador in (r"C:\WINDOWS\system32\bash.exe", r"C:\Users\eu\AppData\Local\Microsoft\WindowsApps\bash.exe"):
+            with (
+                achar({"bash.exe": lancador}),
+                unittest.mock.patch.dict(shells.os.environ, {"SystemRoot": r"C:\WINDOWS"}),
+                unittest.mock.patch.object(shells.os.path, "exists", return_value=False),
+            ):
+                self.assertEqual(shells.descobrir(), [], lancador)
+
+    def test_bash_de_outro_lugar_no_path_ainda_vale(self):
+        with (
+            achar({"bash.exe": r"C:\msys64\usr\bin\bash.exe"}),
+            unittest.mock.patch.object(shells.os.path, "exists", return_value=False),
+        ):
+            self.assertEqual([s.caminho for s in shells.descobrir()], [r"C:\msys64\usr\bin\bash.exe"])
+
     def test_sem_nada_instalado_a_lista_vem_vazia(self):
         with achar({}), unittest.mock.patch.object(shells.os.path, "exists", return_value=False):
             self.assertEqual(shells.descobrir(), [])

@@ -28,13 +28,51 @@ CANDIDATOS = (
 )
 
 EXTRAS = {
-    "bash": (r"C:\Program Files\Git\bin\bash.exe",),
+    "bash": (
+        r"C:\Program Files\Git\bin\bash.exe",
+        r"C:\Program Files (x86)\Git\bin\bash.exe",
+        r"%LOCALAPPDATA%\Programs\Git\bin\bash.exe",
+    ),
 }
+
+
+def _bash_do_windows(caminho: str) -> bool:
+    """O bash.exe do System32 e o do WindowsApps sao o lancador do WSL, nao o Git Bash."""
+    pasta = os.path.normcase(os.path.dirname(caminho))
+    return _do_windows(caminho) or os.path.basename(pasta) == "windowsapps"
+
+
+def _git_bash() -> str | None:
+    """O bash do Git de verdade.
+
+    No PATH de fabrica o primeiro bash.exe e o do System32, que abre o WSL: a entrada Git Bash
+    caia nele, com outro HOME e outro git, e sem distro a aba abria e fechava. O do Git vem
+    primeiro pelo proprio git, subindo de ...\\Git\\cmd\\git.exe, depois pelos lugares de sempre.
+    """
+    git = shutil.which("git")
+    if git:
+        raiz = os.path.dirname(os.path.dirname(git))
+        vizinho = os.path.join(raiz, "bin", "bash.exe")
+        if os.path.exists(vizinho):
+            return vizinho
+    for alternativo in EXTRAS["bash"]:
+        alternativo = os.path.expandvars(alternativo)
+        if os.path.exists(alternativo):
+            return alternativo
+    caminho = shutil.which("bash.exe")
+    if caminho and not _bash_do_windows(caminho):
+        return caminho
+    return None
 
 
 def descobrir() -> list[Shell]:
     achados: list[Shell] = []
     for sid, nome, exe, args in CANDIDATOS:
+        if sid == "bash":
+            caminho = _git_bash()
+            if caminho:
+                achados.append(Shell(sid, nome, caminho, args))
+            continue
         caminho = shutil.which(exe)
         if not caminho:
             for alternativo in EXTRAS.get(sid, ()):
