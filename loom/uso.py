@@ -6,7 +6,7 @@ from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from .caminhos import RAIZ
+from .caminhos import RAIZ, gravar_texto
 
 CACHE = RAIZ / "uso-cache.json"
 
@@ -25,14 +25,18 @@ def _carregar_cache() -> dict:
         bruto = json.loads(CACHE.read_text(encoding="utf-8"))
     except (ValueError, OSError):
         return {"arquivos": {}, "dias": {}}
-    if not isinstance(bruto.get("arquivos"), dict) or not isinstance(bruto.get("dias"), dict):
+    if (
+        not isinstance(bruto, dict)
+        or not isinstance(bruto.get("arquivos"), dict)
+        or not isinstance(bruto.get("dias"), dict)
+    ):
         return {"arquivos": {}, "dias": {}}
     return bruto
 
 
 def _gravar_cache(cache: dict) -> None:
-    RAIZ.mkdir(parents=True, exist_ok=True)
-    CACHE.write_text(json.dumps(cache), encoding="utf-8")
+    # o cache guarda o gasto de transcript que o Claude ja apagou: perdido, nao volta
+    gravar_texto(CACHE, json.dumps(cache))
 
 
 BLOCO = 4 * 1024 * 1024
@@ -88,23 +92,37 @@ def _ler_novidades(caminho: Path, desde: int) -> tuple[list[dict], int]:
     return linhas, fim
 
 
+def _numero(valor) -> int:
+    """Token que vem nulo ou em outro formato conta zero.
+
+    Somar None dava TypeError, e como o deslocamento nao andava, aquela mesma linha
+    derrubava a tela de Uso em toda leitura seguinte.
+    """
+    if isinstance(valor, bool) or not isinstance(valor, (int, float)):
+        return 0
+    return int(valor)
+
+
 def _somar(registro: dict, alvo: Counter) -> str | None:
     mensagem = registro.get("message") or {}
+    if not isinstance(mensagem, dict):
+        return None
     consumo = mensagem.get("usage")
-    if not consumo or mensagem.get("role") != "assistant":
+    if not isinstance(consumo, dict) or not consumo or mensagem.get("role") != "assistant":
         return None
     carimbo = registro.get("timestamp")
-    if not carimbo:
+    if not isinstance(carimbo, str) or not carimbo:
         return None
     try:
         quando = datetime.fromisoformat(carimbo.replace("Z", "+00:00")).astimezone()
     except ValueError:
         return None
-    alvo["entrada"] += consumo.get("input_tokens", 0)
-    alvo["saida"] += consumo.get("output_tokens", 0)
-    alvo["cacheEscrito"] += consumo.get("cache_creation_input_tokens", 0)
-    alvo["cacheLido"] += consumo.get("cache_read_input_tokens", 0)
-    alvo["raciocinio"] += (consumo.get("output_tokens_details") or {}).get("thinking_tokens", 0)
+    detalhe = consumo.get("output_tokens_details")
+    alvo["entrada"] += _numero(consumo.get("input_tokens"))
+    alvo["saida"] += _numero(consumo.get("output_tokens"))
+    alvo["cacheEscrito"] += _numero(consumo.get("cache_creation_input_tokens"))
+    alvo["cacheLido"] += _numero(consumo.get("cache_read_input_tokens"))
+    alvo["raciocinio"] += _numero(detalhe.get("thinking_tokens") if isinstance(detalhe, dict) else 0)
     alvo["mensagens"] += 1
     return f"{quando.date()}|{mensagem.get('model', 'desconhecido')}"
 
@@ -118,6 +136,10 @@ def coletar(pastas: dict[str, Path]) -> dict:
     cache = _carregar_cache()
     arquivos = cache["arquivos"]
     dias = cache["dias"]
+    # o id da ultima resposta lida de cada arquivo. Cache antigo nao tem e comeca vazio.
+    ultimos = cache.get("ultimos")
+    if not isinstance(ultimos, dict):
+        ultimos = {}
     mudou = False
 
     for chave_perfil, pasta in pastas.items():
@@ -132,11 +154,23 @@ def coletar(pastas: dict[str, Path]) -> dict:
                 continue
             vistos = defaultdict(Counter)
             ids = set()
+            # Cada bloco da resposta vira uma linha com o mesmo id e o mesmo consumo, e elas
+            # chegam ao disco com segundos de distancia. Lendo com a conversa em andamento, o
+            # primeiro bloco caia numa passada e o resto na seguinte, e a resposta contava duas vezes.
+            if desde and ultimos.get(chave):
+                ids.add(ultimos[chave])
+            ultimo = None
             for registro in registros:
+                if not isinstance(registro, dict):
+                    continue
                 # a mesma resposta pode aparecer duas vezes quando a sessao e retomada
                 # ou quando o Claude reescreve o bloco. Contar duas vezes inflaria o gasto.
-                identificador = (registro.get("message") or {}).get("id") or registro.get("requestId")
+                mensagem = registro.get("message")
+                identificador = (mensagem.get("id") if isinstance(mensagem, dict) else None) or registro.get(
+                    "requestId"
+                )
                 if identificador:
+                    ultimo = identificador
                     if identificador in ids:
                         continue
                     ids.add(identificador)
@@ -149,11 +183,13 @@ def coletar(pastas: dict[str, Path]) -> dict:
                 for campo in CAMPOS:
                     destino[campo] = destino.get(campo, 0) + contagem[campo]
             arquivos[chave] = novo_fim
+            if ultimo:
+                ultimos[chave] = ultimo
             mudou = True
 
     # sem novidade nao ha o que gravar: antes o arquivo inteiro era reescrito a cada leitura
     if mudou:
-        _gravar_cache({"arquivos": arquivos, "dias": dias})
+        _gravar_cache({"arquivos": arquivos, "dias": dias, "ultimos": ultimos})
     return dias
 
 
