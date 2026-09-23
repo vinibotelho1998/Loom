@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import sys
 import threading
 
 from PySide6.QtCore import QObject, Signal
@@ -49,6 +50,72 @@ def ambiente_limpo() -> dict[str, str]:
         for chave, valor in os.environ.items()
         if not any(chave.startswith(prefixo) for prefixo in HERANCA_SUJA)
     }
+
+
+# o console que o Windows cria pra um programa de console nao e trabalho de ninguem
+FILHOS_DE_SERVICO = {"conhost.exe", "openconsole.exe"}
+
+
+def _filhos_de(pid: int, processos: list[tuple[int, int, str]]) -> list[str]:
+    """Os programas que aquele processo abriu, a partir de (pid, pai, nome) de cada um."""
+    return [
+        nome
+        for filho, pai, nome in processos
+        if pai == pid and filho != pid and nome.lower() not in FILHOS_DE_SERVICO
+    ]
+
+
+def _processos() -> list[tuple[int, int, str]] | None:
+    """Foto de todos os processos da maquina, so leitura. None quando o Windows nao entrega."""
+    if sys.platform != "win32":
+        return None
+    import ctypes
+    from ctypes import wintypes
+
+    class Entrada(ctypes.Structure):
+        _fields_ = [
+            ("dwSize", wintypes.DWORD),
+            ("cntUsage", wintypes.DWORD),
+            ("th32ProcessID", wintypes.DWORD),
+            ("th32DefaultHeapID", ctypes.c_size_t),
+            ("th32ModuleID", wintypes.DWORD),
+            ("cntThreads", wintypes.DWORD),
+            ("th32ParentProcessID", wintypes.DWORD),
+            ("pcPriClassBase", ctypes.c_long),
+            ("dwFlags", wintypes.DWORD),
+            ("szExeFile", ctypes.c_wchar * 260),
+        ]
+
+    kernel = ctypes.windll.kernel32
+    kernel.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
+    kernel.CreateToolhelp32Snapshot.argtypes = [wintypes.DWORD, wintypes.DWORD]
+    kernel.Process32FirstW.argtypes = [wintypes.HANDLE, ctypes.POINTER(Entrada)]
+    kernel.Process32NextW.argtypes = [wintypes.HANDLE, ctypes.POINTER(Entrada)]
+    kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+    foto = kernel.CreateToolhelp32Snapshot(0x2, 0)  # TH32CS_SNAPPROCESS
+    if not foto or foto == wintypes.HANDLE(-1).value:
+        return None
+    achados = []
+    try:
+        entrada = Entrada()
+        entrada.dwSize = ctypes.sizeof(Entrada)
+        tem = kernel.Process32FirstW(foto, ctypes.byref(entrada))
+        while tem:
+            achados.append((entrada.th32ProcessID, entrada.th32ParentProcessID, entrada.szExeFile))
+            tem = kernel.Process32NextW(foto, ctypes.byref(entrada))
+    finally:
+        kernel.CloseHandle(foto)
+    return achados
+
+
+def tem_filhos(pid: int | None) -> bool | None:
+    """Se o shell daquela aba esta rodando algum programa. None quando nao da pra saber."""
+    if not pid:
+        return None
+    processos = _processos()
+    if processos is None:
+        return None
+    return bool(_filhos_de(pid, processos))
 
 
 class PtySession(QObject):
@@ -118,6 +185,11 @@ class PtySession(QObject):
     @property
     def alive(self) -> bool:
         return self._proc is not None and self._proc.isalive()
+
+    @property
+    def pid(self) -> int | None:
+        proc = self._proc
+        return getattr(proc, "pid", None) if proc is not None else None
 
     def stop(self) -> None:
         """Derruba o shell e solta o pseudo console.
