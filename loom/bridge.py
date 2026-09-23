@@ -544,7 +544,9 @@ class Bridge(QObject):
             if not raiz.is_dir():
                 continue
             alvos.add(str(raiz))
-            for arquivo in raiz.rglob("*.jsonl"):
+            # so o nivel das conversas, o mesmo que a lista le: os transcript de subagente,
+            # mais fundo, gastavam o teto de vigia e disparavam releitura que nao mudava nada
+            for arquivo in raiz.glob("*/*.jsonl"):
                 try:
                     idade = agora - arquivo.stat().st_mtime
                 except OSError:

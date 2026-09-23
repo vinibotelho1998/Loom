@@ -7,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 
 CAUDA = 96 * 1024
+CAUDA_MAXIMA = 32 * 1024 * 1024
 JANELA_VIVA = 24 * 3600
 SEGUNDOS_ATIVO = 90
 SEGUNDOS_PARADA = 20 * 60
@@ -29,11 +30,29 @@ ALVO_DA_FERRAMENTA = {
 
 
 def _tail(caminho: Path) -> list[dict]:
+    """As ultimas linhas inteiras do transcript.
+
+    Uma linha sozinha pode passar da cauda: o Edit num arquivo grande grava o arquivo inteiro
+    no resultado. Com a janela fixa, a leitura caia no meio dessa linha, descartava ela e nao
+    sobrava nada, e a sessao sumia da lista ate o modelo escrever a linha seguinte.
+    """
     try:
         tamanho = caminho.stat().st_size
+    except OSError:
+        return []
+    janela = CAUDA
+    while True:
+        registros = _ler_cauda(caminho, tamanho, janela)
+        if registros or janela >= tamanho or janela >= CAUDA_MAXIMA:
+            return registros
+        janela = min(janela * 4, CAUDA_MAXIMA)
+
+
+def _ler_cauda(caminho: Path, tamanho: int, janela: int) -> list[dict]:
+    try:
         with open(caminho, "rb") as fh:
-            if tamanho > CAUDA:
-                fh.seek(tamanho - CAUDA)
+            if tamanho > janela:
+                fh.seek(tamanho - janela)
                 fh.readline()
             bruto = fh.read().decode("utf-8", errors="replace")
     except OSError:
@@ -53,6 +72,8 @@ def _tail(caminho: Path) -> list[dict]:
 def _resumo(bloco: dict) -> tuple[str, str]:
     nome = bloco.get("name", "")
     entrada = bloco.get("input") or {}
+    if not isinstance(entrada, dict):
+        entrada = {}
     campo, corte = ALVO_DA_FERRAMENTA.get(nome, ("", 0))
     alvo = str(entrada.get(campo, "")) if campo else ""
     if not campo:
@@ -83,8 +104,11 @@ def _ler_estado(registros: list[dict]) -> dict:
             continue
         carimbo = registro.get("timestamp") or carimbo
         mensagem = registro.get("message") or {}
+        if not isinstance(mensagem, dict):
+            continue
         conteudo = mensagem.get("content")
-        blocos = conteudo if isinstance(conteudo, list) else []
+        # bloco fora do formato derrubava a lista de sessoes inteira, nao so esta
+        blocos = [b for b in conteudo if isinstance(b, dict)] if isinstance(conteudo, list) else []
 
         if tipo == "assistant":
             modelo = modelo or mensagem.get("model", "")
@@ -132,7 +156,7 @@ def _idade_da_conversa(leitura: dict, mtime: float) -> float:
     pensando. O que vale e o carimbo da ultima mensagem.
     """
     carimbo = leitura.get("quando")
-    if carimbo:
+    if isinstance(carimbo, str) and carimbo:
         try:
             quando = datetime.fromisoformat(carimbo.replace("Z", "+00:00"))
             return max(datetime.now(quando.tzinfo).timestamp() - quando.timestamp(), 0)
@@ -278,7 +302,9 @@ def listar(pastas: dict[str, str], vistas: dict[str, dict] | None = None) -> lis
         raiz = Path(pasta) / "projects"
         if not raiz.is_dir():
             continue
-        for arquivo in raiz.rglob("*.jsonl"):
+        # conversa e so projects/<pasta>/<id>.jsonl. Descendo mais, o rglob pegava o transcript
+        # de cada subagente, em <id>/subagents, e cada um virava uma sessao de fora na lista
+        for arquivo in raiz.glob("*/*.jsonl"):
             # um stat so por arquivo: eram dois no mesmo laco, e isso roda a cada ciclo
             try:
                 marca = arquivo.stat()
