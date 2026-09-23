@@ -21,6 +21,12 @@ function curto(n) {
   return String(n);
 }
 
+function escapar(texto) {
+  /* O apelido da conta e digitado por voce e vai pro innerHTML: com < ou & ele quebrava o
+     botao, e com uma tag inteira virava HTML dentro de uma pagina que fala com os shells. */
+  return String(texto).replace(/[&<>"']/g, (c) => "&#" + c.charCodeAt(0) + ";");
+}
+
 function nomeModelo(id) {
   return String(id).replace(/^claude-/, "").replace(/-\d{8}$/, "").replace(/[<>]/g, "");
 }
@@ -49,7 +55,10 @@ function porSemana(serie) {
     const d = new Date(ponto.dia + "T00:00:00");
     const seg = new Date(d);
     seg.setDate(d.getDate() - ((d.getDay() + 6) % 7));
-    const chave = seg.toISOString().slice(0, 10);
+    // data local: o toISOString converte pra UTC e, a leste de Greenwich, a meia-noite da
+    // segunda vira domingo, e a semana aparecia rotulada com o dia anterior
+    const doisDigitos = (n) => String(n).padStart(2, "0");
+    const chave = seg.getFullYear() + "-" + doisDigitos(seg.getMonth() + 1) + "-" + doisDigitos(seg.getDate());
     baldes.set(chave, juntarModelos(somar(baldes.get(chave) || { dia: chave }, ponto), ponto));
   }
   return [...baldes.values()].sort((a, b) => a.dia.localeCompare(b.dia));
@@ -241,9 +250,9 @@ function pintarUsoCorpo() {
     contas
       .map(
         (c) =>
-          '<button class="chip' + (contaEscolhida === c.id ? " ativo" : "") + '" data-conta="' + c.id + '" ' +
-          (c.email ? 'title="' + c.email + '"' : "") + ">" +
-          '<span class="bolinha" style="background:' + c.cor + '"></span>' + c.nome + "</button>"
+          '<button class="chip' + (contaEscolhida === c.id ? " ativo" : "") + '" data-conta="' + escapar(c.id) + '" ' +
+          (c.email ? 'title="' + escapar(c.email) + '"' : "") + ">" +
+          '<span class="bolinha" style="background:' + escapar(c.cor) + '"></span>' + escapar(c.nome) + "</button>"
       )
       .join("") +
     "</div>";
