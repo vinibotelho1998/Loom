@@ -46,12 +46,15 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         # nome fixo de proposito: mostrar a conversa da aba ali em cima fazia o titulo
-        # trocar toda hora, o que incomodava mais do que ajudava
-        self.setWindowTitle("Loominal")
+        # trocar toda hora, o que incomodava mais do que ajudava. Igual ao nome da aplicacao,
+        # o Qt nao acrescenta o sufixo e a barra mostra so Loom
+        self.setWindowTitle("Loom")
         self.resize(1180, 720)
 
         self.bridge = Bridge(self)
         self.bridge.notificacaoPedida.connect(self._notificar)
+        # a aba do ultimo aviso, pra o clique no balao levar ate ela
+        self._aba_avisada = ""
         self.bandeja = self._montar_bandeja()
         self._recuperacoes: list[float] = []
         self._servidor: QLocalServer | None = None
@@ -275,9 +278,15 @@ class MainWindow(QMainWindow):
             if motivo == QSystemTrayIcon.ActivationReason.Trigger
             else None
         )
-        bandeja.messageClicked.connect(self._trazer_pra_frente)
+        bandeja.messageClicked.connect(self._abrir_aviso)
         bandeja.show()
         return bandeja
+
+    def _abrir_aviso(self) -> None:
+        """O clique no balao leva a aba que avisou, e nao so traz a janela."""
+        if self._aba_avisada:
+            self.bridge.irParaAba.emit(self._aba_avisada)
+        self._trazer_pra_frente()
 
     def _trazer_pra_frente(self) -> None:
         # showNormal tirava a janela de maximizada; aqui so sai do minimizado
@@ -292,8 +301,9 @@ class MainWindow(QMainWindow):
         self.recuperar_tela()
         self._trazer_pra_frente()
 
-    def _notificar(self, titulo: str, texto: str) -> None:
+    def _notificar(self, titulo: str, texto: str, aba: str = "") -> None:
         """Sessao que terminou e esta esperando avisa mesmo com a janela atras de tudo."""
+        self._aba_avisada = aba
         if self.bandeja is not None:
             self.bandeja.showMessage(
                 titulo, texto, QSystemTrayIcon.MessageIcon.Information, 6000
@@ -308,14 +318,19 @@ class MainWindow(QMainWindow):
         vivos = self.bridge.sessoes_vivas()
         if vivos and mod_config.carregar().get("confirmarFechar"):
             quantos = f"{vivos} shells ainda abertos" if vivos > 1 else "1 shell ainda aberto"
-            resposta = QMessageBox.question(
-                self,
+            # botoes com texto proprio: os padrao do Qt saiam Cancel e Close, sem tradutor
+            caixa = QMessageBox(
+                QMessageBox.Icon.Question,
                 "Fechar o Loom",
                 f"{quantos}. Fechar a janela encerra tudo que estiver rodando dentro.",
-                QMessageBox.StandardButton.Cancel | QMessageBox.StandardButton.Close,
-                QMessageBox.StandardButton.Cancel,
+                parent=self,
             )
-            if resposta != QMessageBox.StandardButton.Close:
+            cancelar = caixa.addButton("Cancelar", QMessageBox.ButtonRole.RejectRole)
+            fechar = caixa.addButton("Fechar tudo", QMessageBox.ButtonRole.DestructiveRole)
+            caixa.setDefaultButton(cancelar)
+            caixa.setEscapeButton(cancelar)
+            caixa.exec()
+            if caixa.clickedButton() is not fechar:
                 event.ignore()
                 return
         if self.bandeja is not None:

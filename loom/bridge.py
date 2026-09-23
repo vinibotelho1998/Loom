@@ -4,8 +4,10 @@ import base64
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
+import threading
 import time
 import uuid
 from collections import deque
@@ -13,11 +15,13 @@ from pathlib import Path
 
 from PySide6.QtCore import QFileSystemWatcher, QObject, QTimer, Qt, Signal, Slot
 
+from . import __version__
 from . import caminhos as mod_caminhos
 from . import coletor as mod_coletor
 from . import config as mod_config
 from . import ferramentas as mod_ferramentas
 from . import perfis as mod_perfis
+from . import pty_session as mod_pty
 from . import sessao_salva as mod_salvas
 from . import sessoes as mod_sessoes
 from . import uso as mod_uso
@@ -38,6 +42,80 @@ TETO_DE_VIGIA = 400
 HISTORICO_POR_SESSAO = 512 * 1024  # caracteres
 RAIZ_PROJETO = Path(__file__).resolve().parent.parent
 RAIZ_DADOS = mod_caminhos.RAIZ
+# conversa vira argumento de um comando digitado no shell: so o formato de id passa
+ID_DE_CONVERSA = re.compile(r"[\w-]{1,128}")
+
+# como cada editor conhecido pula direto pra linha; o que nao esta aqui abre so o arquivo
+EDITORES_COM_G = {"code", "code-insiders", "cursor", "codium", "vscodium", "windsurf"}
+EDITORES_COM_DOIS_PONTOS = {"subl", "sublime_text", "zed"}
+EDITORES_COM_N = {"notepad++"}
+
+
+def _separar_editor(texto: str) -> tuple[str, str]:
+    """O executavel e o resto do campo do editor. Aceita caminho com espaco, com ou sem aspas."""
+    texto = texto.strip()
+    if texto.startswith('"'):
+        fim = texto.find('"', 1)
+        if fim > 0:
+            return texto[1:fim], texto[fim + 1 :].strip()
+        return texto.strip('"'), ""
+    if Path(texto).is_file():
+        return texto, ""
+    executavel, _, resto = texto.partition(" ")
+    return executavel, resto.strip()
+
+
+def linha_do_editor(editor: str, arquivo: str, linha: str) -> str | None:
+    """A linha de comando que abre o arquivo no editor do campo, ou None se ele nao existe.
+
+    Sem conferir, o cmd escondido falhava calado quando o editor nao estava instalado e nada
+    abria. E o -g e do VS Code: o Notepad++ recebia e tentava abrir um arquivo chamado -g. O
+    que a pessoa escreveu depois do executavel continua indo junto, antes do arquivo.
+    """
+    executavel, resto = _separar_editor(editor)
+    if not executavel:
+        return None
+    achado = executavel if Path(executavel).is_file() else shutil.which(executavel)
+    if not achado:
+        return None
+    nome = Path(achado).stem.lower()
+    if linha and nome in EDITORES_COM_G:
+        alvo = f'-g "{arquivo}:{linha}"'
+    elif linha and nome in EDITORES_COM_DOIS_PONTOS:
+        alvo = f'"{arquivo}:{linha}"'
+    elif linha and nome in EDITORES_COM_N:
+        alvo = f'-n{linha} "{arquivo}"'
+    else:
+        alvo = f'"{arquivo}"'
+    return " ".join(parte for parte in (f'"{achado}"', resto, alvo) if parte)
+
+
+def _e_a_pasta_pessoal(pasta: str) -> bool:
+    def normal(caminho: str) -> str:
+        return os.path.normcase(os.path.abspath(caminho)).rstrip("\\/")
+
+    return normal(pasta) == normal(os.path.expanduser("~"))
+
+
+# o que o Windows executa quando se abre pelo programa padrao, alem do PATHEXT da maquina
+EXECUTADOS_AO_ABRIR = {
+    ".bat", ".cmd", ".com", ".exe", ".msi", ".scr", ".pif", ".cpl", ".msc", ".hta", ".reg",
+    ".lnk", ".url", ".vbs", ".vbe", ".js", ".jse", ".wsf", ".wsh", ".py", ".pyw", ".pyz", ".jar",
+}
+
+
+def _roda_ao_abrir(caminho: str) -> bool:
+    extensao = Path(caminho).suffix.lower()
+    pathext = {e.strip().lower() for e in os.environ.get("PATHEXT", "").split(";") if e.strip()}
+    return extensao in EXECUTADOS_AO_ABRIR or extensao in pathext
+
+
+def _abrir_no_sistema(caminho: str) -> None:
+    """Abre o arquivo com o programa que o Windows associa a ele."""
+    from PySide6.QtCore import QUrl
+    from PySide6.QtGui import QDesktopServices
+
+    QDesktopServices.openUrl(QUrl.fromLocalFile(caminho))
 
 
 class Bridge(QObject):
@@ -52,10 +130,17 @@ class Bridge(QObject):
     exited = Signal(str, int)
     mexeram = Signal()
     arquivosSoltos = Signal(str)
-    notificacaoPedida = Signal(str, str)
+    notificacaoPedida = Signal(str, str, str)
+    # clique na notificacao: a tela vai pra aba que avisou
+    irParaAba = Signal(str)
+    # o e-mail ou o plano de alguma conta chegou depois de a lista ja ter sido entregue
+    perfisMudaram = Signal()
+    _identidadeRespondida = Signal(str, float, str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self._perguntando: set[str] = set()
+        self._identidadeRespondida.connect(self._guardar_identidade)
         self._sessions: dict[str, PtySession] = {}
         self._buffers: dict[str, list[str]] = {}
         # Os shells moram neste processo, nao na pagina. Se a tela cai e e refeita, cada aba
@@ -110,11 +195,18 @@ class Bridge(QObject):
 
         O tamanho em disco NAO entra aqui. Ele custava uma varredura de milhares de arquivos
         por chamada e so a tela de Contas mostra o numero, entao virou o slot profileSize.
+        De quem e o login tambem nao se pergunta aqui: vai o que esta guardado, e a pergunta
+        ao CLI, quando a credencial mudou, roda ao fundo e avisa por perfisMudaram.
         """
         catalogo = {f.id: f.nome for f in mod_ferramentas.listar()}
         achados = []
         for p in mod_perfis.listar():
-            identidade = mod_perfis.identidade(p)
+            identidade, velha = mod_perfis.identidade_guardada(p)
+            if velha:
+                if mod_ferramentas.por_id(p.ferramenta).comando:
+                    self._perguntar_identidade(p)
+                else:
+                    identidade = {}
             achados.append(
                 {
                     "id": p.id,
@@ -131,6 +223,54 @@ class Bridge(QObject):
                 }
             )
         return json.dumps(achados)
+
+    def _perguntar_identidade(self, perfil) -> None:
+        """Pergunta ao CLI de quem e o login, fora da thread da tela.
+
+        O `claude auth status` leva um segundo ou mais, e rodava aqui a cada menu aberto depois
+        que o Claude renovava o token: a janela inteira congelava, terminais incluidos.
+        """
+        chave = str(perfil.config_dir)
+        if chave in self._perguntando:
+            return
+        self._perguntando.add(chave)
+
+        def perguntar() -> None:
+            resposta = mod_perfis.perguntar_identidade(perfil)
+            carimbo, resumo = resposta if resposta is not None else (0.0, None)
+            try:
+                self._identidadeRespondida.emit(chave, carimbo, json.dumps(resumo) if resumo is not None else "")
+            except RuntimeError:
+                # o app fechou enquanto o CLI respondia
+                pass
+
+        threading.Thread(target=perguntar, name="identidade", daemon=True).start()
+
+    def _guardar_identidade(self, chave: str, carimbo: float, bruto: str) -> None:
+        # de volta na thread da tela: so ela mexe no cache e no arquivo dele
+        self._perguntando.discard(chave)
+        if not bruto:
+            return
+        try:
+            resumo = json.loads(bruto)
+        except ValueError:
+            return
+        mod_perfis.guardar_identidade(chave, carimbo, resumo)
+        self.perfisMudaram.emit()
+
+    @Slot(result=str)
+    def sobre(self) -> str:
+        """Versao e pasta de dados de verdade, pra tela Sobre nao mostrar numero parado."""
+        return json.dumps({"versao": __version__, "raiz": str(mod_caminhos.RAIZ)})
+
+    @Slot(str, result=bool)
+    def temFilhos(self, session_id: str) -> bool:
+        """Se o shell daquela aba esta rodando algum programa. Na duvida, diz que sim."""
+        sessao = self._sessions.get(session_id)
+        if sessao is None or not sessao.alive:
+            return False
+        resposta = mod_pty.tem_filhos(sessao.pid)
+        return True if resposta is None else resposta
 
     @Slot(str, result=float)
     def profileSize(self, perfil_id: str) -> float:
@@ -214,9 +354,9 @@ class Bridge(QObject):
         buffer.close()
         return self.salvarColagem(base64.b64encode(bruto).decode("ascii"), "png")
 
-    @Slot(str, str)
-    def notificar(self, titulo: str, texto: str) -> None:
-        self.notificacaoPedida.emit(titulo or "Loom", texto or "")
+    @Slot(str, str, str)
+    def notificar(self, titulo: str, texto: str, aba: str) -> None:
+        self.notificacaoPedida.emit(titulo or "Loom", texto or "", aba or "")
 
     @Slot(str, str, result=str)
     def abrirExterno(self, alvo: str, pasta: str) -> str:
@@ -252,17 +392,18 @@ class Bridge(QObject):
             return f"Não achei {caminho}"
 
         editor = (mod_config.carregar().get("editor") or "").strip()
-        if not editor:
-            from PySide6.QtCore import QUrl
-            from PySide6.QtGui import QDesktopServices
+        comando = linha_do_editor(editor, str(arquivo), linha) if editor else None
+        if comando is None:
+            if _roda_ao_abrir(str(arquivo)):
+                # abrir no programa padrao e executar: o tests/x.py:42 clicado rodaria o script
+                inicio = f"Não achei o editor {editor}. " if editor else ""
+                return f"{inicio}Não abri {arquivo.name}: no programa padrão o Windows executaria o arquivo"
+            _abrir_no_sistema(str(arquivo))
+            return f"Não achei o editor {editor}, abri no programa padrão" if editor else ""
 
-            QDesktopServices.openUrl(QUrl.fromLocalFile(str(arquivo)))
-            return ""
-
-        destino = f"{arquivo}:{linha}" if linha else str(arquivo)
         try:
             subprocess.Popen(
-                f'{editor} -g "{destino}"',
+                comando,
                 shell=True,
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
@@ -276,7 +417,15 @@ class Bridge(QObject):
 
     @Slot(result=str)
     def listTools(self) -> str:
-        return json.dumps([f.como_dict() for f in mod_ferramentas.listar()])
+        # se o comando existe no PATH: a tela dizia que o Claude estava confirmado em qualquer
+        # maquina, e conta de ferramenta nao instalada so mostrava o erro do PowerShell depois
+        achadas = []
+        for f in mod_ferramentas.listar():
+            dados = f.como_dict()
+            primeiro = f.comando.split()[0] if f.comando.strip() else ""
+            dados["achado"] = bool(primeiro and shutil.which(primeiro))
+            achadas.append(dados)
+        return json.dumps(achadas)
 
     @Slot(str, result=str)
     def saveTool(self, bruto: str) -> str:
@@ -380,7 +529,11 @@ class Bridge(QObject):
         except ValueError:
             pedido_bruto = {}
         pedido = pedido_bruto
-        conversa = pedido.get("conversa")
+        conversa = str(pedido.get("conversa") or "")
+        # fullmatch e nao match com $: o $ aceita uma quebra de linha no fim, que viraria Enter
+        if conversa and not ID_DE_CONVERSA.fullmatch(conversa):
+            conversa = ""
+        entrar = bool(pedido.get("entrar"))
 
         # a pasta vai pro proprio ConPTY. Digitar `cd` depois de 700 ms deixava o comando
         # escrito na tela, competia com o prompt sendo desenhado e errava quando o shell
@@ -388,7 +541,8 @@ class Bridge(QObject):
         pasta = str(pedido.get("pasta") or "")
         inicio = pasta if pasta and Path(pasta).is_dir() else None
 
-        self._sem_autoabrir = bool(conversa)
+        # retomar e entrar digitam o proprio comando, entao a abertura automatica do CLI sai
+        self._sem_autoabrir = bool(conversa) or entrar
         try:
             session_id = self._abrir(
                 shell_id, perfil_id, cols, rows, bool(pedido_bruto.get("elevar")), inicio
@@ -396,23 +550,30 @@ class Bridge(QObject):
         finally:
             self._sem_autoabrir = False
 
-        if not conversa and not pedido.get("entrar"):
+        if not conversa and not entrar:
             return session_id
 
         perfil = mod_perfis.por_id(perfil_id) if perfil_id else None
-        comando = ""
-        if perfil is not None and conversa:
-            ferramenta = mod_ferramentas.por_id(perfil.ferramenta).comando
-            if ferramenta:
-                comando = f"{ferramenta} --resume {conversa}"
-
-        if comando:
-            QTimer.singleShot(700, lambda: self.write(session_id, comando + chr(13)))
-
-        if pedido.get("entrar"):
-            # o /login e digitado dentro do CLI, entao precisa esperar ele terminar de subir
-            QTimer.singleShot(4000, lambda: self.write(session_id, "/login" + chr(13)))
+        if conversa:
+            # aba sem conta roda na pasta de login de sempre, que e a do Claude: a conversa da
+            # conta principal nao cadastrada abria a aba na pasta e nao retomava nada
+            ferramenta = mod_ferramentas.por_id(perfil.ferramenta if perfil is not None else "claude")
+            if ferramenta.comando:
+                self._digitar(session_id, f"{ferramenta.comando} --resume {conversa}", 700)
+        elif perfil is not None:
+            # o clique em Entrar foi explicito, entao o CLI sobe mesmo com a abertura automatica
+            # desligada; antes o /login caia no PowerShell como comando inexistente
+            for espera, texto in mod_ferramentas.passos_para_entrar(mod_ferramentas.por_id(perfil.ferramenta)):
+                self._digitar(session_id, texto, espera)
         return session_id
+
+    def _digitar(self, session_id: str, texto: str, espera_ms: int) -> None:
+        """Digita na aba depois de um tempo, com o Enter no fim.
+
+        O shell ainda esta subindo o perfil dele quando a aba nasce, entao digitar na hora
+        se perde no meio do prompt sendo desenhado.
+        """
+        QTimer.singleShot(espera_ms, lambda: self.write(session_id, texto + chr(13)))
 
     @Slot(result=str)
     def getLimits(self) -> str:
@@ -434,8 +595,11 @@ class Bridge(QObject):
     @Slot(result=str)
     def getUsage(self) -> str:
         perfis = mod_perfis.listar()
-        dados = mod_uso.relatorio(mod_uso.pastas_de(perfis))
-        return json.dumps(dados)
+        estado: dict = {}
+        dados = mod_uso.relatorio(mod_uso.pastas_de(perfis), estado)
+        # parcial: algum historico grande ainda nao foi lido inteiro, e a tela precisa dizer
+        # que o numero vai subir em vez de mostrar menos que o real como se fosse medido
+        return json.dumps({"porConta": dados, "parcial": bool(estado.get("parcial"))})
 
     @Slot(str, str, result=str)
     def createProfile(self, nome: str, ferramenta: str) -> str:
@@ -521,8 +685,11 @@ class Bridge(QObject):
                 ajustes = mod_config.carregar()
                 mod_perfis.instalar_coletor(perfil, sys.executable, str(RAIZ_PROJETO))
                 mod_perfis.herdar_confianca(perfil)
-                if ajustes.get("confiarPastas"):
-                    mod_perfis.confiar(perfil, os.path.expanduser("~"))
+                # so a pasta onde a aba nasce, que e a que a pessoa escolheu abrir. Confiar na
+                # pasta pessoal a cada aba liberava tudo que fosse clonado dentro dela, com os
+                # ganchos e o MCP de cada projeto, sem a pergunta de confiar
+                if ajustes.get("confiarPastas") and pasta and not _e_a_pasta_pessoal(pasta):
+                    mod_perfis.confiar(perfil, pasta)
         session = PtySession(
             session_id,
             argv=argv,
@@ -546,9 +713,7 @@ class Bridge(QObject):
         if perfil is not None and not self._sem_autoabrir and mod_config.carregar().get("abrirCliDaConta"):
             comando = mod_ferramentas.por_id(perfil.ferramenta).comando
             if comando:
-                # o shell ainda esta subindo o perfil dele, entao digitar na hora
-                # se perde no meio do prompt sendo desenhado.
-                QTimer.singleShot(700, lambda: self.write(session_id, comando + chr(13)))
+                self._digitar(session_id, comando, 700)
 
         return session_id
 
