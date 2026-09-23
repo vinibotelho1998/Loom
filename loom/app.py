@@ -223,9 +223,32 @@ class MainWindow(QMainWindow):
             ]
             if caminhos:
                 evento.acceptProposedAction()
-                self.bridge.arquivosSoltos.emit(json.dumps(caminhos))
+                ponto = self._ponto_na_pagina(obj, evento)
+                if ponto is None:
+                    self.bridge.arquivosSoltos.emit(json.dumps(caminhos))
+                else:
+                    # na grade o arquivo vai pro painel debaixo do mouse, e nao pro ativo
+                    self.bridge.arquivosSoltosEm.emit(json.dumps(caminhos), *ponto)
                 return True
         return super().eventFilter(obj, evento)
+
+    def _ponto_na_pagina(self, obj, evento) -> tuple[float, float] | None:
+        """Onde o arquivo caiu, em pixel da pagina. None quando o drop nao veio da pagina.
+
+        Quem recebe o drop e o widget interno do motor web; a posicao vem relativa a ele e e
+        levada pra tela inteira antes de virar pixel da pagina.
+        """
+        from PySide6.QtWidgets import QWidget
+
+        view = self.view
+        if view is None or not isinstance(obj, QWidget) or not (obj is view or view.isAncestorOf(obj)):
+            return None
+        try:
+            ponto = obj.mapTo(view, evento.position().toPoint())
+        except (AttributeError, RuntimeError):
+            return None
+        zoom = view.zoomFactor() or 1.0
+        return ponto.x() / zoom, ponto.y() / zoom
 
     def _pintar_barra_de_titulo(self) -> None:
         """Pinta a barra de titulo do Windows na cor do app.
@@ -313,16 +336,38 @@ class MainWindow(QMainWindow):
             # pisca na barra de tarefas, que e o aviso que se ve sem olhar pro canto
             app.alert(self, 3000)
 
+    def _pergunta_ao_fechar(self) -> str:
+        """O texto da confirmacao de fechar a janela, ou vazio quando nao ha o que perguntar.
+
+        Perguntava sempre que havia uma aba, ou seja, sempre: com tres PowerShell parados no
+        prompt, a pessoa aprendia a clicar em Fechar tudo sem ler. Com as abas voltando no
+        proximo start, so pergunta quando alguma tem programa rodando. Sem voltar, pergunta
+        sempre, porque ai as abas se perdem.
+        """
+        ajustes = mod_config.carregar()
+        if not ajustes.get("confirmarFechar"):
+            return ""
+        vivas = self.bridge.sessoes_vivas()
+        if not vivas:
+            return ""
+        if not ajustes.get("restaurarAbas"):
+            quantas = f"{vivas} abas abertas" if vivas > 1 else "1 aba aberta"
+            return f"{quantas}. Fechar a janela encerra todas, e elas não voltam na próxima vez."
+        ocupadas = self.bridge.sessoes_ocupadas()
+        if not ocupadas:
+            return ""
+        quantas = f"{ocupadas} abas com programa rodando" if ocupadas > 1 else "1 aba com programa rodando"
+        return f"{quantas}. Fechar a janela encerra tudo que estiver rodando dentro."
+
     def closeEvent(self, event):
         """Fechar a aba pergunta; fechar a janela derrubava tudo calado."""
-        vivos = self.bridge.sessoes_vivas()
-        if vivos and mod_config.carregar().get("confirmarFechar"):
-            quantos = f"{vivos} shells ainda abertos" if vivos > 1 else "1 shell ainda aberto"
+        pergunta = self._pergunta_ao_fechar()
+        if pergunta:
             # botoes com texto proprio: os padrao do Qt saiam Cancel e Close, sem tradutor
             caixa = QMessageBox(
                 QMessageBox.Icon.Question,
                 "Fechar o Loom",
-                f"{quantos}. Fechar a janela encerra tudo que estiver rodando dentro.",
+                pergunta,
                 parent=self,
             )
             cancelar = caixa.addButton("Cancelar", QMessageBox.ButtonRole.RejectRole)

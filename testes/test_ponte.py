@@ -113,8 +113,9 @@ class LinkClicado(ComPonteNaPastaTemporaria):
         popen.assert_called_once()
 
     def test_arquivo_que_nao_existe_avisa_pelo_nome_impresso(self):
+        # relativo, o aviso diz em que pasta procurou
         aviso, popen, abertos = self.abrir("src/sumiu.py:3", str(self.projeto), {"code": "code.cmd"})
-        self.assertEqual(aviso, "Não achei src/sumiu.py")
+        self.assertEqual(aviso, f"Não achei src/sumiu.py em {self.projeto}")
         popen.assert_not_called()
         self.assertEqual(abertos, [])
 

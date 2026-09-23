@@ -130,6 +130,8 @@ class Bridge(QObject):
     exited = Signal(str, int)
     mexeram = Signal()
     arquivosSoltos = Signal(str)
+    # o mesmo arrasto, com o ponto da pagina onde ele caiu: na grade, e o painel debaixo do mouse
+    arquivosSoltosEm = Signal(str, float, float)
     notificacaoPedida = Signal(str, str, str)
     # clique na notificacao: a tela vai pra aba que avisou
     irParaAba = Signal(str)
@@ -272,6 +274,67 @@ class Bridge(QObject):
         resposta = mod_pty.tem_filhos(sessao.pid)
         return True if resposta is None else resposta
 
+    def _ocupadas(self) -> list[str]:
+        """As abas cujo shell roda algum programa, com uma foto so dos processos pra todas.
+
+        A elevada sempre conta: o que roda nela fica fora do alcance da foto, e o proprio sudo
+        ja e filho do shell. Sem foto, na duvida, todas contam.
+        """
+        vivas = [(sid, s) for sid, s in self._sessions.items() if s.alive]
+        processos = mod_pty._processos()
+        ocupadas = []
+        for session_id, sessao in vivas:
+            if processos is None or not sessao.pid or self._origem.get(session_id, {}).get("elevado"):
+                ocupadas.append(session_id)
+            elif mod_pty._filhos_de(sessao.pid, processos):
+                ocupadas.append(session_id)
+        return ocupadas
+
+    @Slot(result=str)
+    def abasComPrograma(self) -> str:
+        """Ids das abas com programa rodando no shell.
+
+        E o que diz se o Claude daquela aba ainda existe: saindo dele com /exit ou Ctrl+C a
+        aba seguia com o titulo, o ready e o contexto de uma conversa que ja tinha acabado.
+        """
+        return json.dumps(self._ocupadas())
+
+    def sessoes_ocupadas(self) -> int:
+        return len(self._ocupadas())
+
+    @Slot(str, str, str, result=bool)
+    def retomarNaAba(self, session_id: str, perfil_id: str, conversa: str) -> bool:
+        """Retoma a conversa na propria aba, quando o shell dela esta parado no prompt.
+
+        Retomar abria outra aba, e quem reabria o app com cinco conversas ficava com dez.
+        Com programa rodando, ou sem dar pra saber, devolve False e a tela abre outra aba.
+        """
+        if not ID_DE_CONVERSA.fullmatch(conversa or ""):
+            return False
+        sessao = self._sessions.get(session_id)
+        if sessao is None or not sessao.alive or self._origem.get(session_id, {}).get("elevado"):
+            return False
+        if mod_pty.tem_filhos(sessao.pid) is not False:
+            return False
+        perfil = mod_perfis.por_id(perfil_id) if perfil_id else None
+        ferramenta = mod_ferramentas.por_id(perfil.ferramenta if perfil is not None else "claude")
+        if not ferramenta.comando:
+            return False
+        self._digitar(session_id, f"{ferramenta.comando} --resume {conversa}", 0)
+        return True
+
+    @Slot(result=bool)
+    def leituraPrincipal(self) -> bool:
+        return mod_perfis.leitura_principal_ligada()
+
+    @Slot(result=bool)
+    def ligarLeituraPrincipal(self) -> bool:
+        return mod_perfis.ligar_leitura_principal(sys.executable, str(RAIZ_PROJETO))
+
+    @Slot(result=bool)
+    def desligarLeituraPrincipal(self) -> bool:
+        return mod_perfis.desligar_leitura_principal()
+
     @Slot(str, result=float)
     def profileSize(self, perfil_id: str) -> float:
         perfil = mod_perfis.por_id(perfil_id)
@@ -389,17 +452,25 @@ class Bridge(QObject):
         except OSError:
             existe = False
         if not existe:
+            # relativo, diz onde procurou: sem isso nao dava pra saber se o erro era do caminho
+            # ou da pasta da aba
+            if not Path(caminho).is_absolute() and pasta:
+                return f"Não achei {caminho} em {pasta}"
             return f"Não achei {caminho}"
 
         editor = (mod_config.carregar().get("editor") or "").strip()
         comando = linha_do_editor(editor, str(arquivo), linha) if editor else None
+        onde_trocar = " Escolha o editor em Configurações, Terminal, Editor dos links."
         if comando is None:
             if _roda_ao_abrir(str(arquivo)):
                 # abrir no programa padrao e executar: o tests/x.py:42 clicado rodaria o script
                 inicio = f"Não achei o editor {editor}. " if editor else ""
-                return f"{inicio}Não abri {arquivo.name}: no programa padrão o Windows executaria o arquivo"
+                return (
+                    f"{inicio}Não abri {arquivo.name}: no programa padrão o Windows executaria o arquivo."
+                    + onde_trocar
+                )
             _abrir_no_sistema(str(arquivo))
-            return f"Não achei o editor {editor}, abri no programa padrão" if editor else ""
+            return f"Não achei o editor {editor}, abri no programa padrão." + onde_trocar if editor else ""
 
         try:
             subprocess.Popen(
@@ -541,8 +612,10 @@ class Bridge(QObject):
         pasta = str(pedido.get("pasta") or "")
         inicio = pasta if pasta and Path(pasta).is_dir() else None
 
-        # retomar e entrar digitam o proprio comando, entao a abertura automatica do CLI sai
-        self._sem_autoabrir = bool(conversa) or entrar
+        # retomar e entrar digitam o proprio comando, entao a abertura automatica do CLI sai. A aba
+        # reaberta que tinha conversa tambem nao abre: nascia um Claude em branco em cada uma, e a
+        # conversa de antes so voltava por outra aba
+        self._sem_autoabrir = bool(conversa) or entrar or bool(pedido.get("semCli"))
         try:
             session_id = self._abrir(
                 shell_id, perfil_id, cols, rows, bool(pedido_bruto.get("elevar")), inicio
