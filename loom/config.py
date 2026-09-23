@@ -38,17 +38,31 @@ PADRAO = {
 NUMERICOS = {"tamanhoFonte", "entrelinha", "espacoLetra", "historico",
              "alturaExternas", "larguraLateral"}
 
+# A mesma faixa que a tela aceita. Um historico 0 vindo do campo apagado, ou do arquivo editado
+# a mao, cortava na hora a rolagem de todas as abas abertas, sem volta.
+FAIXAS = {
+    "tamanhoFonte": (9, 22),
+    "entrelinha": (1.0, 2.0),
+    "espacoLetra": (0, 3),
+    "historico": (1000, 200000),
+    "alturaExternas": (8, 75),
+    "larguraLateral": (180, 520),
+}
+
 
 def _valido(chave: str, valor) -> bool:
     padrao = PADRAO[chave]
     if isinstance(padrao, bool):
         return isinstance(valor, bool)
     if chave in NUMERICOS:
-        return isinstance(valor, (int, float)) and not isinstance(valor, bool)
+        return isinstance(valor, (int, float)) and not isinstance(valor, bool) and valor == valor
     return isinstance(valor, type(padrao))
 
 
 def _ajustar(chave: str, valor):
+    if chave in FAIXAS:
+        menor, maior = FAIXAS[chave]
+        valor = min(max(valor, menor), maior)
     if chave in NUMERICOS and isinstance(PADRAO[chave], int):
         return int(valor)
     if chave in NUMERICOS and isinstance(PADRAO[chave], float):
