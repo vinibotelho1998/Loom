@@ -402,29 +402,63 @@ def _gravar_identidade() -> None:
         pass
 
 
-def identidade(perfil: Perfil) -> dict:
-    """Descobre de quem e o login daquela pasta, perguntando ao proprio CLI.
+def identidade_guardada(perfil: Perfil) -> tuple[dict, bool]:
+    """O que ja se sabe do login daquela pasta, sem perguntar nada ao CLI.
 
-    `claude auth status` nao gasta token nenhum, so le o que esta no disco. Mesmo assim ele
-    sobe um processo Node e leva perto de um segundo, entao o resultado e guardado ate a
-    credencial mudar E tambem em disco: sem isso, todo start do app esperava esse processo
-    por conta antes de a primeira aba aparecer.
+    O segundo valor diz se a resposta guardada ficou velha: a credencial mudou desde a
+    ultima pergunta, o que acontece toda vez que o Claude renova o token.
     """
     credencial = perfil.config_dir / mod_ferramentas.por_id(perfil.ferramenta).login
     try:
         carimbo = credencial.stat().st_mtime
     except OSError:
-        return {}
-
+        return {}, False
     _identidade_do_disco()
-    chave = str(perfil.config_dir)
-    lembrado = _IDENTIDADE.get(chave)
+    lembrado = _IDENTIDADE.get(str(perfil.config_dir))
     if lembrado and lembrado[0] == carimbo:
-        return lembrado[1]
+        return lembrado[1], False
+    return (lembrado[1] if lembrado else {}), True
+
+
+def guardar_identidade(chave: str, carimbo: float, resumo: dict) -> None:
+    _IDENTIDADE[chave] = (carimbo, resumo)
+    _gravar_identidade()
+
+
+def identidade(perfil: Perfil) -> dict:
+    """Descobre de quem e o login daquela pasta, perguntando ao proprio CLI se preciso.
+
+    Espera a resposta. A tela nao usa esta: ela mostra o que esta guardado e pergunta ao
+    fundo, porque a espera travava a janela inteira.
+    """
+    guardada, velha = identidade_guardada(perfil)
+    if not velha:
+        return guardada
+    resposta = perguntar_identidade(perfil)
+    if resposta is None:
+        return {}
+    guardar_identidade(str(perfil.config_dir), *resposta)
+    return resposta[1]
+
+
+def perguntar_identidade(perfil: Perfil) -> tuple[float, dict] | None:
+    """Pergunta ao proprio CLI de quem e o login, e devolve junto o carimbo da credencial.
+
+    `claude auth status` nao gasta token nenhum, so le o que esta no disco. Mesmo assim ele
+    sobe um processo Node e leva perto de um segundo, entao a resposta e guardada ate a
+    credencial mudar E tambem em disco: sem isso, todo start do app esperava esse processo
+    por conta antes de a primeira aba aparecer. Aqui so se pergunta; guardar e de quem chamou,
+    pra duas perguntas ao mesmo tempo nao disputarem o cache.
+    """
+    credencial = perfil.config_dir / mod_ferramentas.por_id(perfil.ferramenta).login
+    try:
+        carimbo = credencial.stat().st_mtime
+    except OSError:
+        return None
 
     comando = mod_ferramentas.por_id(perfil.ferramenta).comando
     if not comando:
-        return {}
+        return None
     ambiente = {**os.environ}
     variavel = mod_ferramentas.por_id(perfil.ferramenta).env
     if variavel:
@@ -446,14 +480,14 @@ def identidade(perfil: Perfil) -> dict:
     except (OSError, subprocess.SubprocessError, ValueError):
         dados = {}
 
+    if not isinstance(dados, dict):
+        dados = {}
     resumo = {
         "email": dados.get("email", ""),
         "plano": dados.get("subscriptionType") or dados.get("authMethod", ""),
         "logado": bool(dados.get("loggedIn")),
     }
-    _IDENTIDADE[chave] = (carimbo, resumo)
-    _gravar_identidade()
-    return resumo
+    return carimbo, resumo
 
 
 def blindar_status_line(python: str, projeto: str, anterior: str) -> Path:

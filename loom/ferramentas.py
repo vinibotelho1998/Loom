@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 
 from .caminhos import RAIZ, gravar_texto
 
@@ -36,16 +36,21 @@ EMBUTIDAS = [
 ]
 
 
+def _de_fabrica() -> list[Ferramenta]:
+    # copias: o salvar edita o que recebe, e editava o padrao de fabrica junto
+    return [replace(f) for f in EMBUTIDAS]
+
+
 def listar() -> list[Ferramenta]:
     if not ARQUIVO.exists():
         gravar(EMBUTIDAS)
-        return list(EMBUTIDAS)
+        return _de_fabrica()
     try:
         bruto = json.loads(ARQUIVO.read_text(encoding="utf-8"))
     except (ValueError, OSError):
-        return list(EMBUTIDAS)
+        return _de_fabrica()
     if not isinstance(bruto, list):
-        return list(EMBUTIDAS)
+        return _de_fabrica()
     conhecidas = {f.id: f for f in EMBUTIDAS}
     achadas = []
     for d in bruto:
@@ -58,7 +63,29 @@ def listar() -> list[Ferramenta]:
         for campo in Ferramenta.__annotations__:
             valores[campo] = d.get(campo) or (getattr(base, campo, "") if base else "")
         achadas.append(Ferramenta(**valores))
-    return achadas or list(EMBUTIDAS)
+    return achadas or _de_fabrica()
+
+
+# Como cada CLI faz o login. O do Claude e um comando dentro dele, depois que ele sobe; o do
+# Codex e um subcomando no proprio shell. Ferramenta sem passo conhecido pede sozinha ao subir.
+LOGIN_DENTRO_DO_CLI = {"claude": "/login"}
+LOGIN_NO_SHELL = {"codex": "login"}
+
+
+def passos_para_entrar(ferramenta: Ferramenta) -> list[tuple[int, str]]:
+    """O que digitar na aba nova, e depois de quantos milissegundos, pra fazer o login.
+
+    O shell ainda esta subindo o perfil dele quando a aba nasce, entao o primeiro passo espera
+    um pouco; o comando de dentro do CLI espera o CLI terminar de subir.
+    """
+    if not ferramenta.comando:
+        return []
+    if ferramenta.id in LOGIN_NO_SHELL:
+        return [(700, f"{ferramenta.comando} {LOGIN_NO_SHELL[ferramenta.id]}")]
+    passos = [(700, ferramenta.comando)]
+    if ferramenta.id in LOGIN_DENTRO_DO_CLI:
+        passos.append((4000, LOGIN_DENTRO_DO_CLI[ferramenta.id]))
+    return passos
 
 
 def gravar(ferramentas: list[Ferramenta]) -> None:
