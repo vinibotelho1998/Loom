@@ -212,9 +212,16 @@ def _statusline_anterior(pasta: Path) -> str:
         atual = json.loads(alvo.read_text(encoding="utf-8"))
     except (ValueError, OSError):
         return ""
-    linha = atual.get("statusLine") or {}
-    comando = linha.get("command", "")
-    return "" if _nosso_comando(comando) else comando
+    linha = atual.get("statusLine") if isinstance(atual, dict) else None
+    comando = linha.get("command", "") if isinstance(linha, dict) else ""
+    if not isinstance(comando, str):
+        return ""
+    if not _nosso_comando(comando):
+        return comando
+    # ja e o coletor, que leva a status line de antes no fim, entre aspas. Devolver vazio aqui
+    # fazia a abertura seguinte de aba reinstalar sem ela, e a barra da pessoa sumia de vez
+    casado = re.search(r'(?:coletar\.py|loom-coletor(?:\.exe)?|loom\.coletor)"?\s+\S+\s+"(.*)"\s*$', comando)
+    return casado.group(1).replace('\\"', '"') if casado else ""
 
 
 def _nosso_comando(comando: str) -> bool:
@@ -237,6 +244,154 @@ def pasta_principal() -> Path:
     return Path(os.path.expanduser("~")) / ".claude"
 
 
+# o gancho de inicio marca a sessao com a aba; o de aviso diz que o Claude parou pra pedir
+# permissao, o que nao vai pro transcript
+GANCHOS_DO_COLETOR = (("SessionStart", "--hook"), ("Notification", "--aviso"))
+
+
+def _gancho_nosso(comando: str) -> bool:
+    # o da conta principal passa pelo status-line.cmd, que nao tem o nome do coletor
+    return _nosso_comando(comando) or (
+        "status-line.cmd" in comando and any(f" {b} " in f"{comando} " for _, b in GANCHOS_DO_COLETOR)
+    )
+
+
+def _grupo_nosso(grupo) -> bool:
+    if not isinstance(grupo, dict):
+        return False
+    return any(
+        _gancho_nosso(str((h or {}).get("command", "")))
+        for h in (grupo.get("hooks") or [])
+        if isinstance(h, dict)
+    )
+
+
+def _pendurar_ganchos(atual: dict, chamada: str, perfil_id: str) -> None:
+    """Poe os ganchos do coletor no settings, trocando o nosso antigo e mantendo os da pessoa."""
+    ganchos = atual.get("hooks")
+    if not isinstance(ganchos, dict):
+        ganchos = atual["hooks"] = {}
+    for evento, bandeira in GANCHOS_DO_COLETOR:
+        existentes = ganchos.get(evento)
+        grupos = [g for g in existentes if not _grupo_nosso(g)] if isinstance(existentes, list) else []
+        grupos.append({"hooks": [{"type": "command", "command": f"{chamada} {bandeira} {perfil_id}"}]})
+        ganchos[evento] = grupos
+
+
+def _tirar_ganchos(atual: dict) -> None:
+    ganchos = atual.get("hooks")
+    if not isinstance(ganchos, dict):
+        return
+    for evento, _ in GANCHOS_DO_COLETOR:
+        existentes = ganchos.get(evento)
+        if not isinstance(existentes, list):
+            continue
+        sobram = [g for g in existentes if not _grupo_nosso(g)]
+        if sobram:
+            ganchos[evento] = sobram
+        else:
+            ganchos.pop(evento, None)
+    if not ganchos:
+        atual.pop("hooks", None)
+
+
+def _settings_principal() -> tuple[Path, dict | None]:
+    """O settings da pasta de login de sempre. None quando ele existe e nao da pra ler."""
+    alvo = pasta_principal() / "settings.json"
+    if not alvo.exists():
+        return alvo, {}
+    try:
+        atual = json.loads(alvo.read_text(encoding="utf-8"))
+    except (ValueError, OSError):
+        return alvo, None
+    return alvo, atual if isinstance(atual, dict) else None
+
+
+def _atalho_da_status_line(linha) -> str | None:
+    """O texto do status-line.cmd gerado por este app que a status line chama, se chama um."""
+    comando = linha.get("command", "") if isinstance(linha, dict) else ""
+    casado = re.match(r'\s*"([^"]+status-line\.cmd)"', comando if isinstance(comando, str) else "")
+    if not casado:
+        return None
+    try:
+        texto = Path(casado.group(1)).read_text(encoding="utf-8")
+    except OSError:
+        return None
+    linhas = texto.splitlines()
+    if len(linhas) < 2 or linhas[0] != "@echo off" or not linhas[1].startswith("rem Gerado pelo "):
+        return None
+    return texto
+
+
+def _anterior_do_atalho(texto: str) -> str:
+    linhas = texto.splitlines()
+    try:
+        return linhas[linhas.index(") else (") + 1].strip()
+    except (ValueError, IndexError):
+        return ""
+
+
+def leitura_principal_ligada() -> bool:
+    """Se a conta de sempre ja passa pelo coletor, o que faz o limite e a aba aparecerem."""
+    _, atual = _settings_principal()
+    return bool(atual) and _atalho_da_status_line(atual.get("statusLine")) is not None
+
+
+def ligar_leitura_principal(python: str, projeto: str) -> bool:
+    """Faz a conta de sempre passar pelo coletor, so com o clique da pessoa.
+
+    Sem isso a aba sem conta e a Principal cadastrada nunca se ligam a conversa e o limite
+    fica em Sem leitura pra sempre. A status line que ja existia continua sendo chamada, e
+    vai pro caminho de fuga do atalho: se o Loom sumir, ela volta sozinha. O resto do
+    settings nao e tocado, e um settings ilegivel nao e reescrito.
+    """
+    alvo, atual = _settings_principal()
+    if atual is None:
+        return False
+    linha = atual.get("statusLine")
+    ja_nosso = _atalho_da_status_line(linha)
+    if ja_nosso is not None:
+        anterior = _anterior_do_atalho(ja_nosso)
+    else:
+        anterior = linha.get("command", "") if isinstance(linha, dict) else ""
+        anterior = anterior if isinstance(anterior, str) and not _nosso_comando(anterior) else ""
+    atalho = blindar_status_line(python, projeto, anterior)
+    comando = f'"{atalho}" __padrao__'
+    if anterior:
+        comando += ' "' + anterior.replace('"', '\\"') + '"'
+    atual["statusLine"] = {**(linha if isinstance(linha, dict) else {}), "type": "command", "command": comando}
+    _pendurar_ganchos(atual, f'"{atalho}"', "__padrao__")
+    try:
+        gravar_texto(alvo, json.dumps(atual, indent=2, ensure_ascii=False))
+    except OSError:
+        return False
+    return True
+
+
+def desligar_leitura_principal() -> bool:
+    """Devolve a status line de antes e tira os ganchos do coletor da conta de sempre."""
+    alvo, atual = _settings_principal()
+    if not atual:
+        return False
+    antes = json.dumps(atual, sort_keys=True)
+    linha = atual.get("statusLine")
+    nosso = _atalho_da_status_line(linha)
+    if nosso is not None:
+        anterior = _anterior_do_atalho(nosso)
+        if anterior:
+            atual["statusLine"] = {**linha, "command": anterior}
+        else:
+            atual.pop("statusLine", None)
+    _tirar_ganchos(atual)
+    if json.dumps(atual, sort_keys=True) == antes:
+        return False
+    try:
+        gravar_texto(alvo, json.dumps(atual, indent=2, ensure_ascii=False))
+    except OSError:
+        return False
+    return True
+
+
 def instalar_coletor(perfil: Perfil, python: str, projeto: str) -> bool:
     """Registra o Loom como status line daquele perfil.
 
@@ -253,33 +408,23 @@ def instalar_coletor(perfil: Perfil, python: str, projeto: str) -> bool:
         atual = json.loads(alvo.read_text(encoding="utf-8")) if alvo.exists() else {}
     except (ValueError, OSError):
         atual = {}
+    if not isinstance(atual, dict):
+        atual = {}
 
     anterior = _statusline_anterior(perfil.config_dir)
     chamada = _chamada_coletor(python, projeto)
     comando = f"{chamada} {perfil.id}"
     if anterior:
-        comando += f' "{anterior}"'
+        # aspas de dentro vao escapadas: sem isso o Windows partia a barra de antes no meio e o
+        # coletor recebia so um pedaco dela, tipo C:\Users\Maria de "C:\Users\Maria Clara\barra.cmd"
+        comando += ' "' + anterior.replace('"', '\\"') + '"'
 
     antes = json.dumps(atual, sort_keys=True)
     atual["statusLine"] = {"type": "command", "command": comando, "padding": 0}
     if not getattr(sys, "frozen", False):
         atual.setdefault("env", {})["PYTHONPATH"] = projeto
 
-    marcador = f"{chamada} --hook {perfil.id}"
-    ganchos = atual.setdefault("hooks", {})
-
-    def nosso(grupo) -> bool:
-        if not isinstance(grupo, dict):
-            return False
-        return any(
-            _nosso_comando((h or {}).get("command", ""))
-            for h in (grupo.get("hooks") or [])
-            if isinstance(h, dict)
-        )
-
-    inicio = [g for g in ganchos.get("SessionStart", []) if not nosso(g)]
-    inicio.append({"hooks": [{"type": "command", "command": marcador}]})
-    ganchos["SessionStart"] = inicio
+    _pendurar_ganchos(atual, chamada, perfil.id)
 
     if json.dumps(atual, sort_keys=True) == antes:
         return False
@@ -516,6 +661,10 @@ def _texto_do_atalho(python: str, projeto: str, anterior: str) -> str:
     linhas = [
         "@echo off",
         "rem Gerado pelo Loom. Se o projeto sumir, a status line de sempre continua.",
+        # os ganchos tambem passam por aqui; sem o coletor eles saem calados, porque o que um
+        # gancho de inicio imprime entra na conversa do Claude
+        f'if not exist "{entrada}" if "%~1"=="--hook" exit /b 0',
+        f'if not exist "{entrada}" if "%~1"=="--aviso" exit /b 0',
         f'if exist "{entrada}" (',
         f"  {chamada}",
         ") else (",

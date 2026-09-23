@@ -104,9 +104,10 @@ def guardar(perfil: str, dados: dict) -> None:
 
 
 def esconder_aqui() -> bool:
-    """Dentro do Loom a barra de cima ja diz tudo, entao a status line vira repeticao.
+    """Dentro do Loom a barra de baixo mostra limite, contexto e modelo.
 
-    Fora dele nada muda: a status line de sempre continua sendo chamada.
+    Fora dele nada muda: a status line de sempre continua sendo chamada. E com a barra de
+    baixo desligada ela tambem continua, senao a pessoa ficava sem nenhuma das duas.
     """
     if not os.environ.get("LOOM_ABA"):
         return False
@@ -114,7 +115,8 @@ def esconder_aqui() -> bool:
         from . import config as mod_config
     except ImportError:
         return False
-    return bool(mod_config.carregar().get("esconderStatusLine"))
+    ajustes = mod_config.carregar()
+    return bool(ajustes.get("esconderStatusLine")) and bool(ajustes.get("mostrarUsoNaBarra"))
 
 
 def encadear(bruto: str, anterior: str) -> str:
@@ -137,11 +139,15 @@ def encadear(bruto: str, anterior: str) -> str:
     return saida.stdout or ""
 
 
-def marcar(perfil: str, dados: dict) -> None:
+def marcar(perfil: str, dados: dict, aviso: bool = False) -> None:
     """Grava a identidade da sessao assim que ela nasce.
 
     A status line so e chamada quando o modelo responde, e ate la a sessao apareceria
     como se fosse de outro terminal. O hook de inicio fecha essa janela.
+
+    Com `aviso`, e o gancho de notificacao do Claude: ele parou pra pedir permissao ou
+    esta esperando voce. Isso nao vai pro transcript, entao fica anotado aqui com a hora,
+    e a lista trata a sessao como esperando enquanto o transcript nao andar depois dele.
     """
     sessao = dados.get("session_id")
     alvo = _arquivo_da_sessao(sessao)
@@ -165,6 +171,8 @@ def marcar(perfil: str, dados: dict) -> None:
         }
     )
     atual.setdefault("faixas", {})
+    if aviso:
+        atual["aviso"] = {"quando": time.time(), "texto": str(dados.get("message") or "")[:160]}
     _gravar(alvo, atual)
 
 
@@ -201,8 +209,11 @@ def main() -> int:
             pass
 
     argumentos = sys.argv[1:]
-    so_marcar = "--hook" in argumentos
-    if so_marcar:
+    aviso = "--aviso" in argumentos
+    if aviso:
+        argumentos.remove("--aviso")
+    so_marcar = aviso or "--hook" in argumentos
+    if "--hook" in argumentos:
         argumentos.remove("--hook")
     # o settings da pasta pode chamar o coletor com um perfil fixo enquanto a aba roda
     # em outra conta. Quem sabe a verdade e o ambiente da aba, entao ele decide.
@@ -213,8 +224,9 @@ def main() -> int:
     if so_marcar:
         try:
             dados = json.loads(bruto)
-            marcar(perfil, dados)
-            confiar_na_pasta(perfil, dados)
+            marcar(perfil, dados, aviso)
+            if not aviso:
+                confiar_na_pasta(perfil, dados)
         except (ValueError, OSError, TypeError, AttributeError):
             pass
         return 0

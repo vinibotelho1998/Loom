@@ -105,3 +105,65 @@ class ReparoDaBarra(ComPastaPropria):
 
     def test_sem_settings_nada_acontece(self):
         self.assertFalse(self.reparar())
+
+
+class LeituraDaPrincipal(ComPastaPropria):
+    """Ligar a Principal no Loom mexe no settings da pessoa, e Desligar tem que devolver como era."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.principal = self.casa / ".claude"
+        self._pasta_antes = perfis.pasta_principal
+        perfis.pasta_principal = lambda: self.principal
+        self.projeto = self.raiz / "Loom"
+        self.projeto.mkdir()
+        (self.projeto / "coletar.py").write_text("", encoding="utf-8")
+        self.alvo = self.principal / "settings.json"
+
+    def tearDown(self) -> None:
+        perfis.pasta_principal = self._pasta_antes
+        super().tearDown()
+
+    def ler(self) -> dict:
+        return json.loads(self.alvo.read_text(encoding="utf-8"))
+
+    def test_ligar_e_desligar_devolve_o_settings_como_era(self):
+        gancho_da_pessoa = {"hooks": [{"type": "command", "command": "meu-gancho.cmd"}]}
+        original = {
+            "theme": "dark",
+            "statusLine": {"type": "command", "command": "minha-barra.cmd", "padding": 2},
+            "hooks": {"SessionStart": [gancho_da_pessoa]},
+        }
+        self.alvo.write_text(json.dumps(original), encoding="utf-8")
+
+        self.assertTrue(perfis.ligar_leitura_principal("py.exe", str(self.projeto)))
+        ligado = self.ler()
+        self.assertTrue(perfis.leitura_principal_ligada())
+        self.assertIn("status-line.cmd", ligado["statusLine"]["command"])
+        self.assertEqual(ligado["statusLine"]["padding"], 2)
+        self.assertEqual(ligado["hooks"]["SessionStart"][0], gancho_da_pessoa)
+        self.assertEqual(len(ligado["hooks"]["SessionStart"]), 2)
+        self.assertIn("--aviso __padrao__", ligado["hooks"]["Notification"][0]["hooks"][0]["command"])
+        # a barra de antes fica no caminho de fuga do atalho
+        atalho = (perfis.RAIZ / "status-line.cmd").read_text(encoding="utf-8")
+        self.assertIn("  minha-barra.cmd", atalho.splitlines())
+
+        # ligar de novo nao empilha ganchos nem perde a barra de antes
+        self.assertTrue(perfis.ligar_leitura_principal("py.exe", str(self.projeto)))
+        self.assertEqual(len(self.ler()["hooks"]["SessionStart"]), 2)
+
+        self.assertTrue(perfis.desligar_leitura_principal())
+        self.assertEqual(self.ler(), original)
+        self.assertFalse(perfis.leitura_principal_ligada())
+        self.assertFalse(perfis.desligar_leitura_principal(), "nada do Loom sobrou pra tirar")
+
+    def test_sem_barra_antes_desligar_tira_a_status_line(self):
+        self.alvo.write_text(json.dumps({"theme": "dark"}), encoding="utf-8")
+        self.assertTrue(perfis.ligar_leitura_principal("py.exe", str(self.projeto)))
+        self.assertTrue(perfis.desligar_leitura_principal())
+        self.assertEqual(self.ler(), {"theme": "dark"})
+
+    def test_settings_ilegivel_nao_e_reescrito(self):
+        self.alvo.write_text("{ quebrado", encoding="utf-8")
+        self.assertFalse(perfis.ligar_leitura_principal("py.exe", str(self.projeto)))
+        self.assertEqual(self.alvo.read_text(encoding="utf-8"), "{ quebrado")
