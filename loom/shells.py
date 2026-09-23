@@ -46,16 +46,59 @@ def descobrir() -> list[Shell]:
     return achados
 
 
+# Os modos do sudo do Windows, como ele mesmo grava no registro. So o ultimo roda o shell
+# elevado dentro do mesmo console; os outros abrem outra janela ou nao aceitam tecla.
+SUDO_DESLIGADO, SUDO_NOVA_JANELA, SUDO_SEM_ENTRADA, SUDO_NA_MESMA_JANELA = 0, 1, 2, 3
+CHAVE_DO_SUDO = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Sudo"
+
+
+def _modo_do_sudo() -> int | None:
+    """Em que modo o sudo do Windows esta. None quando o registro nao diz."""
+    try:
+        import winreg
+    except ImportError:
+        return None
+    try:
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, CHAVE_DO_SUDO) as chave:
+            valor, _tipo = winreg.QueryValueEx(chave, "Enabled")
+    except OSError:
+        return None
+    return valor if isinstance(valor, int) else None
+
+
+def _do_windows(caminho: str) -> bool:
+    sistema = os.environ.get("SystemRoot") or r"C:\Windows"
+    return os.path.normcase(os.path.dirname(caminho)) == os.path.normcase(os.path.join(sistema, "System32"))
+
+
 def elevacao() -> dict:
     """Descobre se da pra abrir um shell elevado dentro da propria aba.
 
     O UAC cria o processo elevado fora do nosso ConPTY, entao ele nao caberia na aba.
     O `sudo` que vem no Windows 11 resolve isso, mas so depois de ligado nas Configuracoes,
-    em Sistema, Para desenvolvedores. Sem ele, nao ha caminho honesto e a opcao fica fora.
+    em Sistema, Para desenvolvedores, e so no modo que roda na mesma janela: no modo de
+    fabrica ele abre um console separado e a aba fechava com codigo 0, parecendo quebrada.
+    Sem ele, nao ha caminho honesto e a opcao fica fora.
     """
     caminho = shutil.which("sudo") or shutil.which("gsudo")
     if not caminho:
         return {"disponivel": False, "motivo": "sem sudo", "comando": ""}
+
+    if _do_windows(caminho):
+        modo = _modo_do_sudo()
+        if modo == SUDO_NA_MESMA_JANELA:
+            return {"disponivel": True, "motivo": "", "comando": caminho}
+        if modo is not None:
+            # o do Windows nao serve assim, mas o gsudo instalado ao lado serve
+            reserva = shutil.which("gsudo")
+            if reserva:
+                return {"disponivel": True, "motivo": "", "comando": reserva}
+            motivo = {
+                SUDO_DESLIGADO: "desligado",
+                SUDO_NOVA_JANELA: "nova janela",
+                SUDO_SEM_ENTRADA: "sem entrada",
+            }.get(modo, "desligado")
+            return {"disponivel": False, "motivo": motivo, "comando": caminho}
 
     try:
         prova = subprocess.run(
