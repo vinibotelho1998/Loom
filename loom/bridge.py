@@ -484,6 +484,10 @@ class Bridge(QObject):
 
     @Slot(str, str)
     def _on_output(self, session_id: str, data: str) -> None:
+        # o que ja estava na fila quando a aba fechou nao tem mais tela: entregue, caia na
+        # fila de pendentes do javascript e ficava la pra sempre
+        if session_id not in self._sessions:
+            return
         self._buffers.setdefault(session_id, []).append(data)
 
     def _ritmo(self, volume: int) -> None:
@@ -516,7 +520,11 @@ class Bridge(QObject):
     @Slot(str, int)
     def _on_exit(self, session_id: str, code: int) -> None:
         self._flush()
-        self._sessions.pop(session_id, None)
+        session = self._sessions.pop(session_id, None)
+        if session is not None:
+            # o shell saiu, mas o pseudo console continua aberto enquanto alguem segura o PTY,
+            # e o que o shell deixou rodando em segundo plano segue preso nele
+            session.stop()
         self.exited.emit(session_id, code)
 
     def _mexeu(self, _caminho: str = "") -> None:

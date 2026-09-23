@@ -404,6 +404,7 @@ class Aba extends AbaBase {
     ativar(this);
     // a tela acabou de nascer: medir agora daria tamanho errado e o CLI desenharia torto
     setTimeout(() => {
+      if (this.destruida) return;
       this.fit.fit();
       const perfilId = this.perfil ? this.perfil.id : "";
       bridge.openSessionWith(
@@ -413,6 +414,13 @@ class Aba extends AbaBase {
         this.term.rows,
         JSON.stringify(Object.assign({}, pedido, { elevar: this.elevado })),
         (id) => {
+          if (this.destruida) {
+            // a aba fechou antes de o id voltar: o shell ja tinha subido e ficava vivo sem
+            // tela ate o app fechar, com o CLI da conta digitado dentro dele logo depois
+            bridge.closeSession(id);
+            pendentes.delete(id);
+            return;
+          }
           this.sessionId = id;
           porSessao.set(id, this);
           for (const data of pendentes.get(id) || []) this.term.write(data);
@@ -479,6 +487,7 @@ class Aba extends AbaBase {
   }
 
   destruir() {
+    this.destruida = true;
     if (bridge && this.sessionId && this.viva) bridge.closeSession(this.sessionId);
     if (this.sessionId) porSessao.delete(this.sessionId);
     this.term.dispose();

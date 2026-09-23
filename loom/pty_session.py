@@ -72,16 +72,20 @@ class PtySession(QObject):
         self._proc = PtyProcess.spawn(
             self._argv, cwd=self._cwd, env=self._env, dimensions=(self._rows, self._cols)
         )
-        self._reader = threading.Thread(target=self._pump, name=f"pty-{self.session_id}", daemon=True)
+        # o processo vai como argumento e nao lido de self._proc: o stop() solta a referencia
+        # da sessao enquanto esta thread ainda le, as vezes antes de ela dar o primeiro passo
+        self._reader = threading.Thread(
+            target=self._pump, args=(self._proc,), name=f"pty-{self.session_id}", daemon=True
+        )
         self._reader.start()
 
-    def _pump(self) -> None:
+    def _pump(self, proc: PtyProcess) -> None:
         code = 0
         try:
             while True:
                 # o padrao do winpty e 1 kB, entao um despejo grande virava centenas de sinais
                 # enfileirados por segundo na thread da tela, cada um com o seu custo de travessia
-                data = self._proc.read(65536)
+                data = proc.read(65536)
                 if not data:
                     break
                 if self._stopping:
@@ -92,8 +96,8 @@ class PtySession(QObject):
         except OSError:
             pass
         finally:
-            if self._proc is not None:
-                code = self._proc.exitstatus if self._proc.exitstatus is not None else 0
+            if proc is not None:
+                code = proc.exitstatus if proc.exitstatus is not None else 0
             if not self._stopping:
                 self.exited.emit(self.session_id, code)
 
@@ -111,6 +115,23 @@ class PtySession(QObject):
         return self._proc is not None and self._proc.isalive()
 
     def stop(self) -> None:
+        """Derruba o shell e solta o pseudo console.
+
+        So o terminate matava o shell e deixava o resto de pe: a sessao continua filha da
+        Bridge ate o app fechar, e com ela o PtyProcess e o ConPTY. O Windows nao derruba os
+        filhos junto com o pai, entao o Claude que rodava dentro ficava vivo e sem tela. Quem
+        derruba os filhos e o ConPTY ao fechar, e ele so fecha quando ninguem mais segura o PTY.
+        """
         self._stopping = True
-        if self._proc is not None and self._proc.isalive():
-            self._proc.terminate(force=True)
+        proc, self._proc = self._proc, None
+        if proc is None:
+            return
+        # close fecha os sockets de leitura antes de matar, e isso solta as duas threads de
+        # leitura; a espera dele e so pra quem nao chama terminate logo em seguida
+        proc.delayafterclose = 0
+        try:
+            proc.close(force=True)
+        except OSError:
+            # o processo pode morrer entre o isalive e o kill, e ai o Windows nega o acesso.
+            # Deixar escapar aqui interrompia o shutdown no meio, com as outras abas vivas.
+            pass
