@@ -42,7 +42,10 @@ var setTimeout = qualquer, clearTimeout = qualquer, setInterval = qualquer;
 
 # O que o script guarda em let nao vira global e o eval do QJSEngine nao alcanca. Um objeto
 # criado no fim do proprio script le e troca cada um por dentro.
-MUTAVEIS = ("pastaPessoal", "perfis", "limitesPorPerfil", "abaAtiva", "usoBruto", "usoPerfis", "usoLimites")
+MUTAVEIS = (
+    "pastaPessoal", "perfis", "limitesPorPerfil", "abaAtiva", "usoBruto", "usoPerfis", "usoLimites",
+    "cfg", "zoomAtual", "Aba",
+)
 DE_DENTRO = (
     "\nvar estado = {"
     + ", ".join(f"get {n}() {{ return {n}; }}, set {n}(v) {{ {n} = v; }}" for n in MUTAVEIS)
@@ -296,6 +299,88 @@ class ArrastarPraAba(ComPagina):
         self.assertEqual(self.soltar("null", ["C:\\a.txt"]), [])
 
 
+class ZoomDaFonte(ComPagina):
+    def setUp(self) -> None:
+        self.definir("estado.cfg = {tamanhoFonte: 16}; estado.zoomAtual = 0")
+
+    def tearDown(self) -> None:
+        self.definir("estado.cfg = {}; estado.zoomAtual = 0")
+
+    def test_zoom_nao_grava_e_o_zero_volta_ao_tamanho_escolhido(self):
+        """Ctrl+0 voltava pra 14 fixo e gravava, e quem tinha escolhido 16 ficava com 14."""
+        self.definir("zoom(1); zoom(1)")
+        self.assertEqual(self.rodar("fonteDoTerminal()"), 18)
+        self.assertEqual(self.rodar("estado.cfg.tamanhoFonte"), 16)
+        self.definir("zoom(0)")
+        self.assertEqual(self.rodar("fonteDoTerminal()"), 16)
+        self.assertEqual(self.rodar("estado.cfg.tamanhoFonte"), 16)
+
+    def test_zoom_para_nas_bordas(self):
+        for _ in range(20):
+            self.definir("zoom(1)")
+        self.assertEqual(self.rodar("fonteDoTerminal()"), 22)
+        self.definir("zoom(-1)")
+        self.assertEqual(self.rodar("fonteDoTerminal()"), 21)
+
+
+class AbaReaberta(ComPagina):
+    def test_enter_na_aba_encerrada_volta_na_pasta_que_o_shell_anunciou(self):
+        """Depois de um cd, o Enter abria o shell novo na pasta de onde a aba nasceu."""
+        pedido = self.rodar(
+            "(() => { const falsa = {viva: false, sessionId: null, term: {reset() {}},"
+            ' pedidoInicial: {pasta: "C:/nasceu", entrar: true, semCli: true}, pastaAtual: "C:/agora",'
+            " pintar() {}, abrir(p) { this.pedido = p; }};"
+            " estado.Aba.prototype.reabrir.call(falsa); return falsa.pedido; })()"
+        )
+        self.assertEqual(pedido, {"pasta": "C:/agora"})
+
+    def test_sem_pasta_anunciada_fica_a_de_nascimento(self):
+        pedido = self.rodar(
+            "(() => { const falsa = {viva: false, sessionId: null, term: {reset() {}},"
+            ' pedidoInicial: {pasta: "C:/nasceu"}, pintar() {}, abrir(p) { this.pedido = p; }};'
+            " estado.Aba.prototype.reabrir.call(falsa); return falsa.pedido; })()"
+        )
+        self.assertEqual(pedido, {"pasta": "C:/nasceu"})
+
+
+class EstadoEscrito(ComPagina):
+    def test_pronta_pedindo_permissao_diz_o_motivo_numa_lingua_so(self):
+        """O topo do painel da grade dizia so READY, igual a um que so terminou."""
+        s = '{estado: "aguardando", espera: "permissao", ferramenta: "Edit"}'
+        self.assertEqual(self.rodar("textoDoEstado(" + s + ")"), "ready permission Edit")
+        self.assertEqual(self.rodar("dicaDoEstado(" + s + ")"), "Parou pra pedir sua permissão")
+        self.assertEqual(self.rodar('textoDoEstado({estado: "aguardando", espera: "pergunta"})'), "ready question")
+        self.assertEqual(self.rodar('textoDoEstado({estado: "aguardando", espera: ""})'), "ready")
+        self.assertEqual(self.rodar('textoDoEstado({estado: "rodando", espera: "permissao"})'), "working")
+
+    def test_conversa_sem_titulo_mostra_a_pasta(self):
+        """Tres conversas novas viravam tres cartoes chamados Claude Code."""
+        self.assertEqual(self.rodar('tituloDaConversa({titulo: "", pasta: "D:/repos/loja"}, "Claude Code")'), "loja")
+        self.assertEqual(self.rodar('tituloDaConversa({titulo: "Corrige o login", pasta: "D:/x"}, "Claude Code")'), "Corrige o login")
+        self.assertEqual(self.rodar('tituloDaConversa({titulo: "", pasta: ""}, "Claude Code")'), "Claude Code")
+
+
+class ColarVariasLinhas(ComPagina):
+    def colar(self, texto: str, protegida: bool) -> dict:
+        return self.rodar(
+            "(() => { const colado = []; let perguntou = null; const antes = perguntar;"
+            " perguntar = (titulo, texto, opcoes) => { perguntou = [titulo, opcoes.map((o) => o.rotulo)]; };"
+            " try { entregarColagem({term: {modes: {bracketedPasteMode: " + ("true" if protegida else "false") + "},"
+            " paste: (t) => colado.push(t)}}, " + json.dumps(texto) + "); } finally { perguntar = antes; }"
+            " return {colado, perguntou}; })()"
+        )
+
+    def test_shell_cru_pergunta_antes_de_rodar_cada_linha(self):
+        resultado = self.colar("cd x\nrm -r build\n", False)
+        self.assertEqual(resultado["colado"], [])
+        self.assertEqual(resultado["perguntou"][0], "Colar 2 linhas")
+        self.assertIn("Colar numa linha só", resultado["perguntou"][1])
+
+    def test_programa_que_pede_colagem_protegida_ou_uma_linha_so_cola_direto(self):
+        self.assertEqual(self.colar("a\nb", True), {"colado": ["a\nb"], "perguntou": None})
+        self.assertEqual(self.colar("so uma\n", False), {"colado": ["so uma\n"], "perguntou": None})
+
+
 class UsoPorConta(ComPagina):
     def tearDown(self) -> None:
         self.definir("estado.usoBruto = {}; estado.usoPerfis = []; estado.usoLimites = {}")
@@ -333,6 +418,36 @@ class UsoPorConta(ComPagina):
         self.assertEqual(self.rodar('faixasDaConta({id: "p1", chaves: ["p1", "x"]})'), {"seven_day": {"usado": 2}})
         self.assertEqual(self.rodar('faixasDaConta({id: "z", chaves: ["z"]})'), {})
 
+    def test_conta_so_com_leitura_do_plano_entra_na_lista(self):
+        """Conta recem logada, sem transcript, tinha o limite e nao aparecia em lugar nenhum."""
+        self.dados({"p1": self.gasto(3)}, [{"id": "p1", "nome": "Um"}, {"id": "p2", "nome": "Nova"}])
+        self.definir("estado.usoLimites = {p2: {faixas: {five_hour: {usado: 12}}}, p9: {faixas: {five_hour: {usado: 1}}}}")
+        contas = self.rodar("contasDoUso()")
+        self.assertEqual([(c["id"], c["chaves"]) for c in contas], [("p1", ["p1"]), ("p2", ["p2"])])
+
+    def test_leitura_da_pasta_de_sempre_vai_pra_conta_que_a_cadastrou(self):
+        self.dados({}, [{"id": "p1", "nome": "Minha", "padrao": True}])
+        self.definir("estado.usoLimites = {__padrao__: {faixas: {seven_day: {usado: 30}}}}")
+        contas = self.rodar("contasDoUso()")
+        self.assertEqual([(c["id"], c["chaves"]) for c in contas], [("p1", ["p1", "__padrao__"])])
+
+    def test_todas_mostra_o_limite_de_cada_conta(self):
+        """O botao Uso abre em Todas, e ali o bloco do limite nem aparecia."""
+        self.dados({"p1": self.gasto(3), "p2": self.gasto(1)}, [{"id": "p1", "nome": "Um"}, {"id": "p2", "nome": "Dois"}])
+        self.definir("estado.usoLimites = {p1: {faixas: {five_hour: {usado: 91}}}}")
+        html = self.rodar("limitesDeTodas(contasDoUso())")
+        self.assertIn("Limite do plano", html)
+        self.assertEqual(html.count('class="limite-conta"'), 1)
+        self.assertIn("Um", html)
+        self.assertIn('class="regua critico"', html)
+        self.definir("estado.usoLimites = {}")
+        self.assertEqual(self.rodar("limitesDeTodas(contasDoUso())"), "")
+
+    def test_numero_do_uso_diz_a_unidade(self):
+        self.assertEqual(self.rodar("apoioDoNumero({mensagens: 40})"), "tokens gerados em 40 respostas")
+        self.assertEqual(self.rodar("apoioDoNumero({mensagens: 1})"), "tokens gerados em 1 resposta")
+        self.assertEqual(self.rodar("apoioDoNumero({})"), "tokens gerados em 0 respostas")
+
     def test_semana_comeca_na_segunda_e_o_domingo_fecha_a_anterior(self):
         semanas = self.rodar(
             'porSemana([{dia: "2026-09-13", saida: 1, porModelo: {a: 1}},'
@@ -365,7 +480,9 @@ class UsoPorConta(ComPagina):
             "curto(1500)": "1.5k",
             "curto(2500000)": "2.5M",
             "curto(3e9)": "3.00B",
-            'nomeModelo("claude-opus-5-20260101")': "opus-5",
+            # o mesmo nome da barra de baixo, com ponto na versao
+            'nomeModelo("claude-opus-5-20260101")': "Opus 5",
+            'nomeModelo("claude-sonnet-4-5")': "Sonnet 4.5",
             'nomeModelo("<b>x</b>")': "bx/b",
             'familiaDoModelo("claude-opus-5")': "#b088f0",
             'familiaDoModelo("gpt")': "#5b6371",

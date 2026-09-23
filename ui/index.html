@@ -17,7 +17,7 @@
   </header>
 
   <div class="busca" id="busca" hidden>
-    <input type="text" id="busca-termo" placeholder="Buscar na saída" autocomplete="off" spellcheck="false">
+    <input type="text" id="busca-termo" placeholder="Buscar na saída" title="Ctrl+Shift+F ou F3. Enter vai pra próxima, Shift+Enter pra anterior" autocomplete="off" spellcheck="false">
     <span class="busca-conta" id="busca-conta"></span>
     <button id="busca-antes" title="Anterior, Shift+Enter">↑</button>
     <button id="busca-depois" title="Próximo, Enter">↓</button>
@@ -26,7 +26,7 @@
 
   <div class="corpo">
     <aside class="lateral" id="lateral">
-      <button class="nova-aba" id="novo" title="Nova aba, Ctrl+Shift+T">
+      <button class="nova-aba" id="novo" title="Escolher shell e conta. Ctrl+Shift+T abre direto no padrão">
         <span class="mais"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M8 3.4v9.2M3.4 8h9.2"/></svg></span><span>Nova aba</span>
       </button>
       <div class="lateral-topo">
@@ -47,7 +47,7 @@
         </button>
       </div>
       <div class="lateral-lista lista-externa" id="lista-externas" hidden></div>
-      <button class="mostrar-fora" id="mostrar-fora" hidden>Terminais externos <b id="conta-fora"></b></button>
+      <button class="mostrar-fora" id="mostrar-fora" hidden><span id="mostrar-fora-rotulo">Terminais externos</span> <b id="conta-fora"></b></button>
     </aside>
     <div class="puxador" id="puxador" title="Arraste pra mudar a largura">
       <button class="alca" id="recolher-lateral" title="Esconder ou mostrar a lista de sessões">
@@ -66,7 +66,7 @@
             <dt>Ctrl+Tab</dt><dd>Próxima aba, com Shift volta</dd>
             <dt>Alt+1 a 9</dt><dd>Pular direto pra aba</dd>
             <dt>Ctrl+Shift+G</dt><dd>Todos lado a lado</dd>
-            <dt>Ctrl+F</dt><dd>Buscar na saída</dd>
+            <dt>Ctrl+Shift+F</dt><dd>Buscar na saída</dd>
             <dt>Ctrl+vírgula</dt><dd>Configurações</dd>
           </dl>
         </div>
@@ -95,7 +95,7 @@
     <div class="menu-grupo">
       <div class="menu-titulo">Conta</div>
       <div id="menu-perfis"></div>
-      <button class="menu-item menu-acao" id="usar-logada">↳ Usar a conta que já está logada</button>
+      <button class="menu-item menu-acao" id="usar-logada" title="Cadastra a conta que já estava logada no ~/.claude, sem pedir login de novo">↳ Cadastrar a Principal, a conta já logada</button>
       <button class="menu-item menu-acao" id="nova-conta">+ Nova conta</button>
     </div>
   </div>
@@ -105,8 +105,8 @@
     <div class="caixa">
       <div class="caixa-titulo">Nova conta</div>
       <p class="caixa-texto">
-        Cada conta ganha uma pasta de login separada. Na primeira vez que o CLI rodar nela
-        ele pede o login normalmente, e depois a conta continua logada nesse perfil.
+        Cada conta ganha uma pasta de login separada. Depois de criar, abre uma aba nesta
+        conta com o login, e depois ela continua logada nesse perfil.
       </p>
       <input id="nome-conta" class="campo" type="text" placeholder="Apelido, por exemplo trabalho ou pessoal" autocomplete="off">
       <div class="campo-rot">Ferramenta</div>
@@ -116,6 +116,15 @@
         <button class="botao" data-fecha="veu-conta">Cancelar</button>
         <button class="botao botao-forte" id="confirmar-conta">Criar</button>
       </div>
+    </div>
+  </div>
+
+  <!-- escolha: colar varias linhas, retomar conversa que ainda trabalha, ligar a Principal -->
+  <div class="veu" id="veu-escolha" hidden>
+    <div class="caixa">
+      <div class="caixa-titulo" id="escolha-titulo"></div>
+      <p class="caixa-texto" id="escolha-texto"></p>
+      <div class="caixa-botoes" id="escolha-botoes"></div>
     </div>
   </div>
 
@@ -237,7 +246,7 @@
           </div>
 
           <div class="linha">
-            <div class="rot"><span>Conta padrão</span><small>Em qual conta a aba nova abre</small></div>
+            <div class="rot"><span>Conta padrão</span><small>Em qual conta a aba nova abre, pelo Ctrl+Shift+T e pelo shell escolhido no menu</small></div>
             <div class="ctrl"><select id="cfg-perfilPadrao" class="campo campo-curto"></select></div>
           </div>
 
@@ -252,7 +261,7 @@
           </div>
 
           <div class="linha">
-            <div class="rot"><span>Confirmar ao fechar</span><small>Avisa antes de fechar uma aba com algo rodando, e a janela com shells abertos</small></div>
+            <div class="rot"><span>Confirmar ao fechar</span><small>Avisa antes de fechar uma aba ou a janela com algo rodando dentro</small></div>
             <div class="ctrl"><label class="chave"><input type="checkbox" id="cfg-confirmarFechar"><span></span></label></div>
           </div>
 
@@ -267,7 +276,7 @@
           </div>
 
           <div class="linha">
-            <div class="rot"><span>Esconder a status line do Claude</span><small>Só dentro deste app, já que a barra de baixo mostra o mesmo</small></div>
+            <div class="rot"><span>Esconder a status line do Claude</span><small>Esconde a sua status line dentro do Loom, com a barra de baixo ligada. A barra mostra limite, contexto e modelo, mas não o resto que a sua status line mostrar</small></div>
             <div class="ctrl"><label class="chave"><input type="checkbox" id="cfg-esconderStatusLine"><span></span></label></div>
           </div>
 
@@ -277,7 +286,7 @@
           </div>
 
           <div class="linha">
-            <div class="rot"><span>Avisar quando uma sessão terminar</span><small>Notificação do Windows quando ela passa a esperar você e a janela está atrás</small></div>
+            <div class="rot"><span>Avisar quando uma sessão terminar</span><small>Notificação do Windows quando ela passa a esperar você e a janela está atrás. Com a janela na frente, o cartão da aba acende</small></div>
             <div class="ctrl"><label class="chave"><input type="checkbox" id="cfg-avisarQuandoPronta"><span></span></label></div>
           </div>
 
@@ -307,7 +316,11 @@
           <div id="lista-contas"></div>
           <div class="caixa-botoes" style="justify-content:flex-start">
             <button class="botao" id="nova-conta-config">+ Nova conta</button>
-            <button class="botao" id="adotar-principal" title="Cadastra a conta que já estava logada, sem pedir login de novo">Usar a conta já logada</button>
+            <button class="botao" id="adotar-principal" title="Cadastra a conta que já estava logada no ~/.claude, sem pedir login de novo">Cadastrar a Principal, a conta já logada</button>
+          </div>
+          <div class="linha linha-principal">
+            <div class="rot"><span>Acompanhar a Principal no Loom</span><small id="leitura-principal-texto"></small></div>
+            <div class="ctrl"><button class="botao" id="leitura-principal">Ligar</button></div>
           </div>
         </div>
 
@@ -334,10 +347,12 @@
             <dt>Ctrl+PageUp e PageDown</dt><dd>Aba anterior e próxima</dd>
             <dt>Alt+1 a 9</dt><dd>Pular direto pra aba, 9 é a última</dd>
             <dt>Ctrl+Shift+G</dt><dd>Todos os terminais lado a lado</dd>
-            <dt>Ctrl+F e F3</dt><dd>Buscar na saída e ir pra próxima</dd>
+            <dt>Ctrl+Shift+F e F3</dt><dd>Buscar na saída e ir pra próxima</dd>
             <dt>Ctrl+mais, menos e zero</dt><dd>Tamanho da fonte, e Ctrl com a roda</dd>
             <dt>Shift+Enter</dt><dd>Quebra linha sem enviar</dd>
             <dt>Ctrl+Shift+C e V</dt><dd>Copiar e colar</dd>
+            <dt>Ctrl+clique</dt><dd>Abre link e arquivo:linha</dd>
+            <dt>Botão do meio</dt><dd>Fecha a aba; duplo clique no nome renomeia</dd>
             <dt>Ctrl+vírgula</dt><dd>Estas configurações</dd>
           </dl>
         </div>
@@ -345,28 +360,37 @@
     </div>
   </div>
 
+  <!-- em grupos: eram 13 itens soltos, com o Renomear entre o Colar e o layout -->
   <div class="menu menu-sessao" id="menu-aba" hidden>
-    <button class="menu-item" data-aba="retomar-antes" hidden>Retomar a conversa de antes</button>
-    <button class="menu-item" data-aba="copiar-selecao">Copiar a seleção</button>
-    <button class="menu-item" data-aba="colar">Colar</button>
-    <button class="menu-item" data-aba="renomear">Renomear a aba</button>
-    <button class="menu-item" data-aba="so-esta">Ver só este terminal</button>
-    <button class="menu-item" data-aba="grade">Ver todos lado a lado</button>
-    <button class="menu-item" data-aba="duplicar">Nova aba nesta conta</button>
-    <button class="menu-item" data-aba="nova-pasta">Nova aba nesta pasta</button>
-    <button class="menu-item" data-aba="selecionar">Selecionar toda a saída</button>
-    <button class="menu-item" data-aba="copiar-tudo">Copiar toda a saída</button>
-    <button class="menu-item" data-aba="limpar">Limpar a tela</button>
-    <button class="menu-item" data-aba="copiar">Copiar o caminho</button>
-    <button class="menu-item menu-perigo" data-aba="fechar">Fechar a aba</button>
+    <div class="menu-grupo">
+      <button class="menu-item" data-aba="retomar-antes" hidden>Retomar a conversa de antes</button>
+      <button class="menu-item" data-aba="copiar-selecao">Copiar a seleção</button>
+      <button class="menu-item" data-aba="colar">Colar</button>
+      <button class="menu-item" data-aba="selecionar">Selecionar toda a saída</button>
+      <button class="menu-item" data-aba="copiar-tudo">Copiar toda a saída</button>
+      <button class="menu-item" data-aba="limpar">Limpar a tela</button>
+    </div>
+    <div class="menu-grupo">
+      <button class="menu-item" data-aba="renomear">Renomear a aba</button>
+      <button class="menu-item" data-aba="duplicar">Nova aba nesta conta</button>
+      <button class="menu-item" data-aba="nova-pasta">Nova aba nesta pasta</button>
+      <button class="menu-item" data-aba="copiar">Copiar o caminho da pasta</button>
+    </div>
+    <div class="menu-grupo">
+      <button class="menu-item" data-aba="so-esta">Ver só este terminal</button>
+      <button class="menu-item" data-aba="grade">Ver todos lado a lado</button>
+    </div>
+    <div class="menu-grupo">
+      <button class="menu-item menu-perigo" data-aba="fechar">Fechar a aba</button>
+    </div>
   </div>
 
   <div class="menu menu-sessao" id="menu-sessao" hidden>
     <button class="menu-item" data-acao="ir">Ir para a aba</button>
     <button class="menu-item" data-acao="retomar">Retomar esta conversa numa aba</button>
     <button class="menu-item" data-acao="abrir">Abrir aba nova nessa pasta</button>
-    <button class="menu-item" data-acao="copiar">Copiar o caminho</button>
-    <button class="menu-item menu-perigo" data-acao="encerrar">Encerrar a sessão</button>
+    <button class="menu-item" data-acao="copiar">Copiar o caminho da pasta</button>
+    <button class="menu-item menu-perigo" data-acao="encerrar">Fechar a aba</button>
   </div>
 
   <script src="vendor/qwebchannel.js"></script>

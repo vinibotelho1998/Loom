@@ -148,7 +148,8 @@ body { display: flex; flex-direction: column; }
 }
 @keyframes surge { from { opacity: 0; transform: translateY(-4px); } }
 
-.menu-grupo + .menu-grupo { margin-top: 4px; border-top: 1px solid var(--linha); padding-top: 6px; }
+/* grupo escondido nao conta: com o primeiro escondido, o seguinte abria o menu com uma linha solta */
+.menu-grupo:not([hidden]) ~ .menu-grupo:not([hidden]) { margin-top: 4px; border-top: 1px solid var(--linha); padding-top: 6px; }
 .menu-titulo {
   padding: 4px 9px 6px;
   font: 500 10px/1 var(--mono);
@@ -337,6 +338,8 @@ body { display: flex; flex-direction: column; }
 .ctrl input[type="range"] { width: 132px; accent-color: var(--acento); }
 .ctrl output { font: 11.5px var(--mono); color: var(--texto); min-width: 34px; text-align: right; }
 .campo-curto { width: 148px; padding: 6px 9px; font-size: 12px; }
+/* o select cortava a opcao sem conta e apelido comprido, justo onde se escolhe o plano */
+select.campo-curto { width: auto; min-width: 148px; max-width: 240px; }
 select.campo { cursor: default; }
 
 .chave { position: relative; width: 34px; height: 19px; display: inline-block; }
@@ -463,7 +466,11 @@ select.campo { cursor: default; }
   transition: background .13s ease, color .13s ease, border-color .13s ease;
 }
 .pilula:hover { background: #1b1e24; color: var(--texto); border-color: #2c2f37; }
-.pilula-ponto { width: 6px; height: 6px; border-radius: 50%; background: #3f7fd0; }
+/* o ponto diz o pior limite da conta da aba, com as mesmas faixas da barra; sem leitura, cinza */
+.pilula-ponto { width: 6px; height: 6px; border-radius: 50%; background: #3a3f49; }
+.pilula-ponto.ok { background: #4d9e6a; }
+.pilula-ponto.atencao { background: #c99a4a; }
+.pilula-ponto.critico { background: #cc5560; }
 
 /* ------------------------------------------------------------- uso na barra */
 
@@ -519,9 +526,14 @@ select.campo { cursor: default; }
   scrollbar-width: thin;
   scrollbar-color: #1e222a transparent;
 }
+/* A de cima fica do tamanho do que tem, e a de fora usa o que sobra, com o divisor marcando o
+   piso dela. Com altura fixa, poucas abas deixavam um buraco em cima e a de fora cortava cartao.
+   A base zero da de fora faz a de cima ganhar quando as duas transbordam: com base no conteudo,
+   trinta conversas de fora espremiam as abas abaixo do que o divisor marcava. */
+.lateral:has(#lista-externas:not([hidden]):not(.encolhida)) #abas { flex: 0 1 auto; }
 .lateral-lista.lista-externa {
-  flex: 0 0 auto;
-  height: var(--altura-externas, 25%);
+  flex: 1 1 0;
+  min-height: var(--altura-externas, 25%);
   padding-top: 2px;
 }
 .lateral-lista::-webkit-scrollbar { width: 8px; }
@@ -549,13 +561,33 @@ select.campo { cursor: default; }
 .sessao:hover { background: #191c22; }
 
 .sessao-topo { display: flex; align-items: center; gap: 7px; margin-bottom: 5px; }
-.sessao-pulso { width: 7px; height: 7px; border-radius: 50%; background: #3a3f49; flex: 0 0 auto; }
+/* sem Claude o ponto leva a cor da conta; com ele, as regras de estado mais abaixo decidem */
+.sessao-pulso { width: 7px; height: 7px; border-radius: 50%; background: var(--cor-conta, #3a3f49); flex: 0 0 auto; }
 .sessao-pasta {
   flex: 1; min-width: 0;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   font-size: 12px; color: var(--texto);
 }
-.sessao-idade { font: 10px var(--mono); color: var(--fraco); flex: 0 0 auto; }
+/* texto de 10px pede mais contraste: o #5b6371 ficava em 3 pra 1 sobre o cartao */
+.sessao-idade { font: 10px var(--mono); color: var(--apagado-3); flex: 0 0 auto; }
+
+/* fechar pelo mouse sem abrir o menu: o x aparece no lugar da idade, so com o mouse em cima */
+.sessao-fechar {
+  display: none;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 18px; height: 18px;
+  margin: -2px -4px -2px 0;
+  padding: 0;
+  border: 0; border-radius: 5px;
+  background: transparent;
+  color: var(--apagado-2);
+  font-family: inherit; font-size: 14px; line-height: 1;
+  cursor: default;
+}
+.sessao-fechar:hover { background: #2a1418; color: #f0a0a6; }
+.sessao.aba:hover .sessao-fechar { display: grid; }
+.sessao.aba:hover .sessao-idade { display: none; }
 
 .sessao-linha {
   display: flex; align-items: center; gap: 6px;
@@ -605,7 +637,7 @@ select.campo { cursor: default; }
   font: 600 10.5px/1 var(--mono);
   font-style: normal;
   letter-spacing: .04em;
-  color: #5b6371;
+  color: var(--apagado-3);
 }
 .medidor .trilho {
   width: 64px; height: 7px;
@@ -629,7 +661,10 @@ select.campo { cursor: default; }
 .medidor.atencao em { color: #d9b25f; }
 .medidor.critico .trilho b { background: #cc5560; }
 .medidor.critico em { color: #f0808a; }
-.medidor.sem-dado { opacity: .45; }
+/* Sem leitura o trilho vazio parecia 0% usado, e a opacidade apagava o 5h e o 7d: o rotulo fica,
+   o trilho sai e o texto diz o que falta */
+.medidor.sem-dado .trilho { display: none; }
+.medidor.sem-dado em { color: var(--apagado-2); font-weight: 500; }
 
 /* ---------------------------------------------------------- menu sessao */
 
@@ -660,34 +695,57 @@ select.campo { cursor: default; }
 .aba-filtro:hover { color: var(--texto); }
 .aba-filtro.ativa { background: #1f232b; color: var(--texto); }
 
-/* ready fica com a borda olive e o fundo dos outros: o marrom antigo era mais escuro que a
+/* ready fica com a borda ambar e o fundo dos outros: o marrom antigo era mais escuro que a
    propria lateral e brigava com o destaque da aba selecionada */
 .sessao.aguardando .sessao-pulso { background: #c9a961; }
 
 
 
+/* O thinking e o estado normal de trabalho e nao pede nada: respirava em vermelho, a cor que o
+   PLANO guarda pra erro, e com quatro abas pensando a lateral parecia em alarme. Agora e violeta,
+   longe do azul do working e do ambar do ready. */
 .sessao.pensando {
-  border-left-color: #cc5560;
+  border-left-color: #8b6cc7;
   animation: respira 1.9s ease-in-out infinite;
 }
-.sessao.pensando .sessao-pulso { background: #e05561; animation: bater 1s ease-in-out infinite; }
-.sessao.pensando .sessao-linha { color: #b05a62; }
+.sessao.pensando .sessao-pulso { background: #b088f0; animation: bater 1s ease-in-out infinite; }
+.sessao.pensando .sessao-linha { color: #9d86c9; }
 
 @keyframes respira {
-  0%, 100% { background: #1c1517; border-color: #1c1214; border-left-color: #a8444d; }
-  50% { background: #241a1d; border-color: #3a1c21; border-left-color: #f0808a; }
+  0%, 100% { background: #19171f; border-color: #1c1924; border-left-color: #6f58a0; }
+  50% { background: #1f1b28; border-color: #2e2740; border-left-color: #b088f0; }
+}
+
+/* a aba ativa que pensa continua clara e com o anel: a animacao gravava o fundo e vencia a
+   regra da ativa, e ela ficava igual as outras. Nela respira so a faixa da esquerda */
+.sessao.aba.ativa.pensando { animation-name: respira-borda; }
+@keyframes respira-borda {
+  0%, 100% { border-left-color: #6f58a0; }
+  50% { border-left-color: #b088f0; }
 }
 
 /* na grade quem respira e o painel inteiro, pra dar pra ver de longe */
 .palco.grade .tela.pensando { animation: respira-painel 1.9s ease-in-out infinite; }
 @keyframes respira-painel {
-  0%, 100% { border-color: #241417; }
-  50% { border-color: #55262d; }
+  0%, 100% { border-color: #1f1b29; }
+  50% { border-color: #3d3156; }
 }
 .palco.grade .tela.pensando .chapeu { animation: respira-chapeu 1.9s ease-in-out infinite; }
 @keyframes respira-chapeu {
-  0%, 100% { background: #1c1517; }
-  50% { background: #170b0d; }
+  0%, 100% { background: #19171f; }
+  50% { background: #141219; }
+}
+/* o painel que espera voce e o que mais precisa aparecer: borda ambar fixa, sem piscar. O ativo
+   continua com o azul, que vem depois na folha */
+.palco.grade .tela.aguardando { border-color: #6b5c33; }
+/* no ativo a animacao da borda venceria o azul que diz onde a tecla cai */
+.palco.grade .tela.ativa.pensando,
+.palco.grade .tela.ativa.pensando .chapeu { animation: none; }
+
+/* com a janela na frente, a sessao que acabou de ficar pronta acende um instante em vez do balao */
+.sessao.avisou { animation: acende 1.8s ease-out; }
+@keyframes acende {
+  from { background: #2a2515; border-color: #6b5c33; }
 }
 
 .sessao.rodando { border-left-color: #3f7fd0; }
@@ -759,12 +817,12 @@ select.campo { cursor: default; }
 .sessao.externa:hover { background: #191c22; }
 .sessao.externa .sessao-pasta { font-weight: 400; }
 
-.lateral-lista.encolhida { height: auto; flex: 0 0 auto; overflow: hidden; }
+.lateral-lista.encolhida { height: auto; min-height: 0; flex: 0 0 auto; overflow: hidden; }
 
 .medidor u {
   text-decoration: none;
   font: 500 10.5px/1 var(--mono);
-  color: #5b6371;
+  color: var(--apagado-2);
   min-width: 40px;
   text-align: right;
   white-space: nowrap;
@@ -781,8 +839,9 @@ select.campo { cursor: default; }
   background: #16181e;
   overflow: hidden;
 }
-.sessao-ctx .ctx-trilho b { display: block; height: 100%; background: #4d7fa8; border-radius: 3px; }
-.sessao-ctx em { font-style: normal; font-size: 10px; color: #5b6371; }
+/* o mesmo verde da barra de baixo: e a mesma medida, da mesma aba */
+.sessao-ctx .ctx-trilho b { display: block; height: 100%; background: #4d9e6a; border-radius: 3px; }
+.sessao-ctx em { font-style: normal; font-size: 10px; color: var(--apagado-2); }
 .sessao-ctx.atencao .ctx-trilho b { background: #c99a4a; }
 .sessao-ctx.atencao em { color: #d5b06b; }
 .sessao-ctx.critico .ctx-trilho b { background: #cc5560; }
@@ -974,9 +1033,10 @@ body.puxando-largura .tela { pointer-events: none; }
 .palco.grade .tela.ativa .chapeu-nome { color: var(--texto); }
 
 .chapeu-estado { flex: 0 0 auto; }
-.chapeu-estado.pensando { color: #f0808a; }
+.chapeu-estado.pensando { color: #b088f0; }
 .chapeu-estado.rodando { color: #7fb8ff; }
-.chapeu-estado.aguardando { color: #8a7440; }
+/* o painel parado esperando voce aprovar nao pode ser o mais apagado da grade */
+.chapeu-estado.aguardando { color: #d5b06b; }
 .chapeu-estado.parada { color: var(--fraco); }
 
 .chapeu-medidas {
@@ -1040,7 +1100,12 @@ svg { display: block; }
   background: #171a1f;
 }
 .modelo i { width: 6px; height: 6px; border-radius: 50%; }
-.modelo b { font: 600 12.5px/1 var(--mono); color: var(--texto); letter-spacing: -.01em; }
+.modelo { flex: 0 1 auto; min-width: 0; }
+/* nome comprido quebrava em duas linhas dentro da barra de 36px */
+.modelo b {
+  font: 600 12.5px/1 var(--mono); color: var(--texto); letter-spacing: -.01em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px;
+}
 
 /* ----------------------------------------------------------------- busca */
 
@@ -1183,8 +1248,13 @@ svg { display: block; }
   letter-spacing: .08em; text-transform: uppercase;
   color: var(--apagado-3);
 }
+/* em Todas, uma conta por linha, com o 5h e o 7d dela */
+.limite-conta + .limite-conta { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--linha); }
+.limite-conta-nome { display: flex; align-items: center; gap: 7px; margin-bottom: 2px; font-size: 12px; color: var(--texto); }
+.limite-conta-nome .bolinha { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; }
 .regua-linha { display: flex; align-items: center; gap: 12px; padding: 5px 0; }
-.regua-rotulo { width: 26px; font: 600 11px/1 var(--mono); color: #5b6371; }
+.regua-rotulo { width: 26px; font: 600 11px/1 var(--mono); color: var(--apagado-3); }
+.regua-zera { font: 10.5px var(--mono); color: var(--apagado-2); white-space: nowrap; }
 .regua { display: flex; align-items: center; gap: 10px; flex: 1; }
 .regua .trilho { flex: 1; max-width: 320px; height: 7px; border-radius: 4px; background: #16181e; overflow: hidden; }
 .regua .trilho i { display: block; height: 100%; border-radius: 4px; background: #4d9e6a; }
@@ -1274,7 +1344,7 @@ svg { display: block; }
   cursor: default;
 }
 .menu-escudo:hover { background: #1f232b; color: #d5b06b; border-color: #4a4029; }
-.menu-escudo[disabled] { opacity: .35; }
+.menu-escudo[disabled], .menu-escudo.indisponivel { opacity: .35; }
 
 /* --------------------------------------------------------------- densidade */
 
@@ -1375,4 +1445,5 @@ input:focus-visible {
 }
 @container (max-width: 560px) {
   .medidor .trilho { display: none; }
+  .modelo b { display: none; }
 }

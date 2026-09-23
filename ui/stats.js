@@ -30,8 +30,30 @@ function escapar(texto) {
   return String(texto).replace(/[&<>"']/g, (c) => "&#" + c.charCodeAt(0) + ";");
 }
 
+function nomeDeModelo(bruto) {
+  /* O id do transcript vira nome de gente, o mesmo na barra e na tela de Uso: la saia
+     sonnet-4-5, e na barra Sonnet 4 5, com espaco no lugar do ponto. O que ja vem bonito da
+     status line passa direto. */
+  if (!bruto) return "";
+  const texto = String(bruto);
+  if (!texto.startsWith("claude-")) return texto;
+  return texto
+    .replace(/^claude-/, "")
+    .replace(/-\d{8}$/, "")
+    .replace(/-latest$/, "")
+    .replace(/(\d+)-(\d+)/g, "$1.$2")
+    .split("-")
+    .map((parte) => (/^\d/.test(parte) ? parte : parte.charAt(0).toUpperCase() + parte.slice(1)))
+    .join(" ");
+}
+
 function nomeModelo(id) {
-  return String(id).replace(/^claude-/, "").replace(/-\d{8}$/, "").replace(/[<>]/g, "");
+  return nomeDeModelo(id).replace(/[<>]/g, "");
+}
+
+function escolherConta(conta) {
+  // a conta que a tela abre mostrando; se ela nao tiver consumo, a pintura volta pra Todas
+  contaEscolhida = conta || "todas";
 }
 
 function diaCurto(iso) {
@@ -120,14 +142,47 @@ function contasDoUso() {
       // o mesmo nome que o cartao e a barra dao pra conta de sempre
       nome: perfil ? perfil.nome : "Principal",
       cor: perfil ? perfil.cor : "#5b6371",
-      email: perfil ? perfil.email || "" : "A conta que já estava logada antes do Loom, na pasta de login de sempre",
+      email: perfil ? perfil.email || "" : "Principal, o login do ~/.claude",
       chaves,
+    });
+  }
+
+  // Conta sem transcript ainda, como uma recem logada, ja pode ter a leitura do plano. Sem
+  // entrar aqui, o limite dela nao aparecia em lugar nenhum da tela de Uso.
+  for (const [chave, lido] of Object.entries(usoLimites || {})) {
+    if (!lido || !lido.faixas || !Object.keys(lido.faixas).length) continue;
+    const id = dona && chave === "__padrao__" ? dona.id : chave;
+    if (lista.some((c) => c.id === id)) continue;
+    const perfil = usoPerfis.find((p) => p.id === id);
+    if (!perfil && id !== "__padrao__") continue;
+    lista.push({
+      id,
+      nome: perfil ? perfil.nome : "Principal",
+      cor: perfil ? perfil.cor : "#5b6371",
+      email: perfil ? perfil.email || "" : "Principal, o login do ~/.claude",
+      chaves: id === chave ? [id] : [id, chave],
     });
   }
 
   lista.sort((a, b) => (totalDe(b.chaves).semana.saida || 0) - (totalDe(a.chaves).semana.saida || 0));
   if (removidas) lista.push(removidas);
   return lista;
+}
+
+function limitesDeTodas(contas) {
+  /* Em Todas, uma linha por conta com o 5h e o 7d. O bloco so existia com uma conta escolhida,
+     e o botao Uso abre em Todas: quem queria saber quanto faltava de cada conta via so tokens. */
+  const linhas = contas
+    .filter((c) => c.id !== "__removidas__")
+    .map((c) => [c, faixasDaConta(c)])
+    .filter(([, f]) => f.five_hour || f.seven_day)
+    .map(
+      ([c, f]) =>
+        '<div class="limite-conta"><div class="limite-conta-nome">' +
+        '<span class="bolinha" style="background:' + escapar(c.cor) + '"></span>' + escapar(c.nome) + "</div>" +
+        regua("5h", f.five_hour) + regua("7d", f.seven_day) + "</div>"
+    );
+  return linhas.length ? '<div class="bloco-limite"><h3>Limite do plano</h3>' + linhas.join("") + "</div>" : "";
 }
 
 function totalDe(chaves) {
@@ -186,6 +241,12 @@ function numero(rotulo, valor, apoio) {
   );
 }
 
+function apoioDoNumero(periodo) {
+  // o numero grande sozinho nao dizia se era token, caractere ou dinheiro
+  const respostas = periodo.mensagens || 0;
+  return "tokens gerados em " + respostas + (respostas === 1 ? " resposta" : " respostas");
+}
+
 function regua(rotulo, faixa) {
   if (!faixa || typeof faixa.usado !== "number") {
     return '<div class="regua-linha"><span class="regua-rotulo">' + rotulo + "</span>" +
@@ -193,10 +254,14 @@ function regua(rotulo, faixa) {
   }
   const pct = Math.round(faixa.usado);
   const classe = pct >= 85 ? "critico" : pct >= 60 ? "atencao" : "";
+  // quando zera e o que a barra de baixo mostra, e quem abria o detalhe achava menos que la
+  const falta = typeof faltaPara === "function" ? faltaPara(faixa.zera) : "";
   return (
     '<div class="regua-linha"><span class="regua-rotulo">' + rotulo + "</span>" +
     '<span class="regua ' + classe + '"><span class="trilho"><i style="width:' + Math.min(pct, 100) + '%"></i></span>' +
-    "<b>" + pct + "%</b></span></div>"
+    "<b>" + pct + "%</b>" +
+    (falta ? '<span class="regua-zera">zera em ' + escapar(falta) + "</span>" : "") +
+    "</span></div>"
   );
 }
 
@@ -304,13 +369,15 @@ function pintarUsoCorpo() {
 
   const numeros =
     '<div class="numeros">' +
-    numero("Hoje", dados.hoje.saida || 0, (dados.hoje.mensagens || 0) + " respostas") +
-    numero("Esta semana", dados.semana.saida || 0, (dados.semana.mensagens || 0) + " respostas") +
-    numero("Este mês", dados.mes.saida || 0, (dados.mes.mensagens || 0) + " respostas") +
+    numero("Hoje", dados.hoje.saida || 0, apoioDoNumero(dados.hoje)) +
+    numero("Esta semana", dados.semana.saida || 0, apoioDoNumero(dados.semana)) +
+    numero("Este mês", dados.mes.saida || 0, apoioDoNumero(dados.mes)) +
     "</div>";
 
   const limite = faixas
     ? '<div class="bloco-limite"><h3>Limite do plano</h3>' + regua("5h", faixas.five_hour) + regua("7d", faixas.seven_day) + "</div>"
+    : contaEscolhida === "todas"
+    ? limitesDeTodas(contas)
     : "";
 
   const modelos = dados.modelos.length
