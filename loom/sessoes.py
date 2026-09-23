@@ -148,6 +148,30 @@ def _idade(mtime: float) -> float:
     return max(time.time() - mtime, 0)
 
 
+# ferramentas que poem um subagente pra trabalhar; enquanto ele trabalha, a conversa de cima
+# fica calada e so o transcript dele cresce
+FERRAMENTAS_DE_SUBAGENTE = ("Agent", "Task")
+
+
+def _idade_dos_subagentes(arquivo: Path) -> float | None:
+    """Ha quanto tempo algum subagente desta conversa escreveu, ou None se nao ha nenhum.
+
+    Com o subagente trabalhando mais de um minuto e meio, a conversa principal nao escreve
+    nada, a regra da idade virava ready e saia o aviso de que terminou com ele ainda rodando.
+    """
+    pasta = arquivo.with_suffix("") / "subagents"
+    mais_novo = 0.0
+    try:
+        for sub in pasta.glob("*.jsonl"):
+            try:
+                mais_novo = max(mais_novo, sub.stat().st_mtime)
+            except OSError:
+                continue
+    except OSError:
+        return None
+    return _idade(mais_novo) if mais_novo else None
+
+
 def _idade_da_conversa(leitura: dict, mtime: float) -> float:
     """Ha quanto tempo alguem de fato falou nessa conversa.
 
@@ -198,7 +222,8 @@ def _primeira_fala(registros: list[dict]) -> str:
     for registro in registros:
         if registro.get("type") != "user" or registro.get("isMeta"):
             continue
-        conteudo = (registro.get("message") or {}).get("content")
+        mensagem = registro.get("message")
+        conteudo = mensagem.get("content") if isinstance(mensagem, dict) else None
         texto = ""
         if isinstance(conteudo, str):
             texto = conteudo
@@ -318,6 +343,10 @@ def listar(pastas: dict[str, str], vistas: dict[str, dict] | None = None) -> lis
             if not leitura:
                 continue
             idade = _idade_da_conversa(leitura, mtime)
+            if leitura["bruto"] == "rodando" and leitura["ferramenta"] in FERRAMENTAS_DE_SUBAGENTE:
+                do_subagente = _idade_dos_subagentes(arquivo)
+                if do_subagente is not None:
+                    idade = min(idade, do_subagente)
             estado = _decidir(leitura["bruto"], idade)
             marca = (vistas or {}).get(arquivo.stem, {})
             achadas.append(
@@ -332,6 +361,9 @@ def listar(pastas: dict[str, str], vistas: dict[str, dict] | None = None) -> lis
                     "pasta": leitura.get("pasta", ""),
                     "ramo": leitura.get("ramo", ""),
                     "estado": estado,
+                    # o que a ponta do transcript diz, sem a regra da idade. A tela cruza isso com
+                    # a saida do terminal da aba, que sabe se o Claude continua desenhando
+                    "bruto": leitura["bruto"],
                     "ferramenta": leitura["ferramenta"],
                     "alvo": leitura["alvo"],
                     # o coletor traz o nome bonito, tipo Opus 5; o transcript so tem o id
