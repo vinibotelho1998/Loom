@@ -93,7 +93,7 @@
       <div id="menu-shells"></div>
     </div>
     <div class="menu-grupo">
-      <div class="menu-titulo">Conta do Claude</div>
+      <div class="menu-titulo">Conta</div>
       <div id="menu-perfis"></div>
       <button class="menu-item menu-acao" id="usar-logada">↳ Usar a conta que já está logada</button>
       <button class="menu-item menu-acao" id="nova-conta">+ Nova conta</button>
@@ -103,10 +103,10 @@
   <!-- caixa de nova conta -->
   <div class="veu" id="veu-conta" hidden>
     <div class="caixa">
-      <div class="caixa-titulo">Nova conta do Claude</div>
+      <div class="caixa-titulo">Nova conta</div>
       <p class="caixa-texto">
-        Cada conta ganha uma pasta de login separada. O primeiro comando que você rodar
-        nessa aba pede o login normalmente, e a conta fica logada pra sempre nesse perfil.
+        Cada conta ganha uma pasta de login separada. Na primeira vez que o CLI rodar nela
+        ele pede o login normalmente, e depois a conta continua logada nesse perfil.
       </p>
       <input id="nome-conta" class="campo" type="text" placeholder="Apelido, por exemplo trabalho ou pessoal" autocomplete="off">
       <div class="campo-rot">Ferramenta</div>
@@ -192,6 +192,8 @@
             <div class="ctrl"><input type="range" id="cfg-espacoLetra" min="0" max="3" step="1"><output id="out-espacoLetra"></output></div>
           </div>
 
+          <div class="amostra" id="amostra">PS C:\Users\voce&gt; claude --version  #  0123456789  ilI1 oO0</div>
+
           <div class="linha">
             <div class="rot"><span>Cursor</span><small>Formato do cursor</small></div>
             <div class="ctrl">
@@ -209,7 +211,7 @@
           </div>
 
           <div class="linha">
-            <div class="rot"><span>Densidade da lateral</span><small>Compacto encolhe o cartão, pra caber mais sessão na tela</small></div>
+            <div class="rot"><span>Densidade da lateral</span><small>Compacta encolhe o cartão, pra caber mais sessão na tela</small></div>
             <div class="ctrl">
               <select id="cfg-densidade" class="campo campo-curto">
                 <option value="confortavel">Confortável</option>
@@ -224,8 +226,6 @@
             <div class="rot"><span>Mostrar quadros por segundo</span><small>Útil só pra medir, deixe desligado no dia a dia</small></div>
             <div class="ctrl"><label class="chave"><input type="checkbox" id="cfg-mostrarFps"><span></span></label></div>
           </div>
-
-          <div class="amostra" id="amostra">PS C:\Users\voce&gt; claude --version  #  0123456789  ilI1 oO0</div>
         </div>
 
         <div class="secao" id="sec-terminal">
@@ -252,17 +252,17 @@
           </div>
 
           <div class="linha">
-            <div class="rot"><span>Confirmar ao fechar</span><small>Avisa se a aba ainda tem shell vivo</small></div>
+            <div class="rot"><span>Confirmar ao fechar</span><small>Avisa antes de fechar uma aba com algo rodando, e a janela com shells abertos</small></div>
             <div class="ctrl"><label class="chave"><input type="checkbox" id="cfg-confirmarFechar"><span></span></label></div>
           </div>
 
           <div class="linha">
-            <div class="rot"><span>Abrir o CLI junto com a conta</span><small>Ao escolher uma conta, ja digita o comando dela na aba nova</small></div>
+            <div class="rot"><span>Abrir o CLI junto com a conta</span><small>Ao escolher uma conta, já digita o comando dela na aba nova</small></div>
             <div class="ctrl"><label class="chave"><input type="checkbox" id="cfg-abrirCliDaConta"><span></span></label></div>
           </div>
 
           <div class="linha">
-            <div class="rot"><span>Confiar nas pastas que eu abrir</span><small>Responde sozinho o "Trust this folder" nas contas deste app</small></div>
+            <div class="rot"><span>Confiar nas pastas que eu abrir</span><small>Responde sozinho o "Trust this folder" na pasta em que a aba abre, nas contas deste app. A pasta pessoal inteira nunca</small></div>
             <div class="ctrl"><label class="chave"><input type="checkbox" id="cfg-confiarPastas"><span></span></label></div>
           </div>
 
@@ -287,7 +287,7 @@
           </div>
 
           <div class="linha">
-            <div class="rot"><span>Editor dos links</span><small>Quem abre o caminho de arquivo clicado, com a linha certa. Vazio usa o programa padrão do sistema</small></div>
+            <div class="rot"><span>Editor dos links</span><small>Quem abre o caminho de arquivo clicado. VS Code, Cursor, Sublime, Zed e Notepad++ já abrem na linha certa. Vazio, ou não encontrado, usa o programa padrão do sistema, menos em script, que ele executaria</small></div>
             <div class="ctrl"><input type="text" id="cfg-editor" class="campo campo-curto" spellcheck="false" placeholder="code"></div>
           </div>
         </div>
@@ -316,15 +316,15 @@
           <p class="ajuda">
             Cada CLI guarda o login numa pasta apontada por uma variável de ambiente.
             O Loom só precisa saber o nome dessa variável e o arquivo que indica login feito.
-            Claude Code está confirmado nesta máquina. Os outros vêm preenchidos com o valor
-            documentado por cada projeto e podem ser corrigidos aqui se mudarem.
+            Cada linha diz se o comando foi encontrado nesta máquina. Os valores vêm do que
+            cada projeto documenta e podem ser corrigidos aqui se mudarem.
           </p>
           <div id="lista-ferramentas"></div>
         </div>
 
         <div class="secao" id="sec-sobre">
           <h2>Sobre</h2>
-          <div class="linha"><div class="rot"><span>Versão</span></div><div class="ctrl"><code id="sobre-versao">0.2.0</code></div></div>
+          <div class="linha"><div class="rot"><span>Versão</span></div><div class="ctrl"><code id="sobre-versao"></code></div></div>
           <div class="linha"><div class="rot"><span>Pasta de dados</span></div><div class="ctrl"><code id="sobre-raiz"></code></div></div>
           <div class="linha"><div class="rot"><span>Quadros por segundo</span></div><div class="ctrl"><code id="sobre-fps">Medindo</code></div></div>
           <dl class="vazio-atalhos atalhos-sobre">
@@ -346,12 +346,14 @@
   </div>
 
   <div class="menu menu-sessao" id="menu-aba" hidden>
+    <button class="menu-item" data-aba="retomar-antes" hidden>Retomar a conversa de antes</button>
     <button class="menu-item" data-aba="copiar-selecao">Copiar a seleção</button>
     <button class="menu-item" data-aba="colar">Colar</button>
     <button class="menu-item" data-aba="renomear">Renomear a aba</button>
     <button class="menu-item" data-aba="so-esta">Ver só este terminal</button>
     <button class="menu-item" data-aba="grade">Ver todos lado a lado</button>
     <button class="menu-item" data-aba="duplicar">Nova aba nesta conta</button>
+    <button class="menu-item" data-aba="nova-pasta">Nova aba nesta pasta</button>
     <button class="menu-item" data-aba="selecionar">Selecionar toda a saída</button>
     <button class="menu-item" data-aba="copiar-tudo">Copiar toda a saída</button>
     <button class="menu-item" data-aba="limpar">Limpar a tela</button>
@@ -361,7 +363,6 @@
 
   <div class="menu menu-sessao" id="menu-sessao" hidden>
     <button class="menu-item" data-acao="ir">Ir para a aba</button>
-    <button class="menu-item" data-acao="atualizar">Atualizar a lista</button>
     <button class="menu-item" data-acao="retomar">Retomar esta conversa numa aba</button>
     <button class="menu-item" data-acao="abrir">Abrir aba nova nessa pasta</button>
     <button class="menu-item" data-acao="copiar">Copiar o caminho</button>

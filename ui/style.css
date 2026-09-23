@@ -95,7 +95,8 @@ html, body {
 .marca-fraca { color: var(--apagado); margin-left: 3px; }
 
 .folga { flex: 1; }
-.fps { font: 500 10.5px/1 var(--mono); color: #2f3540; letter-spacing: .04em; }
+/* a pessoa liga o contador pra ler: em #2f3540 sobre o cromo ele ficava em 1,3 pra 1 */
+.fps { font: 500 10.5px/1 var(--mono); color: var(--apagado); letter-spacing: .04em; }
 
 /* ------------------------------------------------------------------ palco */
 
@@ -122,11 +123,13 @@ body { display: flex; flex-direction: column; }
 
 .xterm-viewport::-webkit-scrollbar { width: 10px; }
 .xterm-viewport::-webkit-scrollbar-track { background: transparent; }
+/* o polegar na cor do cromo sumia sobre o terminal: rolando o historico nao dava pra ver onde se estava */
 .xterm-viewport::-webkit-scrollbar-thumb {
-  background: #1c1f25;
+  background: #2c313a;
   border-radius: 6px;
   border: 3px solid var(--preto);
 }
+.xterm-viewport::-webkit-scrollbar-thumb:hover { background: #3a404b; }
 
 /* ------------------------------------------------------------------- menu */
 
@@ -178,6 +181,8 @@ body { display: flex; flex-direction: column; }
 }
 .menu-item .selo.on { color: #63c98a; }
 .menu-acao { color: var(--apagado); font-size: 12px; }
+.menu-vazio { color: var(--apagado); }
+.menu-vazio:hover { background: transparent; }
 
 /* ------------------------------------------------------------------- veu */
 
@@ -210,6 +215,7 @@ body { display: flex; flex-direction: column; }
   user-select: text;
 }
 .campo:focus { border-color: var(--acento); }
+.campo.campo-erro, .campo.campo-erro:focus { border-color: #cc5560; }
 
 .caixa-botoes { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
 .botao {
@@ -403,11 +409,14 @@ select.campo { cursor: default; }
 }
 .conta-acao:hover { background: #1f232b; color: var(--texto); }
 .conta-acao.perigo:hover { color: #f0808a; border-color: #4d2126; }
+/* Deslogar armado: o segundo clique apaga o login */
+.conta-acao.armado, .conta-acao.armado:hover { color: #f0a0a6; border-color: #4d2126; background: #2a1418; }
 
 /* --------------------------------------------------------- campos extra */
 
 .campo-rot { margin: 14px 0 6px; font-size: 11.5px; color: var(--apagado); }
 .campo-dica { margin-top: 7px; font: 11px/1.6 var(--mono); color: var(--apagado-2); }
+.campo-dica.alerta { color: #d9b25f; }
 
 /* ------------------------------------------------------------- ferramentas */
 
@@ -421,7 +430,9 @@ select.campo { cursor: default; }
   border-radius: 9px;
   background: #171a1f;
 }
-.ferramenta-linha .titulo { grid-column: 1 / -1; font-size: 12.5px; }
+.ferramenta-linha .titulo { grid-column: 1 / -1; font-size: 12.5px; display: flex; align-items: center; gap: 10px; }
+.ferramenta-achada { font: 10.5px var(--mono); color: #d9b25f; }
+.ferramenta-achada.on { color: #63c98a; }
 .ferramenta-linha .campo { font-size: 11.5px; padding: 6px 9px; }
 .ferramenta-linha label { font: 10px/1 var(--mono); color: var(--apagado-2); display: block; margin-bottom: 5px; letter-spacing: .06em; text-transform: uppercase; }
 
@@ -736,6 +747,8 @@ select.campo { cursor: default; }
 }
 .divisor::before { content: ""; flex: 0 0 8px; height: 1px; background: #23262c; }
 .divisor::after { content: ""; flex: 1; height: 1px; background: #23262c; }
+/* na largura padrao o rotulo quebrava em duas linhas coladas e o traco da direita sumia */
+#divisor-rotulo { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 
 .sessao.externa {
   background: transparent;
@@ -832,10 +845,12 @@ select.campo { cursor: default; }
 }
 .puxador:hover, .puxador.ativo { background: #1d3550; }
 
+/* Com a lateral aberta a alca ficava em cima da rolagem da lista, e agarrar a rolagem na
+   altura do meio recolhia a lateral; agora ela mora no puxador e no respiro do terminal. */
 .alca {
   position: absolute;
-  top: 50%; left: -6px;
-  width: 16px; height: 46px;
+  top: 50%; left: 0;
+  width: 12px; height: 46px;
   transform: translateY(-50%);
   display: grid; place-items: center;
   border: 1px solid var(--linha);
@@ -847,9 +862,13 @@ select.campo { cursor: default; }
   z-index: 12;
   transition: opacity .13s ease, color .13s ease, background .13s ease;
 }
-.alca svg { width: 12px; height: 12px; }
+.alca svg { width: 10px; height: 10px; }
 .alca:hover { opacity: 1; color: var(--texto); background: #232833; }
-.lateral.fechada + .puxador .alca { transform: translateY(-50%) rotate(180deg); left: 3px; opacity: .8; }
+/* com a lateral fechada a alca tapava a primeira coluna do terminal, onde o Claude desenha o
+   prompt: o puxador reserva a faixa dela e o terminal comeca depois */
+.lateral.fechada + .puxador { flex-basis: 16px; }
+.lateral.fechada + .puxador .alca { transform: translateY(-50%) rotate(180deg); left: 0; width: 16px; opacity: .8; }
+.lateral.fechada + .puxador .alca svg { width: 12px; height: 12px; }
 body.puxando-largura { cursor: ew-resize; }
 body.puxando-largura .tela { pointer-events: none; }
 
@@ -941,24 +960,34 @@ body.puxando-largura .tela { pointer-events: none; }
   max-width: 34%;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+/* O nome da conversa e o que diz qual painel e qual, e era o unico item que encolhia: com
+   tres colunas ia a zero e duas abas da mesma conta ficavam iguais. Agora ele tem piso e
+   quem cede sao as medidas, que repetem o mesmo numero em todo painel da mesma conta. */
 .chapeu-nome {
-  flex: 1 1 auto;
-  min-width: 0;
+  flex: 1 1 0;
+  min-width: 8ch;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   color: var(--apagado);
 }
 .chapeu-conta + .chapeu-nome::before { content: "· "; color: #33383f; }
+.palco.grade .chapeu { container-type: inline-size; }
 .palco.grade .tela.ativa .chapeu-nome { color: var(--texto); }
 
 .chapeu-estado { flex: 0 0 auto; }
 .chapeu-estado.pensando { color: #f0808a; }
 .chapeu-estado.rodando { color: #7fb8ff; }
 .chapeu-estado.aguardando { color: #8a7440; }
-.chapeu-estado.parada { color: #383e48; }
+.chapeu-estado.parada { color: var(--fraco); }
 
-.chapeu-medidas { display: flex; gap: 10px; margin-left: auto; padding-left: 10px; flex: 0 0 auto; }
-.chapeu-medidas b { font-weight: 600; color: #5b6371; }
-.chapeu-medidas b i { font-style: normal; color: #33383f; margin-right: 3px; }
+.chapeu-medidas {
+  display: flex; gap: 10px; margin-left: auto; padding-left: 10px;
+  flex: 0 1 auto; min-width: 0; overflow: hidden;
+}
+.chapeu-medidas b { font-weight: 600; color: var(--apagado); white-space: nowrap; }
+.chapeu-medidas b i { font-style: normal; color: var(--fraco); margin-right: 3px; }
+@container (max-width: 460px) {
+  .chapeu-medidas { display: none; }
+}
 .chapeu-medidas b.atencao { color: #d5b06b; }
 .chapeu-medidas b.critico { color: #f0808a; }
 
@@ -980,12 +1009,12 @@ body.puxando-largura .tela { pointer-events: none; }
   display: grid; place-items: center;
   border: 0; border-radius: 5px;
   background: transparent;
-  color: #383e48;
+  color: var(--apagado);
   font-size: 11px; line-height: 1;
   cursor: default;
   transition: background .12s ease, color .12s ease;
 }
-.seletor-layout button:hover { color: var(--apagado); }
+.seletor-layout button:hover { color: var(--texto); }
 .seletor-layout button.ativo { background: #141821; color: #7fb8ff; }
 
 .lateral-topo { gap: 8px; }
@@ -1051,13 +1080,17 @@ svg { display: block; }
 #usar-logada { color: #7fb8ff; }
 #usar-logada:hover { background: #1f232b; }
 
+/* nome em cima e e-mail embaixo, os dois com o espaco que sobrar: lado a lado, o nome ficava
+   preso em 120px e o e-mail virava tres letras e reticencias */
+.conta-id { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.conta-linha .conta-nome { flex: 0 0 auto; width: 100%; }
 .conta-email {
-  flex: 1 1 auto;
   min-width: 0;
+  padding: 0 9px;
+  font-size: 10.5px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  text-align: right;
+  text-align: left;
 }
-.conta-linha .conta-nome { flex: 0 0 120px; }
 
 /* a ferramenta em uso e informacao, entao ela nao entra no caixa alta do estado */
 .sessao-linha .ferramenta,
@@ -1071,7 +1104,9 @@ svg { display: block; }
 
 /* barra lateral colorida e o sinal forte; o resto do cartao fica calmo */
 .sessao { border-left-width: 3px; }
-.sessao.parada { opacity: .42; }
+/* So o cartao de fora desbota. A aba aberta em que o Claude esperou mais de 20 minutos
+   ficava mais apagada que um shell morto, e na volta do almoco parecia ter caido. */
+.sessao.externa.parada { opacity: .5; }
 .sessao.aguardando { border-left-color: #6b5c33; }
 
 .chapeu-estado {
@@ -1083,9 +1118,10 @@ svg { display: block; }
 
 /* o titulo diz o que roda; a pasta vem junto, mas em segundo plano */
 
-/* titulo da conversa em cima, origem embaixo */
+/* titulo da conversa em cima, origem embaixo. Em bloco e nao em flex: filho de flex perdia o
+   espaco antes do ponto, colando Claude Code· pasta, e reticencias nao valem em item de flex */
 .sessao-origem {
-  display: flex; align-items: baseline;
+  display: block;
   margin: -1px 0 4px 15px;
   font: 10.5px var(--mono);
   color: var(--apagado-3);
@@ -1187,7 +1223,7 @@ svg { display: block; }
 .sessao.aguardando, .sessao.parada { animation: none; }
 .sessao.aguardando .sessao-pulso, .sessao.parada .sessao-pulso { animation: none; }
 .sessao.parada .sessao-pulso { background: #3a3f49; }
-.sessao.parada .sessao-linha { color: #3f444d; }
+.sessao.parada .sessao-linha { color: var(--apagado); }
 
 .palco.grade .tela.aguardando, .palco.grade .tela.parada { animation: none; }
 .palco.grade .tela.aguardando .chapeu, .palco.grade .tela.parada .chapeu { animation: none; }
@@ -1197,11 +1233,11 @@ svg { display: block; }
   width: 20px; height: 18px;
   display: grid; place-items: center;
   border: 0; border-radius: 5px;
-  background: transparent; color: #33383f;
+  background: transparent; color: var(--apagado);
   cursor: default;
 }
 .divisor-olho svg { width: 13px; height: 13px; }
-.divisor-olho:hover { background: #1f232b; color: var(--apagado); }
+.divisor-olho:hover { background: #1f232b; color: var(--texto); }
 
 .mostrar-fora {
   margin: 6px 8px 8px;
@@ -1318,4 +1354,25 @@ input:focus-visible {
   border-radius: 50%;
   flex: 0 0 auto;
   margin: 0;
+}
+
+/* historico grande ainda entrando: o numero da tela e menor que o real ate terminar */
+.ajuda.ajuda-lendo { color: #d9b25f; }
+
+/* ------------------------------------------------------ barra estreita */
+
+/* A barra pede uns 860px e nada nela encolhia: com a janela em meia tela o ctx saia cortado
+   no meio do numero e o modelo sumia calado. Estreitando, sai primeiro o relogio, depois a
+   regua encurta e some; o relogio e os tokens continuam no title de cada medidor. Fica no fim
+   da folha porque regra dentro de @container nao ganha das de mesmo peso que vem depois. */
+.uso-barra { container-type: inline-size; }
+@container (max-width: 880px) {
+  .medidor u { display: none; }
+}
+@container (max-width: 720px) {
+  .medidor .trilho { width: 36px; }
+  .uso-conta b { max-width: 110px; }
+}
+@container (max-width: 560px) {
+  .medidor .trilho { display: none; }
 }
