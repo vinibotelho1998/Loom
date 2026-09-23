@@ -43,9 +43,13 @@ BLOCO = 4 * 1024 * 1024
 # quanto cada passada aceita ler de um arquivo so. Indexar do zero um transcript de 100 MB
 # segurava a tela por segundos; assim ele entra aos poucos e a janela continua respondendo.
 TETO_POR_PASSADA = 32 * 1024 * 1024
+# e quanto a passada inteira aceita ler, somando os arquivos. So o teto por arquivo nao bastava:
+# na primeira abertura, centenas de transcript menores que ele eram lidos de uma vez na thread da
+# tela, e a janela e os terminais paravam ate acabar
+TETO_TOTAL_POR_PASSADA = 48 * 1024 * 1024
 
 
-def _ler_novidades(caminho: Path, desde: int) -> tuple[list[dict], int]:
+def _ler_novidades(caminho: Path, desde: int, teto: int | None = None) -> tuple[list[dict], int]:
     """Le so o que cresceu no arquivo desde a ultima passada.
 
     Em binario e por blocos, porque o deslocamento guardado e em bytes. A versao anterior
@@ -63,7 +67,7 @@ def _ler_novidades(caminho: Path, desde: int) -> tuple[list[dict], int]:
 
     linhas: list[dict] = []
     fim = desde
-    restante = min(tamanho - desde, TETO_POR_PASSADA)
+    restante = min(tamanho - desde, TETO_POR_PASSADA if teto is None else teto)
     # sobra sempre comeca no byte `fim`: e o pedaco lido que ainda nao terminou em quebra
     sobra = b""
     try:
@@ -143,6 +147,7 @@ def coletar(pastas: dict[str, Path], estado: dict | None = None) -> dict:
         ultimos = {}
     mudou = False
     parcial = False
+    orcamento = TETO_TOTAL_POR_PASSADA
 
     for chave_perfil, pasta in pastas.items():
         raiz = Path(pasta) / "projects"
@@ -151,16 +156,29 @@ def coletar(pastas: dict[str, Path], estado: dict | None = None) -> dict:
         for arquivo in raiz.rglob("*.jsonl"):
             chave = str(arquivo)
             desde = arquivos.get(chave, 0)
-            registros, novo_fim = _ler_novidades(arquivo, desde)
-            if not registros and novo_fim == desde:
+            try:
+                tamanho = arquivo.stat().st_size
+            except OSError:
                 continue
+            if tamanho == desde:
+                continue
+            if orcamento <= 0:
+                # a passada ja leu o que podia; este fica pra proxima, e a tela diz que esta lendo
+                parcial = True
+                continue
+            teto = min(TETO_POR_PASSADA, orcamento)
+            registros, novo_fim = _ler_novidades(arquivo, desde, teto)
+            base_lida = desde if novo_fim >= desde else 0
+            orcamento -= novo_fim - base_lida
             # andou mas nao chegou no fim: o resto entra na proxima passada, e ate la o numero
             # da tela e menor que o real. A linha que o Claude ainda esta escrevendo nao conta.
-            try:
-                if novo_fim > desde and arquivo.stat().st_size - desde > TETO_POR_PASSADA:
-                    parcial = True
-            except OSError:
-                pass
+            # Com a sobra do orcamento pequena, nem andar ele anda, e mesmo assim falta ler
+            if tamanho - (desde if tamanho >= desde else 0) > teto and (
+                novo_fim > desde or teto < TETO_POR_PASSADA
+            ):
+                parcial = True
+            if not registros and novo_fim == desde:
+                continue
             vistos = defaultdict(Counter)
             ids = set()
             # Cada bloco da resposta vira uma linha com o mesmo id e o mesmo consumo, e elas

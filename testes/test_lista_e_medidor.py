@@ -66,6 +66,24 @@ class AvisoDeHistoricoPelaMetade(ComPastaPropria):
             uso.TETO_POR_PASSADA = anterior
         self.assertIs(estado["parcial"], True)
 
+    def test_teto_da_passada_inteira_deixa_o_resto_pra_proxima(self):
+        """Centenas de transcript pequenos eram lidos de uma vez e a janela parava ate acabar."""
+        outro = self.arquivo.with_name("outra.jsonl")
+        self.escrever_transcript(self.arquivo, [self.resposta_de_agora("m1")])
+        self.escrever_transcript(outro, [self.resposta_de_agora("m2")])
+        anterior = uso.TETO_TOTAL_POR_PASSADA
+        uso.TETO_TOTAL_POR_PASSADA = max(self.arquivo.stat().st_size, outro.stat().st_size) + 10
+        try:
+            estado: dict = {}
+            dias = uso.coletar(self.pastas, estado)
+            self.assertIs(estado["parcial"], True)
+            self.assertEqual(sum(d.get("mensagens", 0) for d in dias.values()), 1)
+            dias = uso.coletar(self.pastas, estado)
+            self.assertIs(estado["parcial"], False)
+            self.assertEqual(sum(d.get("mensagens", 0) for d in dias.values()), 2)
+        finally:
+            uso.TETO_TOTAL_POR_PASSADA = anterior
+
     def test_sem_novidade_nao_ha_aviso(self):
         self.escrever_transcript(self.arquivo, [self.resposta_de_agora("m1")])
         uso.relatorio(self.pastas)
