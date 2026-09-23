@@ -534,7 +534,9 @@ function fechar(aba) {
 }
 
 function novaAba(shellId, perfilId, pedido) {
-  const shell = shells.find((s) => s.id === shellId) || shells[0];
+  // sem shell pedido vale o padrao das configuracoes: a aba aberta pelo menu da conta ou
+  // pelo retomar caia sempre no primeiro shell da lista, ignorando a escolha feita ali
+  const shell = shells.find((s) => s.id === (shellId || cfg.shellPadrao)) || shells[0];
   const perfil = perfis.find((p) => p.id === perfilId) || null;
   if (!shell) return;
   const aba = new Aba(shell, perfil, (pedido || {}).elevar);
