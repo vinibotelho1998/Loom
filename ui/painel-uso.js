@@ -468,12 +468,17 @@ const PainelUso = (function () {
     if (grupo.contas.length < 2) return "";
     const botoes = grupo.contas.map((c) => {
       const rotulo = c.nome || meioCortado(c.email || c.id, 24);
-      const dica = c.email && c.nome ? c.nome + ", " + c.email : c.nome || c.email || c.id;
+      const cota = cotaDaAba(c);
+      let dica = c.email && c.nome ? c.nome + ", " + c.email : c.nome || c.email || c.id;
+      // o quanto cada conta ja gastou, sem precisar abrir uma por uma
+      if (cota !== null) dica += " · " + cota.titulo + ": " + textoPercentual(cota.usado) + " usado";
+      const selo =
+        cota === null ? "" : '<span class="uso-conta-cota nivel-' + nivel(cota.usado) + '">' + textoPercentual(cota.usado) + "</span>";
       const escolhida = c === ativa;
       return (
         '<button class="uso-conta' + (escolhida ? " ativo" : "") + '" role="tab" aria-selected="' + escolhida + '"' +
         ' data-ferramenta="' + esc(grupo.ferramenta) + '" data-escolher-conta="' + esc(c.id) + '" title="' + esc(dica) + '">' +
-        esc(rotulo) + "</button>"
+        esc(rotulo) + selo + "</button>"
       );
     });
     return '<div class="uso-contas" role="tablist" aria-label="Conta">' + botoes.join("") + "</div>";

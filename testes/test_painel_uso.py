@@ -493,6 +493,18 @@ class DesenhoDoContrato(ComPainel):
         self.assertIn('class="uso-selo"', sessao)
         self.assertNotIn("uso-selo", semana)
 
+    def test_botao_da_conta_acende_com_a_semana_alta_e_some_sem_leitura(self):
+        dados = contrato()
+        outra = json.loads(json.dumps(dados["contas"][0]))
+        outra.update(id="claude:trab", nome="Trabalho")
+        outra["janelas"][1]["usado"] = 91.0
+        sem = json.loads(json.dumps(dados["contas"][0]))
+        sem.update(id="claude:velha", nome="Velha", janelas=[])
+        dados["contas"][1:1] = [outra, sem]
+        html = self.desenho(dados)
+        self.assertIn('>Trabalho<span class="uso-conta-cota nivel-critico">91%</span></button>', html)
+        self.assertIn(">Velha</button>", html, "conta sem leitura de limite nao inventa numero")
+
     def test_uso_alto_e_critico_tem_rotulo_escrito(self):
         dados = contrato()
         dados["contas"][0]["janelas"][0]["usado"] = 91.0
@@ -521,8 +533,10 @@ class DesenhoDoContrato(ComPainel):
         dados["contas"].insert(1, outra)
         html = self.desenho(dados)
         self.assertEqual(len(re.findall(r'<button class="uso-conta[ "]', html)), 2)
-        # e-mail corta no meio: o comeco e o dominio e que dizem de quem e
-        self.assertIn(">" + email[:12] + "…" + email[-11:] + "</button>", html)
+        # e-mail corta no meio: o comeco e o dominio e que dizem de quem e, e a semana vem do lado
+        self.assertIn(">" + email[:12] + "…" + email[-11:] + '<span class="uso-conta-cota nivel-ok">16%</span></button>', html)
+        self.assertIn(">Principal<span class=\"uso-conta-cota nivel-ok\">16%</span></button>", html)
+        self.assertIn("Semana: 16% usado", html, "a dica do botao diz de que janela e o numero")
 
         trab = self.desenho(dados, {"contas": {"claude": "claude:trab"}})
         self.assertIn('data-conta="claude:trab"', trab)

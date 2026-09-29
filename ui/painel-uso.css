@@ -115,6 +115,15 @@
 }
 .uso-conta:hover { color: var(--uso-texto); border-color: rgba(255, 255, 255, .12); }
 .uso-conta.ativo { color: var(--uso-texto); background: #21252d; border-color: color-mix(in srgb, var(--acento) 45%, transparent); }
+.uso-conta-cota {
+  margin-left: 6px;
+  color: var(--uso-ter);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.uso-conta.ativo .uso-conta-cota { color: var(--uso-sec); }
+.uso-conta-cota.nivel-alto { color: var(--uso-alto); }
+.uso-conta-cota.nivel-critico { color: var(--uso-erro-texto); }
 
 /* ----------------------------------------------------------------- cartao */
 
