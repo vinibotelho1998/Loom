@@ -22,8 +22,14 @@ from loom import caminhos, coletor, painel_uso, perfis, precos, uso, uso_codex
 
 
 def carimbo(segundos_atras: float = 0) -> str:
-    """O instante em UTC com Z no fim, como o Claude e o Codex gravam."""
-    return (datetime.now(timezone.utc) - timedelta(seconds=segundos_atras)).isoformat().replace("+00:00", "Z")
+    """O instante em UTC com Z no fim, como o Claude e o Codex gravam.
+
+    Contado a partir de uma ancora que e agora, menos nos primeiros minutos depois da meia-noite:
+    ali "segundos atras" caia em ontem e os testes do que e de hoje falhavam so por causa do relogio.
+    """
+    agora = datetime.now().astimezone()
+    ancora = max(agora, agora.replace(hour=1, minute=0, second=0, microsecond=0))
+    return (ancora.astimezone(timezone.utc) - timedelta(seconds=segundos_atras)).isoformat().replace("+00:00", "Z")
 
 
 def dias_atras(dias: int) -> str:
