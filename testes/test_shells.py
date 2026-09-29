@@ -8,11 +8,16 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import threading
 import unittest
 import unittest.mock
 from pathlib import Path
+from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from PySide6.QtCore import Qt  # noqa: E402
+from winpty import WinptyError, ptyprocess  # noqa: E402
 
 from loom import pty_session, shells  # noqa: E402
 from loom.pty_session import PtySession  # noqa: E402
@@ -170,28 +175,47 @@ class ModoGravadoNoRegistro(unittest.TestCase):
 
 
 class ProcQueEscreve:
-    """O PtyProcess do pywinpty, entregando pedacos e depois o fim."""
+    """O PtyProcess do pywinpty, entregando pedacos e depois o fim.
 
-    def __init__(self, pedacos=(), saida: int | None = 0, erro: Exception | None = None, vivo: bool = True):
+    Texto vazio no meio e o marcador 0011Ignore, que o read devolve assim com o shell vivo; o fim
+    de verdade e o EOFError. Quando a leitura acaba o shell ja saiu, a menos que vivo_no_fim diga
+    quantas vezes ele ainda responde vivo. A saida pode ser um erro, como o do winpty.
+    """
+
+    def __init__(
+        self, pedacos=(), saida=0, erro: Exception | None = None, vivo: bool = True, vivo_no_fim: int = 0
+    ):
         self.pedacos = list(pedacos)
-        self.exitstatus = saida
-        self.erro = erro
+        self.saida = saida
+        self.erro = erro if erro is not None else EOFError("Pty is closed")
         self.vivo = vivo
+        self.vivo_no_fim = vivo_no_fim
+        self.acabou = False
         self.pedidos: list[int] = []
         self.escrito: list[str] = []
         self.tamanhos: list[tuple[int, int]] = []
         self.pid = 4242
 
+    @property
+    def exitstatus(self):
+        if isinstance(self.saida, Exception):
+            raise self.saida
+        return self.saida
+
     def read(self, tamanho: int) -> str:
         self.pedidos.append(tamanho)
         if self.pedacos:
             return self.pedacos.pop(0)
-        if self.erro is not None:
-            raise self.erro
-        return ""
+        self.acabou = True
+        raise self.erro
 
     def isalive(self) -> bool:
-        return self.vivo
+        if not self.acabou:
+            return self.vivo
+        if self.vivo_no_fim > 0:
+            self.vivo_no_fim -= 1
+            return True
+        return False
 
     def write(self, texto: str) -> None:
         self.escrito.append(texto)
@@ -204,9 +228,21 @@ class LeituraDoShell(unittest.TestCase):
     def sessao(self) -> tuple[PtySession, list, list]:
         sessao = PtySession("aba1", argv=["x"])
         saidas, fins = [], []
-        sessao.output.connect(lambda sid, texto: saidas.append((sid, texto)))
-        sessao.exited.connect(lambda sid, codigo: fins.append((sid, codigo)))
+        # direto: a leitura pode rodar em outra thread, e sem laco de eventos a fila nunca andaria
+        direto = Qt.ConnectionType.DirectConnection
+        sessao.output.connect(lambda sid, texto: saidas.append((sid, texto)), direto)
+        sessao.exited.connect(lambda sid, codigo: fins.append((sid, codigo)), direto)
         return sessao, saidas, fins
+
+    def bombear(self, sessao: PtySession, proc: ProcQueEscreve, prazo: float = 2.0) -> None:
+        """Le na thread propria, como o app. Presa alem do prazo, a aba e fechada: o defeito que
+        segura a leitura falha o teste em vez de travar a bateria."""
+        leitura = threading.Thread(target=sessao._pump, args=(proc,), daemon=True)
+        leitura.start()
+        leitura.join(prazo)
+        if leitura.is_alive():
+            sessao._stopping = True
+            leitura.join(prazo)
 
     def test_pedacos_chegam_em_ordem_e_depois_o_codigo_de_saida(self):
         sessao, saidas, fins = self.sessao()
@@ -234,6 +270,63 @@ class LeituraDoShell(unittest.TestCase):
         sessao._stopping = True
         sessao._pump(ProcQueEscreve(["resto do shell"], saida=1))
         self.assertEqual((saidas, fins), ([], []))
+
+    def test_leitura_vazia_no_meio_nao_e_o_fim(self):
+        """O winpty entrega o marcador 0011Ignore como texto vazio, com o shell vivo.
+
+        Parar ali avisava o fim, e a ponte matava o shell com o Claude dentro.
+        """
+        sessao, saidas, fins = self.sessao()
+        self.bombear(sessao, ProcQueEscreve(["PS> ", "", "claude\r\n"], saida=0))
+        self.assertEqual(saidas, [("aba1", "PS> "), ("aba1", "claude\r\n")])
+        self.assertEqual(fins, [("aba1", 0)])
+
+    def test_leitura_que_para_com_o_shell_vivo_so_avisa_quando_ele_sai(self):
+        """Um erro no soquete do winpty para a leitura sem o shell ter saido."""
+        sessao, _, fins = self.sessao()
+        proc = ProcQueEscreve(erro=OSError("soquete do winpty caiu"), saida=0, vivo_no_fim=2)
+        vivo_no_aviso = []
+        sessao.exited.connect(lambda *_: vivo_no_aviso.append(proc.isalive()), Qt.ConnectionType.DirectConnection)
+        self.bombear(sessao, proc)
+        self.assertEqual(fins, [("aba1", 0)])
+        self.assertEqual(vivo_no_aviso, [False], "o fim foi avisado com o shell vivo")
+
+    def test_codigo_que_o_winpty_nao_entrega_ainda_avisa_o_fim(self):
+        """O erro do exitstatus escapava do finally: a aba ficava com o shell morto, esperando tecla."""
+        sessao, _, fins = self.sessao()
+        self.bombear(sessao, ProcQueEscreve(saida=WinptyError("sem codigo de saida")))
+        self.assertEqual(fins, [("aba1", pty_session.CODIGO_DESCONHECIDO)])
+
+
+class PararSemEspera(unittest.TestCase):
+    """O fechar e o terminate do winpty de verdade, com o pseudo console e o relogio falsos."""
+
+    def proc_que_morre_no_segundo_tiro(self) -> ptyprocess.PtyProcess:
+        # sobe sem o __init__, que abriria o soquete e a thread de leitura de verdade
+        proc = ptyprocess.PtyProcess.__new__(ptyprocess.PtyProcess)
+        tiros = []
+        proc.pty = SimpleNamespace(isalive=lambda: len(tiros) < 2, cancel_io=lambda: True)
+        proc.fileobj = SimpleNamespace(close=lambda: None)
+        proc._server = SimpleNamespace(close=lambda: None)
+        proc.closed, proc.pid = False, 4242
+        proc.delayafterclose = proc.delayafterterminate = 0.1
+        proc.kill = tiros.append
+        return proc
+
+    def test_fechar_tres_abas_nao_dorme_nada(self):
+        """O terminate dormia 0,1 s a cada tentativa de matar, com a tela parada, e o fechar do app
+        somava isso aba por aba."""
+        sessoes = []
+        for i in range(3):
+            sessao = PtySession(f"aba{i}", argv=["x"])
+            sessao._proc = self.proc_que_morre_no_segundo_tiro()
+            sessoes.append(sessao)
+        esperas: list[float] = []
+        with unittest.mock.patch.object(ptyprocess, "time", SimpleNamespace(sleep=esperas.append)):
+            for sessao in sessoes:
+                sessao.stop()
+        self.assertEqual(len(esperas), 9, "cada aba passa pelo close e pelas duas tentativas do terminate")
+        self.assertEqual(sum(esperas), 0)
 
 
 class SessaoSemShell(unittest.TestCase):

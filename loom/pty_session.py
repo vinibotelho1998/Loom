@@ -1,12 +1,25 @@
 from __future__ import annotations
 
+import logging
 import os
 import shutil
 import sys
 import threading
+import time
 
 from PySide6.QtCore import QObject, Signal
-from winpty import PtyProcess
+from winpty import PtyProcess, WinptyError
+
+log = logging.getLogger(__name__)
+
+# Depois que a leitura para, o intervalo entre uma olhada e outra no processo. Comeca curto,
+# porque no fim normal ele morre em milissegundos, e cresce ate o teto quando ele segue vivo.
+ESPERA_DO_FIM = 0.05
+ESPERA_MAXIMA_DO_FIM = 1.0
+# no fim normal o processo some em milissegundos; vivo depois disso, foi a leitura que quebrou
+PRAZO_DO_FIM = 2.0
+# o shell saiu, mas o Windows nao disse com que codigo
+CODIGO_DESCONHECIDO = -1
 
 
 def default_shell() -> list[str]:
@@ -108,6 +121,27 @@ def _processos() -> list[tuple[int, int, str]] | None:
     return achados
 
 
+def _vivo(proc) -> bool:
+    try:
+        return bool(proc.isalive())
+    except (OSError, WinptyError):
+        # sem conseguir perguntar, nao ha mais o que vigiar; esperar aqui seria pra sempre
+        return False
+
+
+def _codigo_de_saida(proc) -> int:
+    """O codigo com que o shell saiu.
+
+    O exitstatus pergunta ao winpty, e o erro dele saia de dentro do finally da leitura: o aviso
+    de fim nunca era dado e a aba ficava com o shell morto, esperando tecla.
+    """
+    try:
+        codigo = proc.exitstatus
+    except (OSError, WinptyError):
+        return CODIGO_DESCONHECIDO
+    return codigo if isinstance(codigo, int) else 0
+
+
 def tem_filhos(pid: int | None) -> bool | None:
     """Se o shell daquela aba esta rodando algum programa. None quando nao da pra saber."""
     if not pid:
@@ -136,9 +170,13 @@ class PtySession(QObject):
         self._cols, self._rows = cols, rows
 
     def start(self) -> None:
-        self._proc = PtyProcess.spawn(
-            self._argv, cwd=self._cwd, env=self._env, dimensions=(self._rows, self._cols)
-        )
+        try:
+            self._proc = PtyProcess.spawn(
+                self._argv, cwd=self._cwd, env=self._env, dimensions=(self._rows, self._cols)
+            )
+        except WinptyError as erro:
+            # o erro nativo do winpty nao e OSError; quem abre a aba so precisa saber que nao subiu
+            raise OSError(str(erro)) from erro
         # o processo vai como argumento e nao lido de self._proc: o stop() solta a referencia
         # da sessao enquanto esta thread ainda le, as vezes antes de ela dar o primeiro passo
         self._reader = threading.Thread(
@@ -147,26 +185,52 @@ class PtySession(QObject):
         self._reader.start()
 
     def _pump(self, proc: PtyProcess) -> None:
-        code = 0
         try:
             while True:
                 # o padrao do winpty e 1 kB, entao um despejo grande virava centenas de sinais
                 # enfileirados por segundo na thread da tela, cada um com o seu custo de travessia
                 data = proc.read(65536)
                 if not data:
-                    break
+                    # Vazio nao e fim. O winpty manda o marcador 0011Ignore quando a leitura dele
+                    # volta sem nada, e o read entrega isso como texto vazio; o fim de verdade chega
+                    # como EOFError. Parar aqui avisava o fim com o shell vivo, e a ponte matava o
+                    # shell com o Claude dentro.
+                    continue
                 if self._stopping:
                     break
-                self.output.emit(self.session_id, data)
+                self._avisar(self.output, self.session_id, data)
         except EOFError:
             pass
         except OSError:
             pass
         finally:
-            if proc is not None:
-                code = proc.exitstatus if proc.exitstatus is not None else 0
-            if not self._stopping:
-                self.exited.emit(self.session_id, code)
+            self._fim(proc)
+
+    def _fim(self, proc: PtyProcess) -> None:
+        """Avisa que o shell acabou, mas so quando ele acabou de fato.
+
+        A leitura para um instante antes ou depois de o processo morrer, e nem sempre quer dizer
+        que ele morreu: um erro no soquete do winpty tambem para. Avisar o fim com ele vivo fazia
+        a ponte matar o shell. Daqui em diante a thread so vigia o processo, ate ele sair ou a aba
+        fechar.
+        """
+        espera, desde, anotado = ESPERA_DO_FIM, time.monotonic(), False
+        while not self._stopping and _vivo(proc):
+            if not anotado and time.monotonic() - desde >= PRAZO_DO_FIM:
+                log.warning("a leitura do shell da aba %s parou com ele vivo; a aba espera ele sair", self.session_id)
+                anotado = True
+            time.sleep(espera)
+            espera = min(espera * 2, ESPERA_MAXIMA_DO_FIM)
+        if not self._stopping:
+            self._avisar(self.exited, self.session_id, _codigo_de_saida(proc))
+
+    def _avisar(self, sinal, *args) -> None:
+        try:
+            sinal.emit(*args)
+        except RuntimeError:
+            # a ponte ja apagou a sessao depois do stop; o que sobrou da leitura nao tem mais pra
+            # quem ir, e o erro so sujaria o log
+            pass
 
     def write(self, data: str) -> None:
         if self._proc is not None and self._proc.isalive():
@@ -206,6 +270,11 @@ class PtySession(QObject):
         # close fecha os sockets de leitura antes de matar, e isso solta as duas threads de
         # leitura; a espera dele e so pra quem nao chama terminate logo em seguida
         proc.delayafterclose = 0
+        # O terminate do winpty dorme 0,1 s depois de cada tentativa de matar, e sao duas: com a
+        # tela parada, e no fechar do app somando aba por aba. O Windows mata do mesmo jeito sem a
+        # espera; se o processo ainda nao sumiu na conferencia, o close reclama com um erro que ja
+        # e ignorado logo abaixo.
+        proc.delayafterterminate = 0
         try:
             proc.close(force=True)
         except OSError:
