@@ -5,6 +5,7 @@
 <title>Loom</title>
 <link rel="stylesheet" href="vendor/xterm.css">
 <link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="painel-uso.css">
 </head>
 <body>
   <header class="cromo">
@@ -14,6 +15,7 @@
     <span class="fps" id="fps" hidden></span>
     <button class="pilula" id="abrir-stats" title="Consumo e limite de cada conta"><span class="pilula-ponto"></span>Uso</button>
     <button class="icone" id="alternar-lateral" title="Mostrar ou esconder a barra lateral"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2" y="3" width="12" height="10" rx="1.6"/><path d="M6.4 3v10"/></svg></button>
+    <button class="icone ativo" id="alternar-uso" title="Mostrar ou esconder o painel de uso, Ctrl+Shift+U" aria-pressed="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2" y="3" width="12" height="10" rx="1.6"/><path d="M9.6 3v10"/></svg></button>
     <button class="icone" id="abrir-config" title="Configurações, Ctrl+vírgula"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
   </header>
 
@@ -67,6 +69,7 @@
             <dt>Ctrl+Tab</dt><dd>Próxima aba, com Shift volta</dd>
             <dt>Alt+1 a 9</dt><dd>Pular direto pra aba</dd>
             <dt>Ctrl+Shift+G</dt><dd>Todos lado a lado</dd>
+            <dt>Ctrl+Shift+U</dt><dd>Painel de uso</dd>
             <dt>Ctrl+Shift+F</dt><dd>Buscar na saída</dd>
             <dt>Ctrl+vírgula</dt><dd>Configurações</dd>
           </dl>
@@ -86,6 +89,8 @@
         <span class="modelo" id="modelo-atual" hidden><i></i><b></b></span>
       </footer>
     </div>
+    <div class="puxador puxador-uso" id="puxador-uso" title="Arraste pra mudar a largura do painel de uso"></div>
+    <aside class="uso-lateral" id="uso-lateral" aria-label="Uso de cada conta"></aside>
   </div>
 
   <div class="menu" id="menu" hidden>
@@ -230,6 +235,16 @@
             </div>
           </div>
 
+          <div class="linha">
+            <div class="rot"><span>Painel de uso</span><small>O limite e o custo de cada conta à direita dos terminais. Ctrl+Shift+U mostra e esconde</small></div>
+            <div class="ctrl"><label class="chave"><input type="checkbox" id="cfg-painelUso"><span></span></label></div>
+          </div>
+
+          <div class="linha">
+            <div class="rot"><span>Largura do painel de uso</span><small>Em pixel. Dá pra arrastar a borda dele também</small></div>
+            <div class="ctrl"><input type="range" id="cfg-larguraPainelUso" min="280" max="480" step="1"><output id="out-larguraPainelUso"></output></div>
+          </div>
+
 
 
           <div class="linha">
@@ -368,6 +383,7 @@
             <dt>Ctrl+PageUp e PageDown</dt><dd>Aba anterior e próxima</dd>
             <dt>Alt+1 a 9</dt><dd>Pular direto pra aba, 9 é a última</dd>
             <dt>Ctrl+Shift+G</dt><dd>Todos os terminais lado a lado</dd>
+            <dt>Ctrl+Shift+U</dt><dd>Mostrar ou esconder o painel de uso</dd>
             <dt>Ctrl+Shift+F e F3</dt><dd>Buscar na saída e ir pra próxima</dd>
             <dt>Ctrl+mais, menos e zero</dt><dd>Tamanho da fonte, e Ctrl com a roda</dd>
             <dt>Shift+Enter</dt><dd>Quebra linha sem enviar</dd>
@@ -421,6 +437,7 @@
   <script src="vendor/addon-search.js"></script>
   <script src="vendor/addon-weblinks.js"></script>
   <script src="stats.js"></script>
+  <script src="painel-uso.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

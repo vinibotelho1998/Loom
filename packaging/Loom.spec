@@ -32,7 +32,8 @@ app = Analysis(
     [os.path.join(ROOT, "run.py")],
     pathex=[ROOT],
     binaries=BINARIOS,
-    datas=[(os.path.join(ROOT, "ui"), "ui")],
+    # a tabela de preco do painel de uso vai ao lado do modulo que le ela, em loom/dados
+    datas=[(os.path.join(ROOT, "ui"), "ui"), (os.path.join(ROOT, "loom", "dados"), os.path.join("loom", "dados"))],
     hiddenimports=["winpty"],
     excludes=["tkinter", "unittest", *QT_SOBRANDO],
     noarchive=False,

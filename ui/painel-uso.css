@@ -1,0 +1,342 @@
+/* Painel de uso a direita dos terminais, no desenho do CodexBar, de Peter Steinberger, sob a
+   licenca MIT. Medidas, textos e regras sao as dele; os neutros e o acento sao os do Loom. */
+
+.uso-lateral {
+  /* o mesmo fundo da lateral da esquerda: os dois lados da janela ficam com o mesmo peso */
+  --uso-fundo: #121419;
+  --uso-trilho: #1f232b;
+  --uso-sec: var(--apagado-2);
+  --uso-ter: var(--apagado);
+  --uso-sep: var(--linha);
+  --uso-acento: var(--acento);
+  /* vermelho, verde e ambar sao os que o Loom ja usa nos estados da lateral e da barra */
+  --uso-erro: #f0808a;
+  --uso-aviso: #d9b25f;
+  --uso-reserva: #63c98a;
+  --uso-deficit: #f0808a;
+  --uso-pico: #d9b25f;
+  --uso-hover: rgba(211, 216, 224, .06);
+  --uso-faixa: rgba(211, 216, 224, .10);
+  --uso-entalhe: rgba(211, 216, 224, .68);
+  --uso-pad: 20px;
+  --marca: var(--acento);
+
+  width: clamp(280px, var(--largura-uso, 310px), 480px);
+  flex: 0 0 clamp(280px, var(--largura-uso, 310px), 480px);
+  display: flex;
+  flex-direction: column;
+  padding-top: 4px;
+  border-left: 1px solid var(--linha);
+  background: var(--uso-fundo);
+  color: var(--texto);
+  font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  font-size: 12.5px;
+  line-height: 1.35;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* redesenhar o painel nao pode fazer o navegador remedir a coluna dos terminais */
+  contain: content;
+  scrollbar-width: thin;
+  scrollbar-color: #1e222a transparent;
+}
+.uso-lateral > * { flex: 0 0 auto; }
+.uso-lateral p { margin: 0; }
+.uso-lateral button { font-family: inherit; cursor: default; }
+.uso-lateral::-webkit-scrollbar { width: 8px; }
+.uso-lateral::-webkit-scrollbar-track { background: transparent; }
+.uso-lateral::-webkit-scrollbar-thumb {
+  background: #1a1d24;
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+.uso-lateral:hover::-webkit-scrollbar-thumb { background: #262b34; background-clip: content-box; }
+.uso-sec { color: var(--uso-sec); }
+
+/* o botao do topo fica aceso com o painel aberto */
+#alternar-uso.ativo { color: var(--texto); }
+
+.uso-separador {
+  width: 100%; height: 0; margin: 0;
+  border: 0; border-top: 1px solid var(--uso-sep);
+}
+
+/* ------------------------------------------------------------- provedores */
+
+/* auto-fit e nao auto-fill: as abas dividem a largura toda por igual, como no CodexBar */
+.uso-provedores {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(54px, 1fr));
+  gap: 2px 1px;
+  padding: 6px 16px;
+}
+.uso-provedor {
+  position: relative;
+  display: flex; align-items: center; justify-content: center; gap: 4px;
+  height: 30px; min-width: 0;
+  padding: 4px 7px;
+  border: 0; border-radius: 6px;
+  background: transparent;
+  color: var(--uso-sec);
+  font-size: 11px;
+}
+.uso-provedor:hover { background: var(--uso-hover); }
+.uso-provedor.ativo { background: var(--uso-acento); color: #fff; }
+.uso-provedor-icone { flex: 0 0 16px; width: 16px; height: 16px; fill: currentColor; }
+.uso-provedor-nome { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* a cota fica a vista inclusive na aba escolhida: e o sinal de uma conta pra outra */
+.uso-provedor-cota {
+  position: absolute; left: 8px; right: 8px; bottom: 2px;
+  height: 2px; border-radius: 1px;
+  background: var(--uso-trilho);
+  overflow: hidden;
+}
+.uso-provedor-cota b { display: block; height: 100%; background: var(--marca); border-radius: 1px 0 0 1px; }
+
+/* ----------------------------------------------------------------- contas */
+
+.uso-seletor-contas {
+  display: grid;
+  grid-template-columns: repeat(var(--colunas, 1), minmax(0, 1fr));
+  gap: 4px;
+  padding: 4px 6px;
+}
+.uso-seletor-conta {
+  height: 26px; min-width: 0;
+  padding: 0 7px;
+  border: 0; border-radius: 6px;
+  background: transparent;
+  color: var(--uso-sec);
+  font-size: 11px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.uso-seletor-conta:hover { background: var(--uso-hover); }
+.uso-seletor-conta.ativo { background: var(--uso-acento); color: #fff; }
+
+/* ----------------------------------------------------------------- cartao */
+
+.uso-cartao { display: flex; flex-direction: column; min-width: 0; padding: 6px var(--uso-pad) 12px; }
+
+.uso-cabeca { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.uso-cabeca-linha { display: flex; align-items: baseline; gap: 12px; min-width: 0; }
+.uso-cabeca-linha.com-erro { align-items: flex-start; }
+.uso-nome {
+  margin: 0; flex: 0 1 auto; min-width: 0;
+  font-size: 13px; font-weight: 600; line-height: 1.25;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.uso-email {
+  margin-left: auto; flex: 0 1 auto; min-width: 0;
+  font-size: 11px; color: var(--uso-sec);
+  overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+}
+.uso-legenda {
+  flex: 1 1 auto; min-width: 0;
+  font-size: 10.5px; color: var(--uso-sec);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* o giro vem logo depois do texto, e nao la na outra ponta da linha */
+.uso-legenda.carregando { flex: 0 1 auto; }
+.uso-legenda.erro {
+  color: var(--uso-erro);
+  white-space: normal;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4;
+  padding-bottom: 4px;
+}
+.uso-plano { flex: 0 0 auto; margin-left: auto; font-size: 10.5px; color: var(--uso-sec); white-space: nowrap; }
+
+.uso-copiar {
+  flex: 0 0 auto;
+  display: grid; place-items: center;
+  width: 26px; height: 26px; padding: 4px;
+  border: 0; border-radius: 4px;
+  background: transparent;
+  color: var(--uso-sec);
+  transition: transform .12s ease-out, background-color .12s ease-out;
+}
+.uso-copiar svg { width: 18px; height: 18px; }
+.uso-copiar:hover { color: var(--texto); }
+.uso-copiar:active { transform: scale(.94); background: rgba(138, 147, 161, .18); }
+.uso-copiar.copiado { color: var(--uso-reserva); }
+
+.uso-separador-cabeca { margin: 6px 0; }
+.uso-separador-cabeca.com-janelas { margin-bottom: 16px; }
+
+.uso-corpo { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.uso-sem-dado { font-size: 11px; color: var(--uso-sec); }
+.uso-lateral .uso-nota { margin-top: 4px; font-size: 10.5px; color: var(--uso-sec); }
+
+@keyframes uso-girar { to { transform: rotate(360deg); } }
+.uso-giro {
+  flex: 0 0 auto;
+  width: 10px; height: 10px;
+  border: 1.5px solid var(--uso-sec); border-right-color: transparent; border-radius: 50%;
+  animation: uso-girar .8s linear infinite;
+}
+
+/* ---------------------------------------------------------------- janelas */
+
+.uso-janelas { display: flex; flex-direction: column; gap: 12px; }
+.uso-janela { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+
+.uso-janela-topo { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 8px; row-gap: 2px; min-width: 0; }
+.uso-janela-titulo {
+  flex: 0 0 auto; max-width: 100%;
+  font-size: 13px; font-weight: 500;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* sem o limite da propria ferramenta, o numero e deduzido: o selo diz isso ao lado do titulo */
+.uso-selo {
+  flex: 0 0 auto;
+  align-self: center;
+  padding: 0 5px;
+  border: 1px solid var(--linha-forte);
+  border-radius: 4px;
+  color: var(--uso-sec);
+  font-size: 9.5px; line-height: 14px;
+  letter-spacing: .02em;
+}
+.uso-janela-zera {
+  flex: 0 1 auto; margin-left: auto; min-width: 0;
+  font-size: 10.5px; color: var(--uso-sec); text-align: right;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
+}
+.uso-janela-meta {
+  font-size: 10.5px; color: var(--uso-sec);
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
+}
+
+/* ------------------------------------------------------------------ barra */
+
+/* sem transicao de proposito: o CodexBar desenha o preenchimento parado */
+.uso-trilho {
+  position: relative;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--uso-trilho);
+  overflow: hidden;
+}
+.uso-trilho-preenche {
+  position: absolute; top: 0; bottom: 0; left: 0;
+  border-radius: 3px;
+  background: var(--marca);
+}
+/* vao de 5 com uma listra de 1 no meio, nos limiares de 50% e 20% restantes */
+.uso-trilho-marca {
+  position: absolute; top: 0; bottom: 0;
+  left: calc(var(--p) * 1% - 2.5px);
+  width: 5px;
+  background: var(--uso-fundo);
+}
+.uso-trilho-marca::after {
+  content: ""; position: absolute; top: 0; bottom: 0; left: 2px; width: 1px;
+  background: var(--uso-entalhe);
+}
+/* vao de 6 com uma listra de 2 no meio, onde o uso deveria estar agora */
+.uso-trilho-ritmo {
+  position: absolute; top: 0; bottom: 0;
+  left: calc(var(--p) * 1% - 3px);
+  width: 6px;
+  background: var(--uso-fundo);
+}
+.uso-trilho-ritmo::after {
+  content: ""; position: absolute; top: 0; bottom: 0; left: 2px; width: 2px;
+  background: var(--uso-reserva);
+}
+.uso-trilho-ritmo.deficit::after { background: var(--uso-deficit); }
+
+/* ------------------------------------------------------------------ custo */
+
+.uso-bloco-titulo { font-size: 13px; font-weight: 500; }
+.uso-custo { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.uso-custo-topo { display: flex; align-items: center; gap: 6px; }
+.uso-custo-linha { font-size: 10.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.uso-custo-dica, .uso-custo-aviso {
+  font-size: 10.5px;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; overflow: hidden;
+}
+.uso-custo-dica { color: var(--uso-sec); }
+.uso-custo-aviso { color: var(--uso-aviso); }
+
+/* ---------------------------------------------------------------- grafico */
+
+.uso-grafico { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.uso-grafico-vazio { font-size: 10.5px; color: var(--uso-sec); }
+
+/* 118 de barras e 12 de datas: os 130 do grafico do CodexBar */
+.uso-grafico-quadro {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: 118px 12px;
+  column-gap: 4px;
+}
+/* os rotulos ficam fora do SVG pra letra nao esticar com ele; o 0, o meio e o topo caem
+   exatamente nas linhas deles porque a coluna vai de meia letra acima a meia letra abaixo */
+.uso-grafico-eixo-y {
+  grid-row: 1 / span 2;
+  display: flex; flex-direction: column; justify-content: space-between;
+  height: 122px; margin-top: 1px;
+  font-size: 10px; line-height: 10px; color: var(--uso-ter);
+  text-align: right; white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.uso-grafico-area { grid-column: 2; grid-row: 1; display: block; width: 100%; height: 118px; }
+.uso-grafico-area .barra { fill: var(--marca); }
+.uso-grafico-area .pico { fill: var(--uso-pico); }
+.uso-grafico-area .faixa { fill: var(--uso-faixa); }
+.uso-grafico-eixo-x {
+  grid-column: 2; grid-row: 2;
+  display: flex; justify-content: space-between;
+  font-size: 10px; line-height: 12px; color: var(--uso-ter);
+  white-space: nowrap;
+}
+.uso-grafico-eixo-x .so-um { margin: 0 auto; }
+
+.uso-grafico-rodape { display: flex; align-items: center; height: 22px; }
+.uso-grafico-lendo { font-size: 10px; color: var(--uso-sec); }
+/* o segmentado e o .filtro do Loom, que e o que ele ja tem */
+.uso-grafico-modo {
+  display: flex; gap: 2px;
+  width: 132px; height: 22px; margin-left: auto;
+  padding: 2px;
+  border: 1px solid var(--linha); border-radius: 8px;
+}
+.uso-grafico-modo button {
+  flex: 1; border: 0; border-radius: 6px;
+  background: transparent;
+  color: var(--uso-sec);
+  font-size: 10.5px; line-height: 1;
+}
+.uso-grafico-modo button:hover { color: var(--texto); }
+.uso-grafico-modo button.ativo { background: #1f232b; color: var(--texto); }
+
+.uso-grafico-detalhe { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.uso-grafico-dia {
+  height: 16px; line-height: 16px;
+  font-size: 10.5px; color: var(--uso-sec);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* ate quatro modelos a vista, o resto rola */
+.uso-grafico-modelos {
+  display: flex; flex-direction: column; gap: 6px;
+  max-height: calc(4 * 36px + 3 * 6px);
+  margin: 0; padding: 0; list-style: none;
+  overflow-y: auto;
+}
+.uso-grafico-modelo { display: flex; align-items: flex-start; gap: 8px; flex: 0 0 36px; min-width: 0; }
+.uso-grafico-acento { flex: 0 0 2px; width: 2px; height: 14px; margin-top: 1px; background: var(--marca); opacity: var(--a, .75); }
+.uso-grafico-modelo div { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.uso-grafico-modelo b {
+  height: 16px; font-weight: 400; font-size: 10.5px; color: var(--uso-sec);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.uso-grafico-modelo span {
+  height: 13px; font-size: 10px; color: var(--uso-ter);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.uso-grafico-mais { height: 13px; font-size: 10px; color: var(--uso-ter); }
+.uso-grafico-total {
+  height: 16px; font-size: 10.5px; color: var(--uso-sec);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}

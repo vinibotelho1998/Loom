@@ -22,6 +22,7 @@ from . import coletor as mod_coletor
 from . import config as mod_config
 from . import ferramentas as mod_ferramentas
 from . import motor as mod_motor
+from . import painel_uso as mod_painel_uso
 from . import perfis as mod_perfis
 from . import pty_session as mod_pty
 from . import queda as mod_queda
@@ -745,14 +746,137 @@ class Bridge(QObject):
         self._varrendo = False
         self.sessoesProntas.emit(lista)
 
+    # -- uso e painel de uso --------------------------------------------
+    # A aba Uso e o painel de uso leem o mesmo historico, numa thread so e fora da tela: a primeira
+    # leitura dos transcript do Claude e dos rollouts do Codex leva segundos. Os dois slots devolvem
+    # na hora o ultimo relatorio pronto e pedem uma coleta nova. O painel recebe o novo pelo
+    # painelUsoPronto; a aba Uso pergunta de novo sozinha enquanto o relatorio vier parcial.
+
+    painelUsoPronto = Signal(str)
+    _usoColetado = Signal(str)
+    # relatorio da aba Uso mais velho que isso volta como parcial, e a tela pergunta de novo em 1,5 s
+    USO_VELHO = 60.0
+
+    def _estado_do_uso(self) -> dict:
+        """O estado da coleta de uso, criado no primeiro pedido, sempre na thread da tela."""
+        estado = getattr(self, "_coleta_uso", None)
+        if estado is None:
+            estado = self._coleta_uso = {
+                "trava": threading.Lock(),
+                "pedido": None,
+                "linha": None,
+                "parar": threading.Event(),
+                "painel": dict(mod_painel_uso.VAZIO),
+                "uso": None,
+                "usoEm": 0.0,
+            }
+            self._usoColetado.connect(self._receber_uso, Qt.QueuedConnection)
+        return estado
+
     @Slot(result=str)
     def getUsage(self) -> str:
-        perfis = mod_perfis.listar()
-        estado: dict = {}
-        dados = mod_uso.relatorio(mod_uso.pastas_de(perfis), estado)
-        # parcial: algum historico grande ainda nao foi lido inteiro, e a tela precisa dizer
-        # que o numero vai subir em vez de mostrar menos que o real como se fosse medido
-        return json.dumps({"porConta": dados, "parcial": bool(estado.get("parcial"))})
+        """O relatorio da aba Uso, no formato de sempre, e uma leitura nova ao fundo.
+
+        A leitura dos transcript rodava aqui, na thread da tela, e segurava a janela e os terminais.
+        Parcial diz que o numero ainda vai mudar: vem assim enquanto nao ha relatorio, quando o que
+        ha e velho ou quando algum historico grande ainda nao foi lido inteiro, e a tela pergunta de
+        novo em 1,5 s em vez de 30.
+        """
+        self._pedir_coleta_de_uso(mod_painel_uso.pedido_do_uso(mod_uso.pastas_de(mod_perfis.listar())))
+        estado = self._estado_do_uso()
+        relatorio = estado["uso"]
+        if relatorio is None:
+            return json.dumps({"porConta": {}, "parcial": True})
+        velho = time.monotonic() - estado["usoEm"] > self.USO_VELHO
+        return json.dumps(
+            {"porConta": relatorio.get("porConta", {}), "parcial": bool(relatorio.get("parcial")) or velho}
+        )
+
+    @Slot(result=str)
+    def getPainelUso(self) -> str:
+        """O ultimo relatorio do painel de uso, na hora, e uma coleta nova ao fundo.
+
+        O novo chega pelo painelUsoPronto. Antes da primeira coleta terminar vem o vazio com
+        coletando ligado, como combinado com a tela.
+        """
+        estado = self._estado_do_uso()
+        try:
+            pedido = mod_painel_uso.pedido_do_painel(mod_perfis.listar())
+        except OSError:
+            log.warning("nao consegui montar o pedido do painel de uso", exc_info=True)
+            return json.dumps(estado["painel"])
+        self._pedir_coleta_de_uso(pedido)
+        return json.dumps({**estado["painel"], "coletando": True})
+
+    def _pedir_coleta_de_uso(self, pedido: dict) -> None:
+        """Poe o pedido na fila e sobe a thread da coleta, se ela nao estiver rodando.
+
+        O pedido que chega com uma coleta andando se junta ao que ja esperava e roda logo depois
+        dela, uma vez so.
+        """
+        estado = self._estado_do_uso()
+        with estado["trava"]:
+            if estado["parar"].is_set():
+                return
+            estado["pedido"] = mod_painel_uso.juntar_pedidos(estado["pedido"], pedido)
+            if estado["linha"] is not None:
+                return
+            linha = estado["linha"] = threading.Thread(target=self._coletar_uso, name="coleta-de-uso", daemon=True)
+        linha.start()
+
+    def _coletar_uso(self) -> None:
+        estado = self._coleta_uso
+        while True:
+            with estado["trava"]:
+                pedido = estado["pedido"]
+                estado["pedido"] = None
+                if pedido is None or estado["parar"].is_set():
+                    estado["linha"] = None
+                    return
+            try:
+                resultado = mod_painel_uso.coletar(pedido, estado["parar"])
+            except Exception:  # noqa: BLE001 - a thread nao pode morrer e deixar a fila parada
+                log.warning("a coleta de uso falhou", exc_info=True)
+                resultado = {}
+            with estado["trava"]:
+                resultado["mais"] = estado["pedido"] is not None
+            try:
+                self._usoColetado.emit(json.dumps(resultado))
+            except RuntimeError:
+                # o app fechou no meio da coleta
+                with estado["trava"]:
+                    estado["linha"] = None
+                return
+
+    def _receber_uso(self, bruto: str) -> None:
+        # de volta na thread da tela: so ela troca o que os slots devolvem
+        estado = self._estado_do_uso()
+        try:
+            resultado = json.loads(bruto)
+        except ValueError:
+            return
+        if not isinstance(resultado, dict):
+            return
+        if isinstance(resultado.get("uso"), dict):
+            estado["uso"] = resultado["uso"]
+            estado["usoEm"] = time.monotonic()
+        painel = resultado.get("painel")
+        if isinstance(painel, dict):
+            painel["coletando"] = bool(resultado.get("mais"))
+            estado["painel"] = painel
+            self.painelUsoPronto.emit(json.dumps(painel))
+
+    def _parar_coleta_de_uso(self, espera: float = 5.0) -> None:
+        """A coleta que esta andando para no proximo arquivo, e a fila e descartada."""
+        estado = getattr(self, "_coleta_uso", None)
+        if estado is None:
+            return
+        estado["parar"].set()
+        with estado["trava"]:
+            estado["pedido"] = None
+            linha = estado["linha"]
+        if linha is not None and linha is not threading.current_thread():
+            linha.join(espera)
 
     @Slot(str, str, result=str)
     def createProfile(self, nome: str, ferramenta: str) -> str:
@@ -1026,6 +1150,7 @@ class Bridge(QObject):
         return sum(1 for s in self._sessions.values() if s.alive)
 
     def shutdown(self) -> None:
+        self._parar_coleta_de_uso()
         self._flush_timer.stop()
         self._relistar.stop()
         for session in list(self._sessions.values()):

@@ -21,7 +21,7 @@ const TEMA = {
    caractere pro shell e a janela executa o atalho, os dois ao mesmo tempo. */
 // A busca e Ctrl+Shift+F, como no Windows Terminal: com Ctrl+F ela tomava a tecla do programa da
 // aba, e no less, no vim e no Git Bash o Ctrl+F nunca chegava
-const ATALHOS_DA_JANELA = new Set(["KeyT", "KeyW", "KeyG", "KeyF"]);
+const ATALHOS_DA_JANELA = new Set(["KeyT", "KeyW", "KeyG", "KeyF", "KeyU"]);
 const ATALHOS_DE_CONTROLE = new Set([
   "Comma", "Tab", "PageUp", "PageDown",
   "Equal", "Minus", "Digit0", "NumpadAdd", "NumpadSubtract", "Numpad0",
@@ -1590,6 +1590,8 @@ const CAMPOS = [
   ["cursor", "select"],
   ["cursorPisca", "check"],
   ["densidade", "select"],
+  ["painelUso", "check"],
+  ["larguraPainelUso", "range"],
   ["mostrarFps", "check"],
   ["desenho", "select"],
   ["shellPadrao", "select"],
@@ -1662,6 +1664,7 @@ function aplicarTudo() {
   for (const a of ordem) a.aplicar();
   preencherCampos();
   pintarUsoDaBarra();
+  PainelUso.aplicar();
 }
 
 function ligarCampos() {
@@ -3474,6 +3477,9 @@ window.addEventListener("keydown", (ev) => {
   } else if (ev.ctrlKey && ev.shiftKey && ev.code === "KeyG") {
     ev.preventDefault();
     alternarGrade();
+  } else if (ev.ctrlKey && ev.shiftKey && ev.code === "KeyU") {
+    ev.preventDefault();
+    PainelUso.alternar();
   } else if (ev.ctrlKey && !ev.shiftKey && ev.code === "Comma") {
     ev.preventDefault();
     abrirConfig();
@@ -3689,6 +3695,8 @@ new QWebChannel(qt.webChannelTransport, (channel) => {
           ligarCampos();
           aplicarAlturaExternas();
           aplicarLarguraLateral();
+          // antes das abas: o terminal ja nasce na largura que sobra ao lado do painel
+          PainelUso.ligar();
           reconectarAbas((reconectou) => {
             if (reconectou) return;
             restaurarAbas((tinha) => {

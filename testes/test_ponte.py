@@ -561,7 +561,15 @@ class LimitesDasAbas(ComPonteNaPastaTemporaria):
             self.casa / "projects" / "p" / "s.jsonl",
             [self.resposta(time.strftime("%Y-%m-%dT%H:%M:%S"), "ok")],
         )
+        from PySide6.QtCore import QCoreApplication
+
         with unittest.mock.patch.object(uso, "pastas_de", return_value={"c1": self.casa}):
+            # a leitura roda na thread da coleta: a primeira resposta diz que o numero ainda vem
+            self.assertIs(json.loads(self.ponte.getUsage())["parcial"], True)
+            fim = time.monotonic() + 10
+            while self.ponte._estado_do_uso()["uso"] is None and time.monotonic() < fim:
+                QCoreApplication.processEvents()
+                time.sleep(0.01)
             resposta = json.loads(self.ponte.getUsage())
         self.assertIs(resposta["parcial"], False)
         self.assertEqual(resposta["porConta"]["c1"]["hoje"]["mensagens"], 1)

@@ -26,6 +26,14 @@ Este arquivo **não** é MIT. Ele vem do Qt e segue as licenças acima. Aqui ele
 usado sob a LGPL v3, sem modificação, exatamente como distribuído pelo Qt.
 https://doc.qt.io/qt-6/qtwebchannel-index.html
 
+### CodexBar, desenho e regras do painel de uso
+`ui/painel-uso.js`, `ui/painel-uso.css`
+
+O painel de uso reproduz o desenho, os textos e as regras de ritmo, projeção e formatação
+do CodexBar, e usa os ícones de provedor dele.
+
+Copyright (c) 2026 Peter Steinberger, licença MIT. https://github.com/steipete/CodexBar
+
 ### Fonte Hack
 `ui/vendor/fonts/hack-regular.woff2`, `hack-bold.woff2`, `hack-italic.woff2`
 
@@ -39,6 +47,40 @@ sob a Bitstream Vera License. https://github.com/source-foundry/Hack
 
 Copyright (c) 2020 The JetBrains Mono Project Authors, sob a
 SIL Open Font License 1.1. https://github.com/JetBrains/JetBrainsMono
+
+## Código e desenho de terceiros
+
+Os dados do painel de uso foram escritos a partir de projetos abertos. Nenhum arquivo
+deles foi copiado inteiro; o que veio de cada um está descrito abaixo.
+
+### CodexBar
+`loom/painel_uso.py`
+
+O relatório que alimenta o painel de uso segue o layout do CodexBar: janela de sessão e
+semanal, bloco com custo e ritmo, custo de hoje e dos últimos 30 dias e série por dia, e
+a mesma divisão entre o que chega pronto e o que a tela calcula.
+
+Copyright (c) 2026 Peter Steinberger, licença MIT. https://github.com/steipete/CodexBar
+
+### ccusage
+`loom/uso.py`, `loom/uso_codex.py`, `loom/painel_uso.py`
+
+As regras de uso, bloco e custo vêm do ccusage: a resposta repetida reconhecida pelo id
+da mensagem mais o do pedido, o bloco de 5 horas que começa na hora cheia e fecha depois
+de 5 horas ou de 5 horas sem uso, o ritmo e a projeção do bloco e o custo por token com o
+cache escrito e o lido.
+
+Copyright (c) ryoppippi, licença MIT. https://github.com/ryoppippi/ccusage
+
+### LiteLLM
+`loom/dados/precos.json`
+
+A tabela de preço por token é um recorte da `model_prices_and_context_window.json` do
+LiteLLM, baixada em 28/09/2026: só os modelos do Claude e da OpenAI que o Loom lê e só
+os campos de custo, com os valores como vieram. A faixa de contexto longo segue a regra
+do LiteLLM.
+
+Copyright (c) 2023 Berri AI, licença MIT. https://github.com/BerriAI/litellm
 
 ## Empacotado no instalador
 
@@ -55,4 +97,5 @@ O `Loom-Setup.exe` é gerado com PyInstaller e leva junto:
 ## Como conferir
 
 Os arquivos de terceiros ficam todos em `ui/vendor/`. Nenhum deles foi editado:
-são cópias do que o projeto de origem publica.
+são cópias do que o projeto de origem publica. A exceção é `loom/dados/precos.json`,
+o recorte da tabela do LiteLLM descrito acima.

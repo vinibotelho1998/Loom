@@ -31,13 +31,16 @@ PADRAO = {
     "editor": "code",
     "densidade": "confortavel",
     "desenho": "auto",
+    # o painel de uso a direita dos terminais nasce aberto, na largura base do CodexBar
+    "painelUso": True,
+    "larguraPainelUso": 310,
 }
 
 
 # range e number chegam da tela como inteiro mesmo quando o padrao e decimal, e o contrario
 # tambem acontece. Sem isto, arrastar a entrelinha ate 1 nao gravava e a tela voltava sozinha.
 NUMERICOS = {"tamanhoFonte", "entrelinha", "espacoLetra", "historico",
-             "alturaExternas", "larguraLateral"}
+             "alturaExternas", "larguraLateral", "larguraPainelUso"}
 
 # A mesma faixa que a tela aceita. Um historico 0 vindo do campo apagado, ou do arquivo editado
 # a mao, cortava na hora a rolagem de todas as abas abertas, sem volta.
@@ -48,6 +51,8 @@ FAIXAS = {
     "historico": (1000, 200000),
     "alturaExternas": (8, 75),
     "larguraLateral": (180, 520),
+    # mais estreito que isso a barra de 5h perde o texto do zera em; mais largo rouba o terminal
+    "larguraPainelUso": (280, 480),
 }
 
 
