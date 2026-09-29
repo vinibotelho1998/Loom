@@ -17,6 +17,7 @@ from pathlib import Path
 from PySide6.QtCore import QFileSystemWatcher, QObject, QTimer, Qt, Signal, Slot
 
 from . import __version__
+from . import aviso_limite as mod_aviso
 from . import caminhos as mod_caminhos
 from . import coletor as mod_coletor
 from . import config as mod_config
@@ -45,6 +46,9 @@ TAXA_PRA_AGRUPAR = 12 * 1024  # bytes por segundo
 # tudo que a lista mostra fica sob observacao, senao a sessao volta a viver sem avisar
 JANELA_DE_VIGIA = 24 * 3600
 TETO_DE_VIGIA = 400
+# o aviso de limite olha as leituras de uso uma vez por minuto; a primeira, logo depois de subir
+AVISO_DE_LIMITE_MS = 60000
+PRIMEIRO_AVISO_MS = 20000
 # o que cada shell ja mostrou, pra tela refeita redesenhar o terminal como estava
 HISTORICO_POR_SESSAO = 512 * 1024  # caracteres
 RAIZ_PROJETO = Path(__file__).resolve().parent.parent
@@ -208,6 +212,12 @@ class Bridge(QObject):
         self._relistar.timeout.connect(self._revisar_vigia)
         self._relistar.start()
         QTimer.singleShot(1500, self._revisar_vigia)
+
+        self._limites = QTimer(self)
+        self._limites.setInterval(AVISO_DE_LIMITE_MS)
+        self._limites.timeout.connect(self._vigiar_limites)
+        self._limites.start()
+        QTimer.singleShot(PRIMEIRO_AVISO_MS, self, self._vigiar_limites)
 
         self._flush_timer = QTimer(self)
         self._flush_timer.setInterval(FLUSH_MINIMO_MS)
@@ -759,6 +769,24 @@ class Bridge(QObject):
         )
 
     @Slot()
+    def _vigiar_limites(self) -> None:
+        """Avisa pelo Windows quando uma conta passa de 85% ou de 95% numa janela de uso."""
+        if not mod_config.carregar().get("avisoDeLimite"):
+            return
+        nomes = {p.id: p.nome for p in mod_perfis.listar()}
+        leituras = mod_aviso.leituras_do_claude(mod_coletor.limites_por_perfil(mod_coletor.ler_todas()), nomes)
+        coleta = getattr(self, "_coleta_uso", None)
+        if coleta is not None:
+            leituras += mod_aviso.leituras_do_painel(coleta.get("painel") or {})
+        avisos, vistos = mod_aviso.avisos_novos(leituras, mod_aviso.ler_vistos(), time.time())
+        if not avisos:
+            return
+        mod_aviso.gravar_vistos(vistos)
+        for aviso in avisos:
+            log.info("aviso de limite: %s", aviso["texto"])
+            self.notificacaoPedida.emit(aviso["titulo"], aviso["texto"], "")
+
+    @Slot()
     def pedirSessoes(self) -> None:
         """Varre os transcript fora da thread da tela; a lista chega por sessoesProntas.
 
@@ -1206,6 +1234,7 @@ class Bridge(QObject):
         self._parar_coleta_de_uso()
         self._flush_timer.stop()
         self._relistar.stop()
+        self._limites.stop()
         if self._nucleo is not None:
             # quem derruba os shells e o nucleo, que sai junto quando esta tela sair
             self._nucleo.encerrar()

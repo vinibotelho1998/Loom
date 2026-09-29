@@ -1604,6 +1604,7 @@ const CAMPOS = [
   ["restaurarAbas", "check"],
   ["esconderStatusLine", "check"],
   ["avisarQuandoPronta", "check"],
+  ["avisoDeLimite", "check"],
   ["fecharAoSair", "check"],
   ["editor", "text"],
 ];

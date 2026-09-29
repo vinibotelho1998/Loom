@@ -27,6 +27,7 @@ PADRAO = {
     "restaurarAbas": True,
     "mostrarSessoesDeFora": False,
     "avisarQuandoPronta": True,
+    "avisoDeLimite": True,
     "fecharAoSair": False,
     "editor": "code",
     "densidade": "confortavel",
