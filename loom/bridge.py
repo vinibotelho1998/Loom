@@ -154,6 +154,9 @@ class Bridge(QObject):
     # a lista de sessoes, varrida fora da thread da tela a cada pedirSessoes
     sessoesProntas = Signal(str)
     _sessoesVarridas = Signal(str)
+    # o relatorio do painel de uso, coletado fora da thread da tela
+    painelUsoPronto = Signal(str)
+    _usoColetado = Signal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -163,6 +166,11 @@ class Bridge(QObject):
         self._elevacaoRespondida.connect(self._guardar_elevacao)
         self._varrendo = False
         self._sessoesVarridas.connect(self._entregar_sessoes)
+        # Toda ligacao a um metodo da ponte nasce aqui, antes de o canal ler a ponte, e todo
+        # metodo ligado e slot declarado. Ligado depois, um metodo sem @Slot vira slot novo na
+        # hora, a numeracao dos sinais muda por baixo da pagina e ela passa a descartar todos,
+        # a saida dos terminais inclusive.
+        self._usoColetado.connect(self._receber_uso, Qt.QueuedConnection)
         self._sessions: dict[str, PtySession] = {}
         self._buffers: dict[str, list[str]] = {}
         # Os shells moram neste processo, nao na pagina. Se a tela cai e e refeita, cada aba
@@ -236,6 +244,7 @@ class Bridge(QObject):
 
         threading.Thread(target=provar, name="sudo", daemon=True).start()
 
+    @Slot(str)
     def _guardar_elevacao(self, bruto: str) -> None:
         # de volta na thread da tela, que e quem le a resposta guardada
         self._provando_sudo = False
@@ -742,6 +751,7 @@ class Bridge(QObject):
 
         threading.Thread(target=varrer, name="sessoes", daemon=True).start()
 
+    @Slot(str)
     def _entregar_sessoes(self, lista: str) -> None:
         self._varrendo = False
         self.sessoesProntas.emit(lista)
@@ -752,8 +762,6 @@ class Bridge(QObject):
     # na hora o ultimo relatorio pronto e pedem uma coleta nova. O painel recebe o novo pelo
     # painelUsoPronto; a aba Uso pergunta de novo sozinha enquanto o relatorio vier parcial.
 
-    painelUsoPronto = Signal(str)
-    _usoColetado = Signal(str)
     # relatorio da aba Uso mais velho que isso volta como parcial, e a tela pergunta de novo em 1,5 s
     USO_VELHO = 60.0
 
@@ -770,7 +778,6 @@ class Bridge(QObject):
                 "uso": None,
                 "usoEm": 0.0,
             }
-            self._usoColetado.connect(self._receber_uso, Qt.QueuedConnection)
         return estado
 
     @Slot(result=str)
@@ -848,6 +855,7 @@ class Bridge(QObject):
                     estado["linha"] = None
                 return
 
+    @Slot(str)
     def _receber_uso(self, bruto: str) -> None:
         # de volta na thread da tela: so ela troca o que os slots devolvem
         estado = self._estado_do_uso()

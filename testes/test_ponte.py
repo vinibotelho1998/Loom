@@ -70,6 +70,40 @@ class ComPonteNaPastaTemporaria(ComPonte):
         super().tearDown()
 
 
+class PonteSemMetodoNovoDepoisDeMontada(ComPonteNaPastaTemporaria):
+    """A pagina le a lista de sinais da ponte uma vez so, quando o canal sobe.
+
+    Metodo ligado a um sinal depois disso, sem @Slot, vira slot novo na hora: a numeracao dos
+    sinais muda por baixo da pagina, e ela passa a descartar todos, a saida dos terminais
+    inclusive. Foi o que deixou o painel em Atualizando pra sempre e as abas em branco.
+    """
+
+    def test_pedidos_da_tela_nao_acrescentam_metodo_a_ponte(self):
+        antes = self.ponte.metaObject().methodCount()
+        with (
+            unittest.mock.patch.object(mod_bridge.mod_painel_uso, "pedido_do_painel", return_value={"painel": True}),
+            unittest.mock.patch.object(mod_bridge.mod_painel_uso, "pedido_do_uso", return_value={"uso": True}),
+            unittest.mock.patch.object(mod_bridge.mod_painel_uso, "coletar", return_value={"painel": {"contas": []}}),
+            unittest.mock.patch.object(mod_bridge.mod_shells, "elevacao", return_value={"disponivel": False}),
+            unittest.mock.patch.object(mod_bridge.mod_sessoes, "listar", return_value=[]),
+        ):
+            self.ponte.getPainelUso()
+            self.ponte.getUsage()
+            self.ponte.elevacao()
+            self.ponte.pedirSessoes()
+            fim = time.monotonic() + 5
+            while time.monotonic() < fim and (self.ponte._coleta_uso["linha"] is not None or self.ponte._varrendo):
+                QCoreApplication.processEvents()
+                time.sleep(0.01)
+            QCoreApplication.processEvents()
+        self.assertEqual(self.ponte.metaObject().methodCount(), antes)
+
+    def test_quem_recebe_das_threads_ja_e_slot_da_ponte(self):
+        meta = self.ponte.metaObject()
+        for assinatura in ("_receber_uso(QString)", "_guardar_elevacao(QString)", "_entregar_sessoes(QString)"):
+            self.assertGreaterEqual(meta.indexOfSlot(assinatura), 0, assinatura)
+
+
 class ImagemColada(ComPonteNaPastaTemporaria):
     def colagens(self) -> Path:
         return self.raiz / "dados" / "colagens"
