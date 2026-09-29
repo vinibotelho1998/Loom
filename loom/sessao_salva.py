@@ -1,11 +1,17 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 
 from .caminhos import RAIZ
 
+log = logging.getLogger(__name__)
+
 ARQUIVO = RAIZ / "abas.json"
+# O teto so segura um arquivo que cresceu por defeito, e cada aba guardada volta como um shell
+# no proximo start. O de 20 tirava da restauracao, sem aviso, da 21a aba em diante.
+TETO_DE_ABAS = 100
 
 
 _ULTIMO: str | None = None
@@ -14,10 +20,9 @@ _ULTIMO: str | None = None
 def gravar(abas: list[dict]) -> None:
     """Guarda o que estava aberto pra devolver tudo no proximo start."""
     global _ULTIMO
+    validas = [aba for aba in abas if isinstance(aba, dict) and aba.get("shell")]
     limpas = []
-    for aba in abas[:20]:
-        if not isinstance(aba, dict) or not aba.get("shell"):
-            continue
+    for aba in validas[:TETO_DE_ABAS]:
         limpas.append(
             {
                 "shell": str(aba.get("shell", "")),
@@ -34,6 +39,8 @@ def gravar(abas: list[dict]) -> None:
     texto = json.dumps(limpas, indent=2, ensure_ascii=False)
     if texto == _ULTIMO:
         return
+    if len(validas) > TETO_DE_ABAS:
+        log.warning("%d abas abertas; so as %d primeiras voltam no proximo start", len(validas), TETO_DE_ABAS)
     RAIZ.mkdir(parents=True, exist_ok=True)
     # o temporario leva o numero do processo: duas janelas abertas gravam ao mesmo tempo
     # e brigariam pelo mesmo nome

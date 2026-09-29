@@ -85,11 +85,18 @@ class AjustesEditadosAMao(ComPastaPropria):
 
 
 class AbasGuardadas(ComPastaPropria):
-    def test_so_as_vinte_primeiras_sao_guardadas(self):
+    def test_mais_de_vinte_abas_voltam_todas(self):
+        """O teto era 20, e da 21a aba em diante ela sumia da restauracao sem aviso."""
         sessao_salva.gravar([{"shell": "pwsh", "apelido": str(i)} for i in range(30)])
-        lidas = sessao_salva.ler()
-        self.assertEqual(len(lidas), 20)
-        self.assertEqual(lidas[-1]["apelido"], "19")
+        self.assertEqual([a["apelido"] for a in sessao_salva.ler()], [str(i) for i in range(30)])
+
+    def test_passando_do_teto_ficam_as_primeiras_e_o_log_avisa(self):
+        abas = [{"shell": "pwsh", "apelido": str(i)} for i in range(7)]
+        with unittest.mock.patch.object(sessao_salva, "TETO_DE_ABAS", 5):
+            with self.assertLogs("loom.sessao_salva", "WARNING") as avisos:
+                sessao_salva.gravar(abas)
+        self.assertEqual([a["apelido"] for a in sessao_salva.ler()], ["0", "1", "2", "3", "4"])
+        self.assertIn("7 abas", avisos.output[0])
 
     def test_so_os_campos_conhecidos_vao_pro_disco(self):
         sessao_salva.gravar([{"shell": "pwsh", "ativa": 1, "senha": "x"}, "solta", None])
