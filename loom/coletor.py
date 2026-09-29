@@ -176,29 +176,6 @@ def marcar(perfil: str, dados: dict, aviso: bool = False) -> None:
     _gravar(alvo, atual)
 
 
-def confiar_na_pasta(perfil: str, dados: dict) -> None:
-    """Deixa a pasta desta sessao ja confiada pras proximas vezes.
-
-    O dialogo de confiar aparece antes deste gancho rodar, entao aqui nao adianta pra
-    sessao de agora. Adianta pra proxima vez que voce abrir o Claude na mesma pasta.
-    """
-    if perfil == "__padrao__" or not os.environ.get("LOOM_ABA"):
-        return
-    pasta = (dados.get("workspace") or {}).get("current_dir") or dados.get("cwd") or ""
-    if not pasta:
-        return
-    try:
-        from . import config as mod_config
-        from . import perfis as mod_perfis
-    except ImportError:
-        return
-    if not mod_config.carregar().get("confiarPastas"):
-        return
-    alvo = mod_perfis.por_id(perfil)
-    if alvo is not None:
-        mod_perfis.confiar(alvo, pasta)
-
-
 def main() -> int:
     # a status line imprime icone e barra, e o console do Windows nasce em cp1252.
     # a entrada tambem: sem isto o nome da sessao com acento chega quebrado.
@@ -222,11 +199,11 @@ def main() -> int:
     bruto = sys.stdin.read()
 
     if so_marcar:
+        # O gancho de inicio so marca a sessao. Ele tambem confiava na pasta, e isso relia e
+        # regravava o .claude.json da conta justo quando o Claude que acabou de subir grava o dele:
+        # um dos dois perdia o que escreveu. Quem confia e a abertura da aba, antes do Claude subir.
         try:
-            dados = json.loads(bruto)
-            marcar(perfil, dados, aviso)
-            if not aviso:
-                confiar_na_pasta(perfil, dados)
+            marcar(perfil, json.loads(bruto), aviso)
         except (ValueError, OSError, TypeError, AttributeError):
             pass
         return 0

@@ -333,29 +333,27 @@ class AvisoDoClaude(ComPastaPropria):
 
 
 class ArgumentosDoColetor(ComPastaPropria):
-    def rodar(self, argumentos: list[str], entrada: dict) -> tuple[unittest.mock.Mock, unittest.mock.Mock]:
+    def rodar(self, argumentos: list[str], entrada: dict) -> unittest.mock.Mock:
         limpo = {k: v for k, v in os.environ.items() if not k.startswith("LOOM_")}
         with unittest.mock.patch.dict(os.environ, limpo, clear=True), unittest.mock.patch.object(
             coletor.sys, "argv", ["coletar.py", *argumentos]
         ), unittest.mock.patch.object(coletor.sys, "stdin", unittest.mock.Mock(read=lambda: json.dumps(entrada))), \
                 unittest.mock.patch.object(coletor, "marcar") as marcar, \
-                unittest.mock.patch.object(coletor, "confiar_na_pasta") as confiar, \
                 unittest.mock.patch.object(coletor, "encadear", return_value="") as encadear, \
                 unittest.mock.patch.object(coletor.sys, "stdout", unittest.mock.Mock()):
             self.assertEqual(coletor.main(), 0)
         self.encadear = encadear
-        return marcar, confiar
+        return marcar
 
-    def test_aviso_marca_e_nao_confia_na_pasta(self):
-        marcar, confiar = self.rodar(["--aviso", "c1"], {"session_id": "s1"})
+    def test_aviso_so_marca(self):
+        marcar = self.rodar(["--aviso", "c1"], {"session_id": "s1"})
         marcar.assert_called_once_with("c1", {"session_id": "s1"}, True)
-        confiar.assert_not_called()
         self.encadear.assert_not_called()
 
-    def test_gancho_de_inicio_marca_e_confia(self):
-        marcar, confiar = self.rodar(["--hook", "c1"], {"session_id": "s1"})
+    def test_gancho_de_inicio_so_marca(self):
+        marcar = self.rodar(["--hook", "c1"], {"session_id": "s1"})
         marcar.assert_called_once_with("c1", {"session_id": "s1"}, False)
-        confiar.assert_called_once_with("c1", {"session_id": "s1"})
+        self.encadear.assert_not_called()
 
     def test_status_line_repassa_a_de_antes(self):
         with unittest.mock.patch.object(coletor, "guardar") as guardar:

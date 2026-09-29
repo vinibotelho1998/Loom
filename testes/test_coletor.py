@@ -107,44 +107,25 @@ class GanchoDeInicio(ComPastaPropria):
         self.assertEqual(saida.getvalue(), "")
 
 
-class ConfiarNaPastaDaSessao(ComPastaPropria):
-    def setUp(self) -> None:
-        super().setUp()
-        self.conta = perfis.criar("Uma")
-        self.cadastro = self.conta.config_dir / ".claude.json"
-
-    def confiadas(self) -> list[str]:
-        if not self.cadastro.exists():
-            return []
-        dados = json.loads(self.cadastro.read_text(encoding="utf-8"))
-        return [p for p, d in dados.get("projects", {}).items() if d.get("hasTrustDialogAccepted")]
-
-    def test_dentro_do_loom_a_pasta_da_sessao_fica_confiada(self):
-        with sem_marca_de_aba({"LOOM_ABA": "a1"}):
-            coletor.confiar_na_pasta(self.conta.id, {"workspace": {"current_dir": "C:\\proj\\"}, "cwd": "C:\\outra"})
-        self.assertEqual(self.confiadas(), ["C:/proj"])
-
-    def test_sem_workspace_vale_o_cwd(self):
-        with sem_marca_de_aba({"LOOM_ABA": "a1"}):
-            coletor.confiar_na_pasta(self.conta.id, {"cwd": "C:\\outra"})
-        self.assertEqual(self.confiadas(), ["C:/outra"])
-
-    def test_sessao_de_outro_terminal_nao_confia_em_nada(self):
-        with sem_marca_de_aba():
-            coletor.confiar_na_pasta(self.conta.id, {"cwd": "C:\\proj"})
-        self.assertEqual(self.confiadas(), [])
-
-    def test_opcao_desligada_nao_confia_em_nada(self):
-        config.salvar({"confiarPastas": False})
-        with sem_marca_de_aba({"LOOM_ABA": "a1"}):
-            coletor.confiar_na_pasta(self.conta.id, {"cwd": "C:\\proj"})
-        self.assertEqual(self.confiadas(), [])
-
-    def test_conta_de_sempre_e_conta_que_nao_existe_ficam_de_fora(self):
-        with sem_marca_de_aba({"LOOM_ABA": "a1"}), unittest.mock.patch.object(perfis, "confiar") as confiar:
-            coletor.confiar_na_pasta("__padrao__", {"cwd": "C:\\proj"})
-            coletor.confiar_na_pasta("sumiu", {"cwd": "C:\\proj"})
-        confiar.assert_not_called()
+class GanchoNaoMexeNoCadastroDaConta(ComPastaPropria):
+    def test_gancho_de_inicio_nao_regrava_o_claude_json_da_conta(self):
+        """O gancho relia e regravava o .claude.json justo quando o Claude que subia gravava o dele,
+        e um dos dois perdia o que escreveu. Quem confia na pasta e a abertura da aba."""
+        config.salvar({"confiarPastas": True})
+        conta = perfis.criar("Uma")
+        cadastro = conta.config_dir / ".claude.json"
+        cadastro.parent.mkdir(parents=True, exist_ok=True)
+        cadastro.write_text('{"numStartups": 3}', encoding="utf-8")
+        entrada = io.StringIO(json.dumps({"session_id": "s1", "cwd": "C:\\proj"}))
+        antigo = sys.stdin, sys.stdout, sys.argv
+        try:
+            sys.stdin, sys.stdout, sys.argv = entrada, io.StringIO(), ["coletar.py", "--hook", conta.id]
+            with sem_marca_de_aba({"LOOM_ABA": "a1"}):
+                self.assertEqual(coletor.main(), 0)
+        finally:
+            sys.stdin, sys.stdout, sys.argv = antigo
+        self.assertEqual(cadastro.read_text(encoding="utf-8"), '{"numStartups": 3}')
+        self.assertTrue((coletor.PASTA / "s1.json").exists(), "a marca da sessao continua sendo gravada")
 
 
 class BarraDeSempre(ComPastaPropria):
