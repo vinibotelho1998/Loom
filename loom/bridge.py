@@ -30,6 +30,7 @@ from . import sessao_salva as mod_salvas
 from . import sessoes as mod_sessoes
 from . import uso as mod_uso
 from . import shells as mod_shells
+from .cliente_nucleo import SessaoRemota
 from .pty_session import PtySession
 
 log = logging.getLogger(__name__)
@@ -158,8 +159,10 @@ class Bridge(QObject):
     painelUsoPronto = Signal(str)
     _usoColetado = Signal(str)
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, nucleo=None):
         super().__init__(parent)
+        # com o nucleo, os shells moram em outro processo e sobrevivem a esta tela
+        self._nucleo = nucleo
         self._perguntando: set[str] = set()
         self._identidadeRespondida.connect(self._guardar_identidade)
         self._provando_sudo = False
@@ -187,6 +190,10 @@ class Bridge(QObject):
         self._shells = mod_shells.descobrir()
         self._elevacao: dict | None = None
         self._sem_autoabrir = False
+        if nucleo is not None:
+            self._abas = list(nucleo.abas_iniciais)
+            for estado in nucleo.estado_inicial:
+                self._adotar(estado)
 
         # olho nos transcript: assim que o Claude escreve, a tela sabe, sem esperar ciclo
         self._vigia = QFileSystemWatcher(self)
@@ -580,6 +587,9 @@ class Bridge(QObject):
         if not isinstance(dados, list):
             return
         self._abas = [a for a in dados if isinstance(a, dict)]
+        if self._nucleo is not None:
+            # a tela que nascer depois de uma queda acha as abas na mesma ordem e com o mesmo nome
+            self._nucleo.guardar_abas(self._abas)
         if mod_config.carregar().get("restaurarAbas"):
             mod_salvas.gravar(dados)
 
@@ -699,6 +709,35 @@ class Bridge(QObject):
             for espera, texto in mod_ferramentas.passos_para_entrar(mod_ferramentas.por_id(perfil.ferramenta)):
                 self._digitar(session_id, texto, espera)
         return session_id
+
+    def _adotar(self, estado: dict) -> None:
+        """Liga a esta tela um shell que ja estava vivo no nucleo, com o que ele ja mostrou.
+
+        E o caminho da tela que nasce depois de uma queda: a pagina pede as sessoes vivas, como
+        pede depois de ser refeita, e cada aba volta ligada ao mesmo shell.
+        """
+        session_id = str(estado.get("id") or "")
+        if not session_id or session_id in self._sessions:
+            return
+        origem = estado.get("origem") if isinstance(estado.get("origem"), dict) else {}
+        sessao = SessaoRemota(
+            self._nucleo,
+            session_id,
+            cols=estado.get("cols") or 120,
+            rows=estado.get("rows") or 30,
+            origem=origem,
+            pid=estado.get("pid"),
+            viva=True,
+            parent=self,
+        )
+        sessao.output.connect(self._on_output, Qt.QueuedConnection)
+        sessao.exited.connect(self._on_exit, Qt.QueuedConnection)
+        self._nucleo.registrar(sessao)
+        self._sessions[session_id] = sessao
+        self._origem[session_id] = dict(origem)
+        historico = str(estado.get("historico") or "")
+        if historico:
+            self._guardar_historico(session_id, historico)
 
     def _digitar(self, session_id: str, texto: str, espera_ms: int) -> None:
         """Digita na aba depois de um tempo, com o Enter no fim.
@@ -998,15 +1037,26 @@ class Bridge(QObject):
                 # ganchos e o MCP de cada projeto, sem a pergunta de confiar
                 if ajustes.get("confiarPastas") and pasta and not _e_a_pasta_pessoal(pasta):
                     mod_perfis.confiar(perfil, pasta)
-        session = PtySession(
-            session_id,
-            argv=argv,
-            cwd=pasta,
-            env=env,
-            cols=cols,
-            rows=rows,
-            parent=self,
-        )
+        origem = {
+            "shell": shell.id,
+            "perfil": perfil.id if perfil is not None else "",
+            "pasta": pasta or "",
+            "elevado": bool(elevar),
+        }
+        if self._nucleo is not None:
+            session = SessaoRemota(
+                self._nucleo, session_id, argv=argv, cwd=pasta, env=env, cols=cols, rows=rows, origem=origem, parent=self
+            )
+        else:
+            session = PtySession(
+                session_id,
+                argv=argv,
+                cwd=pasta,
+                env=env,
+                cols=cols,
+                rows=rows,
+                parent=self,
+            )
         session.output.connect(self._on_output, Qt.QueuedConnection)
         session.exited.connect(self._on_exit, Qt.QueuedConnection)
         try:
@@ -1019,12 +1069,7 @@ class Bridge(QObject):
             QTimer.singleShot(0, self, lambda: self.exited.emit(session_id, CODIGO_SEM_SHELL))
             return session_id
         self._sessions[session_id] = session
-        self._origem[session_id] = {
-            "shell": shell.id,
-            "perfil": perfil.id if perfil is not None else "",
-            "pasta": pasta or "",
-            "elevado": bool(elevar),
-        }
+        self._origem[session_id] = origem
 
         if perfil is not None and not self._sem_autoabrir and mod_config.carregar().get("abrirCliDaConta"):
             comando = mod_ferramentas.por_id(perfil.ferramenta).comando
@@ -1161,8 +1206,12 @@ class Bridge(QObject):
         self._parar_coleta_de_uso()
         self._flush_timer.stop()
         self._relistar.stop()
-        for session in list(self._sessions.values()):
-            session.stop()
+        if self._nucleo is not None:
+            # quem derruba os shells e o nucleo, que sai junto quando esta tela sair
+            self._nucleo.encerrar()
+        else:
+            for session in list(self._sessions.values()):
+                session.stop()
         self._sessions.clear()
         self._buffers.clear()
         self._origem.clear()

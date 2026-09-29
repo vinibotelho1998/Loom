@@ -8,7 +8,7 @@ import sys
 import time
 from pathlib import Path
 
-from PySide6.QtCore import QEvent, Qt, QTimer, QUrl
+from PySide6.QtCore import QEvent, QProcess, Qt, QTimer, QUrl, Slot
 from PySide6.QtGui import QColor, QIcon, QPalette
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWebChannel import QWebChannel
@@ -20,11 +20,13 @@ from . import __version__
 from . import config as mod_config
 from . import instancia as mod_instancia
 from . import motor as mod_motor
+from . import nucleo as mod_nucleo
 from . import perfis as mod_perfis
 from . import queda as mod_queda
 from . import registro as mod_registro
 from . import vigia as mod_vigia
 from .bridge import Bridge
+from .cliente_nucleo import ClienteDoNucleo
 
 log = logging.getLogger(__name__)
 
@@ -68,7 +70,7 @@ class LoggingPage(QWebEnginePage):
 
 
 class MainWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, nucleo: ClienteDoNucleo | None = None):
         super().__init__()
         # nome fixo de proposito: mostrar a conversa da aba ali em cima fazia o titulo
         # trocar toda hora, o que incomodava mais do que ajudava. Sem nome de exibicao na
@@ -76,7 +78,12 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(TITULO)
         self.resize(1180, 720)
 
-        self.bridge = Bridge(self)
+        self.bridge = Bridge(self, nucleo=nucleo)
+        self._nucleo = nucleo
+        if nucleo is not None:
+            # outra abertura do Loom chama o nucleo, e ele pede a esta janela pra vir pra frente
+            nucleo.mostrar.connect(self._mostrar_a_quem_chamou)
+            nucleo.caiu.connect(self._nucleo_caiu)
         # a prova do sudo leva ate 8 s; comeca ja, fora da thread da tela, e fica pronta antes de a
         # pagina perguntar se da pra abrir elevado
         self.bridge.provar_sudo()
@@ -381,6 +388,19 @@ class MainWindow(QMainWindow):
             self.bridge.irParaAba.emit(self._aba_avisada)
         self._trazer_pra_frente()
 
+    @Slot()
+    def _nucleo_caiu(self) -> None:
+        """O nucleo morreu, e os shells com ele. Sobe um Loom novo, que restaura as abas, e sai.
+
+        Ficar de pe aqui deixaria abas mortas que nao abrem shell nenhum, porque quem abre e o nucleo.
+        """
+        log.error("o nucleo caiu; subindo o Loom de novo, que restaura as abas salvas")
+        comando = mod_nucleo.comando_do_nucleo()
+        QProcess.startDetached(comando[0], comando[1:])
+        app = QApplication.instance()
+        if app is not None:
+            app.quit()
+
     def _trazer_pra_frente(self) -> None:
         # showNormal tirava a janela de maximizada; aqui so sai do minimizado
         self.setWindowState(self.windowState() & ~Qt.WindowState.WindowMinimized)
@@ -455,17 +475,35 @@ class MainWindow(QMainWindow):
         super().closeEvent(event)
 
 
+def ligar_no_nucleo() -> ClienteDoNucleo | None:
+    """A tela subida pelo nucleo conversa com ele; sem ele, os shells moram nela, como antes."""
+    # o token sai do ambiente: nada que esta tela abrir precisa dele
+    nome = os.environ.pop("LOOM_NUCLEO", "")
+    token = os.environ.pop("LOOM_NUCLEO_TOKEN", "")
+    if not nome or not token:
+        return None
+    cliente = ClienteDoNucleo(nome, token)
+    if cliente.conectar():
+        log.info("tela ligada ao nucleo, com %d shells vivos", len(cliente.estado_inicial))
+        return cliente
+    log.warning("o nucleo nao respondeu; os shells desta tela moram nela")
+    return None
+
+
 def main() -> int:
     app = QApplication(sys.argv)
     app.setApplicationName("Loom")
     # sem nome de exibicao de proposito: no Windows o Qt pendura " - <nome>" em todo titulo que
     # nao termina nele, e a caixa de fechar ganhava o nome e a versao pendurados no fim
 
-    if mod_instancia.chamar_quem_ja_esta_aberto():
-        return 0
-    # dois starts quase juntos: o outro pegou a trava e ainda esta montando a janela
-    if not mod_instancia.segurar_trava() and mod_instancia.esperar_quem_esta_subindo():
-        return 0
+    nucleo = ligar_no_nucleo()
+    if nucleo is None:
+        # sem nucleo a tela e dona dos shells, como era antes dele, e cuida sozinha de ser uma so
+        if mod_instancia.chamar_quem_ja_esta_aberto():
+            return 0
+        # dois starts quase juntos: o outro pegou a trava e ainda esta montando a janela
+        if not mod_instancia.segurar_trava() and mod_instancia.esperar_quem_esta_subindo():
+            return 0
 
     mod_registro.ligar_qt()
     log.info("Loom %s subindo, pid %s", __version__, os.getpid())
@@ -488,8 +526,9 @@ def main() -> int:
                 ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("Loom")
             except (AttributeError, OSError):
                 pass
-    window = MainWindow()
-    window.escutar_outras_instancias()
+    window = MainWindow(nucleo)
+    if nucleo is None:
+        window.escutar_outras_instancias()
     window.show()
     return app.exec()
 
