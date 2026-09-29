@@ -11,6 +11,7 @@ import os
 import sys
 import threading
 import unittest
+import unittest.mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -37,6 +38,9 @@ class SessaoFalsa:
     def stop(self) -> None:
         self.parada = True
         self.alive = False
+
+    def deleteLater(self) -> None:
+        pass
 
     def write(self, data: str) -> None:
         pass
@@ -353,6 +357,111 @@ class OutraInstancia(unittest.TestCase):
     def test_nome_muda_com_a_instalacao(self):
         self.assertIn("loom-", self.nome_antigo())
         self.assertEqual(self.nome_antigo(), self.nome_antigo())
+        from loom import caminhos
+
+        daqui = self.nome_antigo()
+        with unittest.mock.patch.object(caminhos, "PASTA_DA_TELA", caminhos.PASTA_DA_TELA.parent / "outra" / "ui"):
+            self.assertNotEqual(self.nome_antigo(), daqui)
+
+    def test_canal_de_verdade_so_da_pessoa_atende_quem_chama(self):
+        """O canal com UserAccessOption continua atendendo a propria pessoa, pelo pipe de verdade."""
+        from PySide6.QtCore import QObject
+        from PySide6.QtNetwork import QLocalServer
+
+        from loom import app as mod_app
+
+        class Canal(QObject):
+            escutar_outras_instancias = mod_app.MainWindow.escutar_outras_instancias
+            _outra_instancia = mod_app.MainWindow._outra_instancia
+            _atender = mod_app.MainWindow._atender
+
+            def __init__(self) -> None:
+                super().__init__()
+                self._servidor = None
+                self.chamadas = 0
+
+            def _mostrar_a_quem_chamou(self) -> None:
+                self.chamadas += 1
+
+        canal = Canal()
+        canal.escutar_outras_instancias()
+        try:
+            self.assertIsNotNone(canal._servidor)
+            self.assertEqual(canal._servidor.socketOptions(), QLocalServer.SocketOption.UserAccessOption)
+            self.assertTrue(instancia.chamar_quem_ja_esta_aberto(espera_ms=3000))
+            self.assertEqual(canal.chamadas, 1)
+        finally:
+            import shiboken6
+
+            # o lambda de cada conexao segura o canal vivo; apagado aqui, servidor e conexoes vao
+            # junto, antes que o proximo teste rode o laco de eventos com eles pela metade
+            shiboken6.delete(canal)
+
+
+@unittest.skipUnless(sys.platform == "win32", "mutex nomeado e do Windows")
+class TravaDaInstancia(unittest.TestCase):
+    """Dois starts quase juntos: quem pega a trava sobe, o outro espera ele atender."""
+
+    def setUp(self) -> None:
+        self.nome_antigo = instancia.nome
+        self.trava_antiga = instancia._trava
+        nome = f"loom-teste-trava-{os.getpid()}-{id(self)}"
+        instancia.nome = lambda: nome
+        instancia._trava = None
+
+    def tearDown(self) -> None:
+        if instancia._trava:
+            ctypes.windll.kernel32.CloseHandle(ctypes.c_void_p(instancia._trava))
+        instancia._trava = self.trava_antiga
+        instancia.nome = self.nome_antigo
+
+    def em_outra_thread(self, funcao):
+        """Outra thread faz as vezes do outro processo: o dono do mutex e a thread que o pegou."""
+        resultado = []
+        fio = threading.Thread(target=lambda: resultado.append(funcao()))
+        fio.start()
+        fio.join(5)
+        return resultado[0]
+
+    def test_quem_chega_depois_nao_pega_a_trava_de_quem_esta_subindo(self):
+        self.assertTrue(instancia.segurar_trava())
+        self.assertFalse(self.em_outra_thread(instancia.segurar_trava))
+
+    def test_trava_de_quem_morreu_na_subida_fica_livre(self):
+        """O dono que some sem soltar deixa a trava abandonada, e o Windows a entrega ao proximo."""
+        self.assertTrue(self.em_outra_thread(instancia.segurar_trava))
+        self.assertTrue(instancia.segurar_trava())
+
+
+class EsperaDeQuemEstaSubindo(unittest.TestCase):
+    def esperar(self, atende: list[bool], trava: list[bool], prazo: float = 60.0) -> tuple[bool, int]:
+        chamadas = []
+
+        def chamar(espera_ms: int) -> bool:
+            chamadas.append(espera_ms)
+            return atende.pop(0) if atende else False
+
+        with unittest.mock.patch.object(instancia, "chamar_quem_ja_esta_aberto", side_effect=chamar), \
+                unittest.mock.patch.object(instancia, "segurar_trava", side_effect=lambda: trava.pop(0) if trava else False), \
+                unittest.mock.patch.object(instancia.time, "sleep"):
+            return instancia.esperar_quem_esta_subindo(prazo), len(chamadas)
+
+    def test_quem_esta_subindo_atende_e_esta_sai(self):
+        self.assertEqual(self.esperar([False, False, True], []), (True, 3))
+
+    def test_trava_largada_no_meio_da_espera_sobe_esta(self):
+        self.assertEqual(self.esperar([], [False, True]), (False, 2))
+
+    def test_prazo_acaba_com_o_outro_travado_e_esta_sobe_como_antes(self):
+        instantes = iter([0.0, 1.0, 2.0, 99.0])
+        with unittest.mock.patch.object(instancia.time, "monotonic", side_effect=lambda: next(instantes)):
+            self.assertEqual(self.esperar([], [], prazo=5.0), (False, 2))
+
+    def test_pedido_que_chega_em_pedacos_so_vale_com_a_linha_inteira(self):
+        acumulado = bytearray()
+        self.assertIsNone(instancia.ler_pedido(acumulado, b"mos"))
+        self.assertEqual(instancia.ler_pedido(acumulado, b"trar\r\nsobra"), b"mostrar")
+        self.assertEqual(bytes(acumulado), b"sobra")
 
 
 if __name__ == "__main__":

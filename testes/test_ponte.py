@@ -9,14 +9,18 @@ from __future__ import annotations
 import base64
 import json
 import os
+import threading
 import time
 import unittest.mock
 from pathlib import Path
 
 from test_usabilidade import ComPonte
 
+from PySide6.QtCore import QCoreApplication, QEvent
+
 from loom import bridge as mod_bridge
 from loom import coletor, config, perfis, sessao_salva, shells, uso
+from loom.pty_session import PtySession
 
 # a da classe, antes de a base trocar por uma que nao faz nada
 REVISAR_DE_VERDADE = mod_bridge.Bridge._revisar_vigia
@@ -38,6 +42,21 @@ class SessaoFalsa:
     def stop(self) -> None:
         self.parada = True
         self.alive = False
+
+    def deleteLater(self) -> None:
+        self.apagada = True
+
+
+def esperar_a_ponte(ponte, chegou: list) -> None:
+    """Entrega o que a thread de fundo mandou pra ponte, ate chegar algo ou passar o prazo.
+
+    So o que foi postado pra esta ponte: o laco inteiro dispararia relogios de pontes de outros
+    testes, que olham a pasta de login de verdade.
+    """
+    limite = time.monotonic() + 5
+    while not chegou and time.monotonic() < limite:
+        QCoreApplication.sendPostedEvents(ponte, 0)
+        time.sleep(0.01)
 
 
 class ComPonteNaPastaTemporaria(ComPonte):
@@ -283,6 +302,23 @@ class AbrirAba(ComPonteNaPastaTemporaria):
         self.ponte._abrir("pwsh", "", 80, 24, True)
         self.assertEqual(self.criadas[0].kwargs["argv"], [r"C:\pwsh\pwsh.exe", "-NoLogo"])
 
+    def test_shell_que_nao_sobe_da_o_id_e_o_fim_logo_depois(self):
+        """A falha escapava do slot: a tela recebia id vazio e a aba ficava viva sem shell,
+        engolindo tecla."""
+        fins = []
+        self.ponte.exited.connect(lambda sid, codigo: fins.append((sid, codigo)))
+        conta = perfis.criar("Uma")
+        with unittest.mock.patch.object(SessaoFalsa, "start", side_effect=FileNotFoundError(2, "sem cmd")):
+            with self.assertLogs("loom.bridge", "ERROR"):
+                sid = self.ponte._abrir("cmd", conta.id, 80, 24, False)
+        self.assertTrue(sid)
+        self.assertEqual(fins, [], "o fim vai depois do id, senao a tela nao sabe de qual aba ele e")
+        QCoreApplication.sendPostedEvents(self.ponte, 0)
+        self.assertEqual(fins, [(sid, mod_bridge.CODIGO_SEM_SHELL)])
+        self.assertNotIn(sid, self.ponte._sessions)
+        self.assertEqual(self.digitado, [], "o CLI da conta seria digitado num shell que nao existe")
+        self.assertTrue(self.criadas[0].apagada)
+
     def test_pasta_que_sumiu_abre_na_de_sempre(self):
         with unittest.mock.patch.object(self.ponte, "_abrir", return_value="s1") as abrir:
             self.ponte.openSessionWith("cmd", "", 80, 24, json.dumps({"pasta": str(self.raiz / "sumiu")}))
@@ -338,6 +374,70 @@ class FecharAbas(ComPonteNaPastaTemporaria):
         self.ponte.shutdown()
         self.assertTrue(all(f.parada for f in falsas))
         self.assertEqual(self.ponte._sessions, {})
+
+
+class SessaoApagadaDepoisDeParar(ComPonteNaPastaTemporaria):
+    """A sessao e filha da ponte: sem apagar, cada aba que ja fechou ficava na memoria ate o app sair."""
+
+    def sessao(self) -> tuple[PtySession, list]:
+        # sem processo: o stop so marca a parada, e o que se olha aqui e o objeto do Qt
+        sessao = PtySession("a1", argv=["x"], parent=self.ponte)
+        apagadas = []
+        sessao.destroyed.connect(lambda *_: apagadas.append("a1"))
+        self.ponte._sessions["a1"] = sessao
+        return sessao, apagadas
+
+    def test_aba_fechada_apaga_a_sessao(self):
+        sessao, apagadas = self.sessao()
+        self.ponte.closeSession("a1")
+        QCoreApplication.sendPostedEvents(sessao, QEvent.Type.DeferredDelete.value)
+        self.assertEqual(apagadas, ["a1"])
+
+    def test_shell_que_saiu_sozinho_apaga_a_sessao(self):
+        sessao, apagadas = self.sessao()
+        self.ponte._on_exit("a1", 0)
+        QCoreApplication.sendPostedEvents(sessao, QEvent.Type.DeferredDelete.value)
+        self.assertEqual(apagadas, ["a1"])
+
+
+class ProvaDoSudo(ComPonteNaPastaTemporaria):
+    def test_prova_roda_fora_da_thread_da_tela_e_a_resposta_fica_guardada(self):
+        """O sudo --help rodava na thread da tela com a pagina subindo, com ate 8 s de espera."""
+        onde, chegou = [], []
+
+        def elevacao() -> dict:
+            onde.append(threading.current_thread() is threading.main_thread())
+            return {"disponivel": True, "motivo": "", "comando": r"C:\gsudo\gsudo.exe"}
+
+        self.ponte.elevacaoMudou.connect(chegou.append)
+        with unittest.mock.patch.object(mod_bridge.mod_shells, "elevacao", side_effect=elevacao):
+            primeira = json.loads(self.ponte.elevacao())
+            esperar_a_ponte(self.ponte, chegou)
+            segunda = json.loads(self.ponte.elevacao())
+        self.assertEqual(onde, [False], "a prova do sudo tem que ser fora da thread da tela, e uma vez so")
+        self.assertEqual(primeira["motivo"], "verificando")
+        self.assertEqual(json.loads(chegou[0]), segunda)
+        self.assertTrue(segunda["disponivel"])
+
+
+class VarreduraDasSessoes(ComPonteNaPastaTemporaria):
+    def test_varredura_roda_fora_da_thread_da_tela_e_chega_por_sinal(self):
+        """A cauda de um transcript chega a 32 MB, e era lida na thread da tela a cada 1,2 s."""
+        onde, chegou = [], []
+
+        def listar(pastas: dict, vistas: dict) -> list:
+            onde.append(threading.current_thread() is threading.main_thread())
+            return [{"sessao": "s1", "pastas": sorted(pastas)}]
+
+        self.ponte.sessoesProntas.connect(chegou.append)
+        with (
+            unittest.mock.patch.object(mod_bridge.mod_uso, "pastas_de", return_value={"c1": self.casa}),
+            unittest.mock.patch.object(mod_bridge.mod_sessoes, "listar", side_effect=listar),
+        ):
+            self.ponte.pedirSessoes()
+            esperar_a_ponte(self.ponte, chegou)
+        self.assertEqual(onde, [False], "a varredura tem que ser fora da thread da tela")
+        self.assertEqual(json.loads(chegou[0]), [{"sessao": "s1", "pastas": ["c1"]}])
 
 
 class RitmoDaEntrega(ComPonteNaPastaTemporaria):

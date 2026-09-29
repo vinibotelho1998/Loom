@@ -30,6 +30,7 @@ PADRAO = {
     "fecharAoSair": False,
     "editor": "code",
     "densidade": "confortavel",
+    "desenho": "auto",
 }
 
 
@@ -50,8 +51,17 @@ FAIXAS = {
 }
 
 
+# Texto que o motor le antes do Qt subir: fora da lista, o run.py escolheria um motor que nao
+# existe. Vale o mesmo pro arquivo editado a mao.
+ESCOLHAS = {
+    "desenho": ("auto", "gpu", "software"),
+}
+
+
 def _valido(chave: str, valor) -> bool:
     padrao = PADRAO[chave]
+    if chave in ESCOLHAS:
+        return valor in ESCOLHAS[chave]
     if isinstance(padrao, bool):
         return isinstance(valor, bool)
     if chave in NUMERICOS:

@@ -122,6 +122,8 @@ let perfis = [];
 let ferramentas = [];
 let elevacao = { disponivel: false, motivo: "sem sudo" };
 let cfg = {};
+// o motor de desenho desta subida, escolhido pelo app antes de a pagina existir
+let desenho = { emUso: "gpu" };
 const porSessao = new Map();
 // saida que chegou antes de a aba saber o proprio id, guardada por sessao
 const pendentes = new Map();
@@ -262,20 +264,9 @@ class Aba extends AbaBase {
       },
       true
     );
-    try {
-      this.webgl = new WebglAddon.WebglAddon();
-      // o Chromium so mantem 16 contextos WebGL por pagina e derruba o mais antigo sem avisar.
-      // Sem tratar, aquele terminal congelava no ultimo quadro pra sempre; descartando o addon,
-      // o xterm volta sozinho pro desenho por DOM e a aba continua viva.
-      this.webgl.onContextLoss(() => {
-        this.webgl.dispose();
-        this.webgl = null;
-      });
-      this.term.loadAddon(this.webgl);
-    } catch (e) {
-      this.webgl = null;
-      console.warn("sem webgl, caiu no canvas", e);
-    }
+    // o WebGL nao nasce aqui: so quando a aba aparece, pelo sincronizarWebgl
+    this.webgl = null;
+    this.telasWebgl = [];
 
     this.pintar();
 
@@ -532,6 +523,12 @@ class Aba extends AbaBase {
             pendentes.delete(id);
             return;
           }
+          if (!id) {
+            // o app nao abriu o shell e nem deu id: a aba ficava viva sem shell, engolindo cada
+            // tecla. Encerrada, o Enter tenta de novo
+            this.encerrada(-1);
+            return;
+          }
           this.sessionId = id;
           porSessao.set(id, this);
           for (const data of pendentes.get(id) || []) this.term.write(data);
@@ -619,13 +616,97 @@ class Aba extends AbaBase {
     if (mudou) this.fit.fit();
   }
 
+  ligarWebgl() {
+    /* O contexto WebGL so existe enquanto a aba aparece. A escondida fica em visibility hidden,
+       e o contexto dela seguia vivo fora da vista, cada um mais um caminho pro ANGLE D3D11, que
+       e onde a tela cai levando o Loom inteiro. Escondida, o xterm desenha pelo DOM. */
+    if (this.webgl || !webglPermitido()) return;
+    try {
+      const antes = new Set(this.tela.querySelectorAll("canvas"));
+      const webgl = new WebglAddon.WebglAddon();
+      // O addon so avisa depois de 3 s sem o contexto voltar. Sem tratar, o terminal congelava
+      // no ultimo quadro; largando o addon o xterm volta pro DOM e a aba continua viva.
+      webgl.onContextLoss(() => {
+        this.largarWebgl();
+        perdeuContexto();
+      });
+      this.term.loadAddon(webgl);
+      this.webgl = webgl;
+      this.telasWebgl = Array.from(this.tela.querySelectorAll("canvas")).filter((c) => !antes.has(c));
+    } catch (e) {
+      this.webgl = null;
+      console.warn("sem webgl, caiu no DOM", e);
+    }
+  }
+
+  largarWebgl() {
+    const webgl = this.webgl;
+    if (!webgl) return;
+    this.webgl = null;
+    try {
+      webgl.dispose();
+    } catch (e) {
+      console.warn("o webgl nao largou direito", e);
+    }
+    // O contexto largado so sai da conta do Chromium quando o coletor de lixo passa, e a conta
+    // tem teto de 16 por pagina: trocando de aba ligeiro ela estourava, e o Chromium matava o mais
+    // velho, que podia ser o de uma aba a vista. Perdido de proposito, sai da conta na hora. O
+    // addon ja largado nao escuta mais a perda, entao ela nao conta como falha da placa.
+    for (const tela of this.telasWebgl) {
+      const gl = tela.getContext("webgl2");
+      const perder = gl && !gl.isContextLost() && gl.getExtension("WEBGL_lose_context");
+      if (perder) perder.loseContext();
+    }
+    this.telasWebgl = [];
+  }
+
   destruir() {
     this.destruida = true;
     if (bridge && this.sessionId && this.viva) bridge.closeSession(this.sessionId);
     if (this.sessionId) porSessao.delete(this.sessionId);
+    this.largarWebgl();
     this.term.dispose();
     super.destruir();
   }
+}
+
+/* -------------------------------------------------------------- webgl */
+
+// o Chromium derruba o contexto mais velho passando de 16; com folga, na grade grande o resto vai pelo DOM
+const TETO_DE_WEBGL = 12;
+// duas perdas de contexto dentro disto e a placa falhando, e nao uma perda solta
+const JANELA_DAS_PERDAS_MS = 2000;
+let perdasDeContexto = [];
+let placaDesistida = false;
+
+function webglPermitido() {
+  // no desenho por software nao ha placa na pagina: nem tenta, o xterm vai direto pro DOM
+  return !placaDesistida && desenho.emUso !== "software";
+}
+
+function sincronizarWebgl() {
+  /* Liga o WebGL nas abas que aparecem, a ativa e, na grade, os paineis, e larga nas outras.
+     Larga antes de ligar, pra conta de contextos nunca passar do teto nem por um instante. */
+  const aVista = ordem.filter((a) => !a.ehPainel && (a === abaAtiva || emGrade));
+  // com mais paineis que o teto, a ativa e a que nao pode ficar sem
+  aVista.sort((a, b) => (b === abaAtiva) - (a === abaAtiva));
+  const comWebgl = new Set(aVista.slice(0, TETO_DE_WEBGL));
+  for (const aba of ordem) if (!aba.ehPainel && !comWebgl.has(aba)) aba.largarWebgl();
+  for (const aba of comWebgl) aba.ligarWebgl();
+}
+
+function perdeuContexto(agora) {
+  /* Uma perda solta acontece, o driver reinicia e volta. Duas em 2 s e a placa falhando, e e dali
+     que vem a queda que derruba o Loom inteiro: a pagina larga o WebGL de todas as abas ate o fim
+     e o app anota a queda, pro motor subir por software na proxima vez. */
+  const instante = agora === undefined ? Date.now() : agora;
+  perdasDeContexto = perdasDeContexto.filter((t) => instante - t < JANELA_DAS_PERDAS_MS);
+  perdasDeContexto.push(instante);
+  if (perdasDeContexto.length < 2 || placaDesistida) return false;
+  placaDesistida = true;
+  for (const aba of ordem) if (!aba.ehPainel) aba.largarWebgl();
+  if (bridge) bridge.gpuPerdida();
+  return true;
 }
 
 /* ------------------------------------------------------------- controle */
@@ -641,6 +722,7 @@ function ativar(aba) {
   abaAtiva = aba;
   aba.tela.classList.add("ativa");
   aba.botao.classList.add("ativa");
+  sincronizarWebgl();
   mostrarNaLateral(aba);
   // a busca aberta acompanha a aba: a contagem era da anterior, e o realce ficava nela
   if (!elBusca.hidden) {
@@ -681,6 +763,8 @@ function fechar(aba) {
   anotarAbas();
   pintarUsoDaBarra();
   if (emGrade) {
+    // na grade acima do teto, o painel que ficou sem WebGL ganha a vaga do que fechou
+    sincronizarWebgl();
     pintarGrade();
     ajustarTodas();
   }
@@ -705,8 +789,8 @@ function novaAba(shellId, perfilId, pedido) {
 
 function reconectarAbas(depois) {
   /* Os shells moram no processo do app, nao na pagina. Quando a tela e refeita, porque o
-     motor web caiu ou porque o Loom foi aberto de novo, cada aba volta ligada ao shell que
-     continuou rodando. No start normal a lista vem vazia e segue a restauracao de sempre. */
+     motor web caiu ou parou de desenhar, cada aba volta ligada ao shell que continuou
+     rodando. No start normal a lista vem vazia e segue a restauracao de sempre. */
   bridge.liveSessions((json) => {
     let vivas = [];
     try {
@@ -1056,7 +1140,16 @@ const TEXTO_DA_ELEVACAO = {
     "O sudo do Windows está no modo que abre outra janela. Em Configurações, Sistema, Para desenvolvedores, escolha o modo que roda na mesma janela.",
   "sem entrada":
     "O sudo do Windows está no modo sem teclado. Em Configurações, Sistema, Para desenvolvedores, escolha o modo que roda na mesma janela.",
+  verificando: "Ainda conferindo se o sudo abre na mesma aba. Tente de novo em um instante.",
 };
+
+function receberElevacao(jsonElev) {
+  try {
+    elevacao = JSON.parse(jsonElev);
+  } catch (e) {
+    elevacao = { disponivel: false, motivo: "sem sudo" };
+  }
+}
 
 /* ---------------------------------------------------------- nova conta */
 
@@ -1498,6 +1591,7 @@ const CAMPOS = [
   ["cursorPisca", "check"],
   ["densidade", "select"],
   ["mostrarFps", "check"],
+  ["desenho", "select"],
   ["shellPadrao", "select"],
   ["perfilPadrao", "select"],
   ["historico", "number"],
@@ -1605,6 +1699,8 @@ function ligarCampos() {
           aplicarTudo();
           bridge.saveConfig(JSON.stringify({ [chave]: valor }), (json) => {
             cfg = JSON.parse(json);
+            // o motor so troca na proxima subida: a linha diz o que vale agora e o que vem
+            if (chave === "desenho") bridge.desenho(receberDesenho);
           });
         },
         tipo === "range" ? 90 : 0
@@ -1665,6 +1761,8 @@ function abrirConfig(secao) {
       montarSelecaoPerfis();
       montarSelecaoShells();
       preencherCampos();
+      // a tela pode ter caido depois que a pagina subiu, e ai a proxima subida ja e outra
+      bridge.desenho(receberDesenho);
       if (secao) mostrarSecao(secao);
       abrirVeu("veu-config");
       medirFps(true);
@@ -1674,6 +1772,47 @@ function abrirConfig(secao) {
     });
   });
 }
+
+/* -------------------------------------------------------------- desenho */
+
+function textoDoDesenho(d) {
+  /* O que a linha de Desenho diz. O motor so troca quando o Loom abre de novo, entao o texto
+     separa o que esta valendo agora do que vale na proxima vez, e diz por que. */
+  const nomes = { gpu: "GPU", software: "software" };
+  const em = d.quedaEm ? " em " + d.quedaEm : "";
+  let aviso = "";
+  if (d.escolha === "auto" && d.porQueda) {
+    aviso = "O Loom passou a desenhar sem a placa de vídeo depois de uma queda da tela" + em + ".";
+    if (d.proxima === "software") aviso += d.ateEm ? " Volta sozinho à placa a partir de " + d.ateEm + "." : "";
+    else aviso += " Na próxima vez que abrir, ele volta à placa de vídeo.";
+  } else if (d.escolha === "auto" && d.proxima === "software") {
+    aviso = "A tela caiu" + em + ". Na próxima vez que abrir, o Loom desenha sem a placa de vídeo por 7 dias.";
+  }
+  let agora = d.emUso === "software" ? "Agora sem a placa de vídeo, desenhando por software." : "Agora com a placa de vídeo.";
+  if (d.porFora) agora += " Quem manda nisso é uma variável de ambiente definida fora do Loom.";
+  else if (!aviso && d.proxima && d.proxima !== d.emUso) agora += " Na próxima vez que abrir: " + nomes[d.proxima] + ".";
+  return { agora, aviso, voltar: d.escolha === "auto" && d.proxima === "software" };
+}
+
+function receberDesenho(json) {
+  try {
+    desenho = JSON.parse(json);
+  } catch (e) {
+    return;
+  }
+  const texto = textoDoDesenho(desenho);
+  el("desenho-agora").textContent = texto.agora;
+  el("desenho-aviso").textContent = texto.aviso;
+  el("aviso-desenho").hidden = !texto.aviso;
+  el("voltar-gpu").hidden = !texto.voltar;
+}
+
+el("voltar-gpu").addEventListener("click", () => {
+  bridge.voltarParaGpu((json) => {
+    receberDesenho(json);
+    piscarAviso("Pronto. Na próxima vez que abrir, o Loom volta à placa de vídeo");
+  });
+});
 
 el("abrir-config").addEventListener("click", () => abrirConfig());
 el("vazio-nova").addEventListener("click", abaPadrao);
@@ -2404,7 +2543,8 @@ function atualizarSessoes() {
     } catch (e) {
       abasComPrograma = null;
     }
-    bridge.getSessions((json) => receberSessoes(json));
+    // a varredura dos transcript roda fora da thread da tela, e a lista chega por sessoesProntas
+    bridge.pedirSessoes();
   });
 }
 
@@ -2883,6 +3023,7 @@ function ajustarTodas() {
 function alternarGrade(ligar) {
   emGrade = typeof ligar === "boolean" ? ligar : !emGrade;
   elPalco.classList.toggle("grade", emGrade);
+  sincronizarWebgl();
   document.querySelectorAll("#seletor-layout button").forEach((b) => {
     b.classList.toggle("ativo", (b.dataset.layout === "grade") === emGrade);
   });
@@ -3488,6 +3629,9 @@ new QWebChannel(qt.webChannelTransport, (channel) => {
     atualizarSessoes();
     atualizarLimites();
   });
+  bridge.sessoesProntas.connect(receberSessoes);
+  // a prova do sudo roda fora da thread da tela e pode chegar depois da primeira pergunta
+  bridge.elevacaoMudou.connect(receberElevacao);
 
   // clique na notificacao do Windows: a aba que avisou, e nao a que estava aberta
   bridge.irParaAba.connect((id) => {
@@ -3506,6 +3650,9 @@ new QWebChannel(qt.webChannelTransport, (channel) => {
   });
 
   bridge.sobre(mostrarSobre);
+  // antes de qualquer aba: as respostas do canal chegam na ordem dos pedidos, e a primeira aba a
+  // aparecer ja precisa saber se ha placa de video pra ligar o WebGL
+  bridge.desenho(receberDesenho);
 
   bridge.exited.connect((id, code) => {
     pendentes.delete(id);
@@ -3528,13 +3675,7 @@ new QWebChannel(qt.webChannelTransport, (channel) => {
 
   bridge.getConfig((jsonCfg) => {
     cfg = JSON.parse(jsonCfg);
-    bridge.elevacao((jsonElev) => {
-      try {
-        elevacao = JSON.parse(jsonElev);
-      } catch (e) {
-        elevacao = { disponivel: false, motivo: "sem sudo" };
-      }
-    });
+    bridge.elevacao(receberElevacao);
 
     bridge.listShells((jsonShells) => {
       shells = JSON.parse(jsonShells);

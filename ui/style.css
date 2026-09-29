@@ -386,6 +386,9 @@ select.campo { cursor: default; }
 
 .ajuda { margin: -6px 0 18px; color: var(--apagado-3); font-size: 11.5px; line-height: 1.7; }
 
+/* sem placa de video por causa de uma queda: o amarelo de atencao, pra nao passar por nota de rodape */
+#desenho-aviso { color: #d9b25f; line-height: 1.6; }
+
 /* -------------------------------------------------------------- contas */
 
 .conta-linha {

@@ -236,6 +236,26 @@
             <div class="rot"><span>Mostrar quadros por segundo</span><small>Útil só pra medir, deixe desligado no dia a dia</small></div>
             <div class="ctrl"><label class="chave"><input type="checkbox" id="cfg-mostrarFps"><span></span></label></div>
           </div>
+
+          <div class="linha">
+            <div class="rot">
+              <span>Desenho</span>
+              <small>Automático usa a placa de vídeo e, se a tela cair, passa 7 dias desenhando sem ela. A troca vale na próxima vez que o Loom abrir</small>
+              <small id="desenho-agora"></small>
+            </div>
+            <div class="ctrl">
+              <select id="cfg-desenho" class="campo campo-curto">
+                <option value="auto">Automático</option>
+                <option value="gpu">GPU</option>
+                <option value="software">Software</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="linha" id="aviso-desenho" hidden>
+            <div class="rot"><small id="desenho-aviso"></small></div>
+            <div class="ctrl"><button class="botao" id="voltar-gpu">Voltar à placa de vídeo</button></div>
+          </div>
         </div>
 
         <div class="secao" id="sec-terminal">

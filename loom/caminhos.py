@@ -1,11 +1,22 @@
 from __future__ import annotations
 
+import hashlib
 import os
 import time
 from pathlib import Path
 
 RAIZ = Path(os.path.expanduser("~")) / ".loom"
 PERFIS = RAIZ / "perfis"
+PASTA_DA_TELA = Path(__file__).resolve().parent.parent / "ui"
+
+
+def marca_da_instalacao() -> str:
+    """Dez letras que mudam com a pasta de onde o Loom roda.
+
+    O Loom rodando do codigo e o instalado nao podem se confundir: nem no canal entre
+    instancias, nem na marca de que a tela esta aberta.
+    """
+    return hashlib.sha1(str(PASTA_DA_TELA).lower().encode("utf-8")).hexdigest()[:10]
 
 
 def garantir() -> None:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import os
 import re
 import shutil
@@ -20,13 +21,17 @@ from . import caminhos as mod_caminhos
 from . import coletor as mod_coletor
 from . import config as mod_config
 from . import ferramentas as mod_ferramentas
+from . import motor as mod_motor
 from . import perfis as mod_perfis
 from . import pty_session as mod_pty
+from . import queda as mod_queda
 from . import sessao_salva as mod_salvas
 from . import sessoes as mod_sessoes
 from . import uso as mod_uso
 from . import shells as mod_shells
 from .pty_session import PtySession
+
+log = logging.getLogger(__name__)
 
 # Entrega da saida. O ConPTY devolve pedacos minusculos, entao sem agrupar dariam quase
 # cem travessias por segundo carregando 150 bytes cada, e cada travessia custa serializar
@@ -44,6 +49,10 @@ RAIZ_PROJETO = Path(__file__).resolve().parent.parent
 RAIZ_DADOS = mod_caminhos.RAIZ
 # conversa vira argumento de um comando digitado no shell: so o formato de id passa
 ID_DE_CONVERSA = re.compile(r"[\w-]{1,128}")
+# o shell nem chegou a subir: a aba mostra o fim com este codigo, e o Enter tenta de novo
+CODIGO_SEM_SHELL = -1
+# o que a pagina recebe enquanto a prova do sudo roda; a resposta de verdade vem por elevacaoMudou
+ELEVACAO_PENDENTE = {"disponivel": False, "motivo": "verificando", "comando": ""}
 
 # como cada editor conhecido pula direto pra linha; o que nao esta aqui abre so o arquivo
 EDITORES_COM_G = {"code", "code-insiders", "cursor", "codium", "vscodium", "windsurf"}
@@ -138,11 +147,21 @@ class Bridge(QObject):
     # o e-mail ou o plano de alguma conta chegou depois de a lista ja ter sido entregue
     perfisMudaram = Signal()
     _identidadeRespondida = Signal(str, float, str)
+    # a prova do sudo roda fora da thread da tela, e a resposta chega depois de a pagina perguntar
+    elevacaoMudou = Signal(str)
+    _elevacaoRespondida = Signal(str)
+    # a lista de sessoes, varrida fora da thread da tela a cada pedirSessoes
+    sessoesProntas = Signal(str)
+    _sessoesVarridas = Signal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._perguntando: set[str] = set()
         self._identidadeRespondida.connect(self._guardar_identidade)
+        self._provando_sudo = False
+        self._elevacaoRespondida.connect(self._guardar_elevacao)
+        self._varrendo = False
+        self._sessoesVarridas.connect(self._entregar_sessoes)
         self._sessions: dict[str, PtySession] = {}
         self._buffers: dict[str, list[str]] = {}
         # Os shells moram neste processo, nao na pagina. Se a tela cai e e refeita, cada aba
@@ -187,9 +206,40 @@ class Bridge(QObject):
 
     @Slot(result=str)
     def elevacao(self) -> str:
+        """Se da pra abrir elevado na aba. Com a prova ainda rodando, diz que esta verificando.
+
+        A prova roda o sudo --help, com ate 8 s de espera, e rodava aqui, na thread da tela, com a
+        pagina subindo: a janela inteira parava. A resposta de verdade chega por elevacaoMudou.
+        """
         if self._elevacao is None:
-            self._elevacao = mod_shells.elevacao()
+            self.provar_sudo()
+            return json.dumps(ELEVACAO_PENDENTE)
         return json.dumps(self._elevacao)
+
+    def provar_sudo(self) -> None:
+        """Prova o sudo fora da thread da tela, uma vez so.
+
+        O app chama ao subir, e a resposta fica guardada antes de a pagina perguntar.
+        """
+        if self._elevacao is not None or self._provando_sudo:
+            return
+        self._provando_sudo = True
+
+        def provar() -> None:
+            resposta = mod_shells.elevacao()
+            try:
+                self._elevacaoRespondida.emit(json.dumps(resposta))
+            except RuntimeError:
+                # o app fechou enquanto o sudo respondia
+                pass
+
+        threading.Thread(target=provar, name="sudo", daemon=True).start()
+
+    def _guardar_elevacao(self, bruto: str) -> None:
+        # de volta na thread da tela, que e quem le a resposta guardada
+        self._provando_sudo = False
+        self._elevacao = json.loads(bruto)
+        self.elevacaoMudou.emit(bruto)
 
     @Slot(result=str)
     def listProfiles(self) -> str:
@@ -659,11 +709,41 @@ class Bridge(QObject):
             }
         )
 
-    @Slot(result=str)
-    def getSessions(self) -> str:
-        perfis = mod_perfis.listar()
-        pastas = {k: str(v) for k, v in mod_uso.pastas_de(perfis).items()}
-        return json.dumps(mod_sessoes.listar(pastas, mod_coletor.ler_todas()))
+    @Slot()
+    def pedirSessoes(self) -> None:
+        """Varre os transcript fora da thread da tela; a lista chega por sessoesProntas.
+
+        A cauda de um transcript chega a 32 MB quando a ultima linha e o resultado de um Edit num
+        arquivo grande, e essa leitura rodava aqui a cada 1,2 s com uma conversa trabalhando: a
+        janela inteira parava, terminais incluidos. O pedido que chega com uma varredura andando
+        fica com a resposta dela.
+        """
+        if self._varrendo:
+            return
+        # o cadastro e a pasta do coletor sao pequenos e ficam aqui: o cache do coletor tambem e
+        # mexido pelo getLimits, nesta thread
+        pastas = {k: str(v) for k, v in mod_uso.pastas_de(mod_perfis.listar()).items()}
+        vistas = mod_coletor.ler_todas()
+        self._varrendo = True
+
+        def varrer() -> None:
+            lista = "[]"
+            try:
+                lista = json.dumps(mod_sessoes.listar(pastas, vistas))
+            finally:
+                # com erro vai a lista vazia, como antes: sem resposta a tela esperava pra sempre e
+                # a lista parava de andar. O erro segue pro log pelo gancho das threads
+                try:
+                    self._sessoesVarridas.emit(lista)
+                except RuntimeError:
+                    # o app fechou no meio da varredura
+                    pass
+
+        threading.Thread(target=varrer, name="sessoes", daemon=True).start()
+
+    def _entregar_sessoes(self, lista: str) -> None:
+        self._varrendo = False
+        self.sessoesProntas.emit(lista)
 
     @Slot(result=str)
     def getUsage(self) -> str:
@@ -716,6 +796,29 @@ class Bridge(QObject):
         except ValueError:
             novo = {}
         return json.dumps(mod_config.salvar(novo))
+
+    @Slot(result=str)
+    def desenho(self) -> str:
+        """O motor de desenho desta subida, se foi por queda, e o da proxima vez que abrir."""
+        return json.dumps(mod_motor.situacao(os.environ, mod_config.carregar()))
+
+    @Slot(result=str)
+    def voltarParaGpu(self) -> str:
+        """As quedas ate aqui deixam de contar, e o automatico volta a placa na proxima subida."""
+        try:
+            mod_queda.voltar_para_gpu()
+        except OSError:
+            log.warning("nao consegui gravar a volta pra placa de video", exc_info=True)
+        return self.desenho()
+
+    @Slot()
+    def gpuPerdida(self) -> None:
+        """A pagina perdeu o contexto WebGL duas vezes em 2 s: a placa nao esta aguentando.
+
+        Entra como queda, e no automatico a proxima subida ja vem por software.
+        """
+        log.warning("a pagina perdeu o contexto WebGL em sequencia; anotado como queda")
+        mod_queda.registrar("contexto")
 
     # -- sessoes --------------------------------------------------------
 
@@ -774,7 +877,15 @@ class Bridge(QObject):
         )
         session.output.connect(self._on_output, Qt.QueuedConnection)
         session.exited.connect(self._on_exit, Qt.QueuedConnection)
-        session.start()
+        try:
+            session.start()
+        except OSError:
+            # A falha escapava do slot, a tela recebia id vazio e a aba ficava viva sem shell,
+            # engolindo tecla. Vai o id, e o fim chega logo depois dele, pra tela saber de quem e.
+            log.exception("o shell %s nao subiu na aba %s", argv[0], session_id)
+            session.deleteLater()
+            QTimer.singleShot(0, self, lambda: self.exited.emit(session_id, CODIGO_SEM_SHELL))
+            return session_id
         self._sessions[session_id] = session
         self._origem[session_id] = {
             "shell": shell.id,
@@ -808,6 +919,8 @@ class Bridge(QObject):
         self._esquecer(session_id)
         if session is not None:
             session.stop()
+            # filha da ponte, ficava na memoria ate o app fechar, uma por aba que ja fechou
+            session.deleteLater()
 
     # -- interno --------------------------------------------------------
 
@@ -856,6 +969,7 @@ class Bridge(QObject):
             # o shell saiu, mas o pseudo console continua aberto enquanto alguem segura o PTY,
             # e o que o shell deixou rodando em segundo plano segue preso nele
             session.stop()
+            session.deleteLater()
         self.exited.emit(session_id, code)
 
     def _mexeu(self, _caminho: str = "") -> None:

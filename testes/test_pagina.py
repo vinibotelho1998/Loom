@@ -44,11 +44,14 @@ var setTimeout = qualquer, clearTimeout = qualquer, setInterval = qualquer;
 # criado no fim do proprio script le e troca cada um por dentro.
 MUTAVEIS = (
     "pastaPessoal", "perfis", "limitesPorPerfil", "abaAtiva", "usoBruto", "usoPerfis", "usoLimites",
-    "cfg", "zoomAtual", "Aba",
+    "cfg", "zoomAtual", "Aba", "bridge", "emGrade", "desenho", "placaDesistida", "perdasDeContexto",
 )
+# o que e const so se le: a lista de abas se mexe por dentro dela
+SO_LEITURA = ("ordem", "TETO_DE_WEBGL")
 DE_DENTRO = (
     "\nvar estado = {"
     + ", ".join(f"get {n}() {{ return {n}; }}, set {n}(v) {{ {n} = v; }}" for n in MUTAVEIS)
+    + "".join(f", get {n}() {{ return {n}; }}" for n in SO_LEITURA)
     + "};\n"
 )
 
@@ -343,6 +346,24 @@ class AbaReaberta(ComPagina):
         self.assertEqual(pedido, {"pasta": "C:/nasceu"})
 
 
+class AbaQueNaoSobe(ComPagina):
+    def test_id_vazio_encerra_a_aba_em_vez_de_deixar_viva_sem_shell(self):
+        """O shell que nao subia deixava a aba viva e sem sessao, engolindo cada tecla."""
+        resultado = self.rodar(
+            "(() => { const escrito = []; const antes = [setTimeout, ativar];"
+            " setTimeout = (f) => f(); ativar = () => {};"
+            " const aba = Object.create(estado.Aba.prototype);"
+            " Object.assign(aba, {viva: true, sessionId: null, shell: {id: 'pwsh'}, perfil: null, elevado: false,"
+            " fit: {fit() {}}, term: {cols: 80, rows: 24, write: (t) => escrito.push(t), focus() {}}, pintar() {}});"
+            " estado.bridge = {openSessionWith(...args) { args[args.length - 1](''); }};"
+            " try { aba.abrir({}); } finally { setTimeout = antes[0]; ativar = antes[1]; estado.bridge = null; }"
+            " return {viva: aba.viva, sessionId: aba.sessionId, escrito: escrito.join('')}; })()"
+        )
+        self.assertFalse(resultado["viva"])
+        self.assertIsNone(resultado["sessionId"])
+        self.assertIn("sessão encerrada", resultado["escrito"])
+
+
 class EstadoEscrito(ComPagina):
     def test_pronta_pedindo_permissao_diz_o_motivo_numa_lingua_so(self):
         """O topo do painel da grade dizia so READY, igual a um que so terminou."""
@@ -379,6 +400,174 @@ class ColarVariasLinhas(ComPagina):
     def test_programa_que_pede_colagem_protegida_ou_uma_linha_so_cola_direto(self):
         self.assertEqual(self.colar("a\nb", True), {"colado": ["a\nb"], "perguntou": None})
         self.assertEqual(self.colar("so uma\n", False), {"colado": ["so uma\n"], "perguntou": None})
+
+
+class WebglSoNaAbaAVista(ComPagina):
+    """So a aba que aparece tem contexto WebGL; a escondida desenha pelo DOM.
+
+    Cada contexto e mais um caminho pro ANGLE D3D11, e e ali que a tela cai levando o Loom. O
+    addon e o terminal sao falsos: o addon so anota o que foi feito com ele, e o terminal poe
+    uma tela de desenho nova na aba a cada addon carregado, como o xterm faz.
+    """
+
+    FALSOS = r"""
+    var criados = [];
+    var WebglAddon = {
+      WebglAddon: function () {
+        const eu = this;
+        criados.push(eu);
+        eu.onContextLoss = (f) => { eu.perder = f; };
+        eu.dispose = () => { eu.largado = true; };
+      },
+    };
+    var gpuPerdida = 0;
+    function abaFalsa(nome) {
+      const telas = [];
+      const nada = { add() {}, remove() {} };
+      const aba = Object.create(estado.Aba.prototype);
+      Object.assign(aba, {
+        nome: nome, ehPainel: false, webgl: null, telasWebgl: [], chapeu: qualquer,
+        tela: { classList: nada, style: qualquer, querySelectorAll: () => telas.slice() },
+        botao: { classList: nada, parentNode: null },
+        term: {
+          loadAddon(addon) {
+            const tela = { perdido: false };
+            tela.getContext = () => ({
+              isContextLost: () => tela.perdido,
+              getExtension: () => ({ loseContext() { tela.perdido = true; } }),
+            });
+            telas.push(tela);
+            addon.tela = tela;
+          },
+        },
+        ajustar() {}, foco() {}, nomeDoCartao() { return nome; },
+      });
+      estado.ordem.push(aba);
+      return aba;
+    }
+    function comWebgl() {
+      return estado.ordem.filter((a) => a.webgl).map((a) => a.nome);
+    }
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        super().setUpClass()
+        resultado = cls.motor.evaluate(cls.FALSOS)
+        assert not resultado.isError(), resultado.toString()
+
+    def setUp(self) -> None:
+        self.definir(
+            "estado.ordem.length = 0; criados.length = 0; gpuPerdida = 0; estado.abaAtiva = null;"
+            " estado.emGrade = false; estado.desenho = {emUso: 'gpu'}; estado.placaDesistida = false;"
+            " estado.perdasDeContexto = []; estado.bridge = {gpuPerdida() { gpuPerdida++; }};"
+            " estado.cfg = {}"
+        )
+
+    def tearDown(self) -> None:
+        self.definir(
+            "estado.ordem.length = 0; estado.abaAtiva = null; estado.emGrade = false; estado.bridge = null;"
+            " estado.desenho = {emUso: 'gpu'}; estado.placaDesistida = false; estado.perdasDeContexto = []"
+        )
+
+    def abas(self, quantas: int) -> None:
+        self.definir("; ".join(f'var aba{i} = abaFalsa("a{i}")' for i in range(quantas)))
+
+    def test_so_a_aba_ativa_tem_webgl(self):
+        self.abas(3)
+        self.definir("ativar(aba0)")
+        self.assertEqual(self.rodar("comWebgl()"), ["a0"])
+        self.definir("ativar(aba1)")
+        self.assertEqual(self.rodar("comWebgl()"), ["a1"])
+        # a que sumiu larga o addon e perde o contexto na hora, sem esperar o coletor de lixo
+        self.assertEqual(self.rodar("[criados[0].largado, criados[0].tela.perdido]"), [True, True])
+        self.assertEqual(self.rodar("gpuPerdida"), 0, "largar de proposito nao e falha da placa")
+
+    def test_grade_liga_em_todos_e_sair_dela_deixa_so_a_ativa(self):
+        self.abas(3)
+        self.definir("ativar(aba1); alternarGrade(true)")
+        self.assertEqual(self.rodar("comWebgl()"), ["a0", "a1", "a2"])
+        self.definir("alternarGrade(false)")
+        self.assertEqual(self.rodar("comWebgl()"), ["a1"])
+
+    def test_grade_grande_fica_no_teto_e_a_ativa_nunca_fica_de_fora(self):
+        """Passando de 16 contextos o Chromium derruba o mais velho, e isso contaria como perda."""
+        teto = self.rodar("estado.TETO_DE_WEBGL")
+        self.abas(teto + 3)
+        self.definir(f"ativar(aba{teto + 2}); alternarGrade(true)")
+        ligadas = self.rodar("comWebgl()")
+        self.assertEqual(len(ligadas), teto)
+        self.assertIn(f"a{teto + 2}", ligadas)
+
+    def test_desenho_por_software_nem_tenta_criar(self):
+        self.abas(2)
+        self.definir("estado.desenho = {emUso: 'software'}; ativar(aba0); alternarGrade(true)")
+        self.assertEqual(self.rodar("comWebgl()"), [])
+        self.assertEqual(self.rodar("criados.length"), 0)
+
+    def test_perda_solta_so_larga_aquela_aba(self):
+        self.abas(2)
+        self.definir("ativar(aba0); criados[0].perder()")
+        self.assertEqual(self.rodar("comWebgl()"), [])
+        self.assertEqual(self.rodar("gpuPerdida"), 0)
+        # voltando a aparecer, ela tenta de novo
+        self.definir("ativar(aba1); ativar(aba0)")
+        self.assertEqual(self.rodar("comWebgl()"), ["a0"])
+
+    def test_duas_perdas_em_dois_segundos_avisam_o_app_e_largam_tudo(self):
+        self.abas(3)
+        self.definir("ativar(aba0); alternarGrade(true); criados[0].perder(); criados[1].perder()")
+        self.assertEqual(self.rodar("gpuPerdida"), 1)
+        self.assertEqual(self.rodar("comWebgl()"), [])
+        # a placa foi dada como perdida: ate o fim desta pagina, nenhum contexto novo
+        self.definir("alternarGrade(false); ativar(aba1)")
+        self.assertEqual(self.rodar("comWebgl()"), [])
+        self.definir("criados[2].perder()")
+        self.assertEqual(self.rodar("gpuPerdida"), 1, "o app ouve uma vez so")
+
+    def test_perdas_espacadas_nao_sao_a_placa_falhando(self):
+        self.assertFalse(self.rodar("perdeuContexto(1000)"))
+        self.assertFalse(self.rodar("perdeuContexto(3001)"))
+        self.assertTrue(self.rodar("perdeuContexto(4500)"))
+        self.assertEqual(self.rodar("gpuPerdida"), 1)
+
+
+class LinhaDoDesenho(ComPagina):
+    def texto(self, **situacao) -> dict:
+        base = {"escolha": "auto", "emUso": "gpu", "proxima": "gpu", "porQueda": False, "porFora": False,
+                "quedaEm": "", "ateEm": ""}
+        base.update(situacao)
+        return self.rodar("textoDoDesenho(" + json.dumps(base) + ")")
+
+    def test_depois_de_queda_avisa_e_oferece_voltar(self):
+        t = self.texto(emUso="software", proxima="software", porQueda=True, quedaEm="27/09 às 20:58", ateEm="04/10")
+        self.assertEqual(
+            t["aviso"],
+            "O Loom passou a desenhar sem a placa de vídeo depois de uma queda da tela em 27/09 às 20:58."
+            " Volta sozinho à placa a partir de 04/10.",
+        )
+        self.assertTrue(t["voltar"])
+        self.assertIn("sem a placa de vídeo", t["agora"])
+
+    def test_depois_de_voltar_diz_que_a_placa_vem_na_proxima(self):
+        t = self.texto(emUso="software", proxima="gpu", porQueda=True, quedaEm="27/09 às 20:58")
+        self.assertIn("Na próxima vez que abrir, ele volta à placa de vídeo.", t["aviso"])
+        self.assertFalse(t["voltar"])
+
+    def test_queda_nesta_subida_avisa_o_que_vem(self):
+        t = self.texto(proxima="software", quedaEm="28/09 às 10:00")
+        self.assertIn("A tela caiu em 28/09 às 10:00", t["aviso"])
+        self.assertTrue(t["voltar"])
+
+    def test_sem_queda_nao_ha_aviso_e_a_troca_manual_diz_quando_vale(self):
+        self.assertEqual(self.texto(), {"agora": "Agora com a placa de vídeo.", "aviso": "", "voltar": False})
+        t = self.texto(escolha="software", proxima="software")
+        self.assertEqual(t["agora"], "Agora com a placa de vídeo. Na próxima vez que abrir: software.")
+        self.assertFalse(t["voltar"], "escolha feita na mao nao se desfaz pelo aviso")
+
+    def test_variavel_de_fora_e_dita(self):
+        t = self.texto(emUso="software", proxima="gpu", escolha="gpu", porFora=True)
+        self.assertIn("variável de ambiente", t["agora"])
 
 
 class UsoPorConta(ComPagina):

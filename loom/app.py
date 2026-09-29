@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ctypes.wintypes
 import json
+import logging
 import os
 import sys
 import time
@@ -18,9 +19,14 @@ from PySide6.QtWidgets import QApplication, QMainWindow, QMenu, QMessageBox, QSy
 from . import __version__
 from . import config as mod_config
 from . import instancia as mod_instancia
+from . import motor as mod_motor
 from . import perfis as mod_perfis
+from . import queda as mod_queda
+from . import registro as mod_registro
 from . import vigia as mod_vigia
 from .bridge import Bridge
+
+log = logging.getLogger(__name__)
 
 # Tres niveis de cinza, do mais claro pro mais escuro, pra dar profundidade:
 # a barra de titulo do sistema, a barra do app e o terminal.
@@ -37,13 +43,28 @@ TITULO = f"Loom {__version__}"
 # Tela refeita mais que isto dentro de um minuto e sinal de que o motor nao se recupera,
 # e insistir so pisca a janela
 TETO_DE_RECUPERACAO = 3
+# a janela que estava minimizada tem este prazo pra pagina voltar a pulsar depois de aparecer
+ESPERA_DO_PULSO_MS = 5000
+
+log_da_pagina = logging.getLogger("loom.tela")
+NIVEL_DO_CONSOLE = {
+    QWebEnginePage.JavaScriptConsoleMessageLevel.InfoMessageLevel: logging.INFO,
+    QWebEnginePage.JavaScriptConsoleMessageLevel.WarningMessageLevel: logging.WARNING,
+    QWebEnginePage.JavaScriptConsoleMessageLevel.ErrorMessageLevel: logging.ERROR,
+}
 
 
 class LoggingPage(QWebEnginePage):
-    """Manda o console da tela pro terminal de quem esta desenvolvendo."""
+    """Manda o console da tela pro log, com o nivel que a pagina deu.
+
+    No exe sem console o print nao ia a lugar nenhum, e a perda de contexto do WebGL, que o
+    xterm avisa pelo console, sumia junto.
+    """
 
     def javaScriptConsoleMessage(self, level, message, line, source):
-        print(f"[tela] {source.rsplit('/', 1)[-1]}:{line} {message}", flush=True)
+        log_da_pagina.log(
+            NIVEL_DO_CONSOLE.get(level, logging.INFO), "%s:%s %s", source.rsplit("/", 1)[-1], line, message
+        )
 
 
 class MainWindow(QMainWindow):
@@ -56,6 +77,9 @@ class MainWindow(QMainWindow):
         self.resize(1180, 720)
 
         self.bridge = Bridge(self)
+        # a prova do sudo leva ate 8 s; comeca ja, fora da thread da tela, e fica pronta antes de a
+        # pagina perguntar se da pra abrir elevado
+        self.bridge.provar_sudo()
         self.bridge.notificacaoPedida.connect(self._notificar)
         # a aba do ultimo aviso, pra o clique no balao levar ate ela
         self._aba_avisada = ""
@@ -129,7 +153,8 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(view)
         if antiga is not None:
             view.setFocus()
-        self._vigia.recomecar(time.monotonic())
+        self._montada_em = time.monotonic()
+        self._vigia.recomecar(self._montada_em)
 
     def recuperar_tela(self) -> bool:
         """Joga a tela fora e monta outra, com as mesmas abas ligadas aos mesmos shells.
@@ -152,7 +177,7 @@ class MainWindow(QMainWindow):
         )
         if not motivo:
             return
-        print(f"[tela] refazendo a tela sozinho: {motivo}", flush=True)
+        log.warning("refazendo a tela sozinho: %s", motivo)
         self.recuperar_tela()
         # no teto de tentativas a tela nao e refeita; mesmo assim espera uma carencia inteira
         # antes de julgar de novo, em vez de insistir a cada volta do relogio
@@ -169,18 +194,27 @@ class MainWindow(QMainWindow):
         return None if pixels is None else mod_vigia.so_fundo(pixels)
 
     def _pagina_caiu(self, status, codigo: int) -> None:
-        print(f"[tela] motor da pagina caiu: {status} {codigo}", flush=True)
+        pagina = self.view.page() if self.view is not None else None
+        if self.sender() is not pagina:
+            # a pagina da tela que acabou de ser trocada terminando: refazer por ela jogaria
+            # fora a tela nova, e a troca soltaria mais uma pagina velha, sem fim
+            return
+        if status == QWebEnginePage.RenderProcessTerminationStatus.NormalTerminationStatus:
+            return
+        log.error("motor da pagina caiu: %s, codigo %s", status, codigo)
         # fora do sinal: o motor ainda esta desmontando a pagina que morreu
         QTimer.singleShot(300, self.recuperar_tela)
 
     def escutar_outras_instancias(self) -> None:
-        """Abrir o Loom de novo com ele aberto traz esta janela, com a tela refeita.
+        """Abrir o Loom de novo com ele aberto traz esta janela pra frente.
 
         Os shells moram neste processo. Uma segunda janela nasceria com shells novos e nunca
         acharia as conversas que estao rodando aqui, que era justamente o que se queria de volta.
         """
         nome = mod_instancia.nome()
         servidor = QLocalServer(self)
+        # so a propria pessoa conecta; sem isto o canal aceitava qualquer usuario da maquina
+        servidor.setSocketOptions(QLocalServer.SocketOption.UserAccessOption)
         if not servidor.listen(nome):
             # sobrou o nome de um Loom que morreu sem fechar; liberado, a segunda tentativa pega
             QLocalServer.removeServer(nome)
@@ -192,19 +226,51 @@ class MainWindow(QMainWindow):
     def _outra_instancia(self) -> None:
         while self._servidor is not None and self._servidor.hasPendingConnections():
             conexao = self._servidor.nextPendingConnection()
-            conexao.readyRead.connect(lambda c=conexao: self._atender(c))
+            acumulado = bytearray()
+            conexao.readyRead.connect(lambda c=conexao, a=acumulado: self._atender(c, a))
             conexao.disconnected.connect(conexao.deleteLater)
 
-    def _atender(self, conexao: QLocalSocket) -> None:
-        pedido = bytes(conexao.readAll()).strip()
+    def _atender(self, conexao: QLocalSocket, acumulado: bytearray) -> None:
+        pedido = mod_instancia.ler_pedido(acumulado, bytes(conexao.readAll()))
+        if pedido is None:
+            # linha ainda aberta: espera o resto, menos quando ja passou do que um pedido tem
+            if len(acumulado) > mod_instancia.TETO_DO_PEDIDO:
+                conexao.disconnectFromServer()
+            return
         if pedido != mod_instancia.PEDIDO:
             conexao.disconnectFromServer()
             return
+        self._mostrar_a_quem_chamou()
+        conexao.write(mod_instancia.RESPOSTA + b"\n")
+        conexao.flush()
+
+    def _mostrar_a_quem_chamou(self) -> None:
+        """Traz a janela pra frente, e so refaz a tela se a pagina parou de pulsar.
+
+        Refazia sempre, e cada nova abertura do Loom destruia e recriava os contextos WebGL de
+        todas as abas, justamente o caminho em que o ANGLE derruba o processo inteiro.
+        """
+        agora = time.monotonic()
+        a_vista = self.isVisible() and not self.isMinimized()
+        self._trazer_pra_frente()
+        if a_vista:
+            # a pagina estava sendo desenhada: sem pulso pelo prazo da vigia, ela parou
+            self._refazer_se_parou(agora - mod_vigia.SEM_PULSO)
+        else:
+            # minimizada a pagina para de desenhar de proposito e o pulso velho nao prova nada;
+            # a prova e ela voltar a pulsar depois de aparecer
+            QTimer.singleShot(ESPERA_DO_PULSO_MS, lambda: self._refazer_se_parou(agora))
+
+    def _refazer_se_parou(self, desde: float) -> None:
+        if self.bridge.ultimo_pulso >= desde:
+            return
+        if time.monotonic() - self._montada_em < mod_vigia.CARENCIA:
+            # tela recem montada ainda carregando; se ela nao pegar, a vigia refaz
+            return
+        log.warning("a pagina nao pulsava quando chamaram o Loom de novo; refazendo a tela")
+        # o pedido da pessoa passa por cima do teto, como o Recarregar da bandeja
         self._recuperacoes.clear()
         self.recuperar_tela()
-        self._trazer_pra_frente()
-        conexao.write(b"ok\n")
-        conexao.flush()
 
     def eventFilter(self, obj, evento):
         """Pega o arquivo arrastado antes do motor web.
@@ -397,6 +463,15 @@ def main() -> int:
 
     if mod_instancia.chamar_quem_ja_esta_aberto():
         return 0
+    # dois starts quase juntos: o outro pegou a trava e ainda esta montando a janela
+    if not mod_instancia.segurar_trava() and mod_instancia.esperar_quem_esta_subindo():
+        return 0
+
+    mod_registro.ligar_qt()
+    log.info("Loom %s subindo, pid %s", __version__, os.getpid())
+    # a marca some quando o Loom fecha direito; se sobrar, o proximo sabe que a tela caiu
+    mod_queda.marcar_subida(mod_motor.modo_do_ambiente(os.environ))
+    app.aboutToQuit.connect(mod_queda.apagar_marca)
 
     # a barra de uso da conta principal vem do atalho de status line; se ele ficou apontando
     # pra um coletor que nao existe mais, a barra fica sem leitura ate alguem notar
