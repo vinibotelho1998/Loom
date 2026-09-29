@@ -804,7 +804,7 @@ const PainelUso = (function () {
   function aplicar() {
     // a mudanca veio das Configuracoes; so mexe no que mudou, pra nao remedir terminal a toa
     if (!painel) return;
-    const aberto = cfg.painelUso !== false;
+    const aberto = cfg.painelUso === true;
     const largura = limitarLargura(cfg.larguraPainelUso);
     const mudouAberto = aberto === painel.hidden;
     if (!mudouAberto && largura === larguraAtual) return;
@@ -908,7 +908,8 @@ const PainelUso = (function () {
     puxador = document.getElementById("puxador-uso");
     botao = document.getElementById("alternar-uso");
     if (!painel) return;
-    aplicarAberto(cfg.painelUso !== false);
+    // fechado a menos que a pessoa tenha aberto: o padrao do app e o painel escondido
+    aplicarAberto(cfg.painelUso === true);
     aplicarLargura(limitarLargura(cfg.larguraPainelUso));
     if (botao) {
       botao.addEventListener("mousedown", (ev) => ev.preventDefault());

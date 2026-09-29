@@ -628,6 +628,9 @@ class EstadosDoPainel(ComPainel):
         self.assertIn("&#60;img src=x", html)
 
 
+ABERTO = {"painelUso": True}
+
+
 class LayoutDoPainel(ComPainel):
     def ligar(self, cfg: dict, com_relatorio: bool = True, resposta=None) -> None:
         resposta = json.dumps(resposta or {"geradoEm": None, "coletando": True, "contas": []})
@@ -638,8 +641,14 @@ class LayoutDoPainel(ComPainel):
             ' botao = elementosFalsos["alternar-uso"];'
         )
 
-    def test_nasce_aberto_na_largura_do_codexbar_e_pede_o_relatorio(self):
+    def test_nasce_fechado_e_nao_pede_relatorio(self):
         self.ligar({})
+        self.assertEqual(self.rodar("[painel.hidden, puxador.hidden]"), [True, True])
+        self.assertEqual(self.rodar('[botao.classList.contains("ativo"), botao.getAttribute("aria-pressed")]'), [False, "false"])
+        self.assertEqual(self.rodar("estado.bridge.pedidos"), 0, "fechado nao custa leitura nenhuma")
+
+    def test_aberto_pela_pessoa_volta_aberto_na_largura_do_codexbar(self):
+        self.ligar(ABERTO)
         self.assertEqual(self.rodar("[painel.hidden, puxador.hidden]"), [False, False])
         self.assertEqual(self.rodar('painel.estilo["--largura-uso"]'), "310px")
         self.assertEqual(self.rodar('[botao.classList.contains("ativo"), botao.getAttribute("aria-pressed")]'), [True, "true"])
@@ -658,7 +667,7 @@ class LayoutDoPainel(ComPainel):
             self.assertEqual(self.rodar(f"P.limitarLargura({valor})"), esperado, valor)
 
     def test_ctrl_shift_u_alterna_grava_e_remede_o_terminal(self):
-        self.ligar({})
+        self.ligar(ABERTO)
         self.assertIn("KeyU", self.rodar("estado.atalhos"), "sem isso o terminal recebe a tecla junto")
         self.assertTrue(self.rodar('tecla("KeyU")'))
         self.assertEqual(self.rodar("[painel.hidden, puxador.hidden, estado.cfg.painelUso]"), [True, True, False])
@@ -673,19 +682,19 @@ class LayoutDoPainel(ComPainel):
         self.assertEqual(self.rodar("aba.ajustes"), 2)
 
     def test_botao_do_topo_alterna_sem_tirar_o_foco(self):
-        self.ligar({})
+        self.ligar(ABERTO)
         impedido = self.rodar('(() => { const ev = {preventDefault() { this.feito = true; }}; botao.disparar("mousedown", ev); return !!ev.feito; })()')
         self.assertTrue(impedido)
         self.definir('botao.disparar("click", {})')
         self.assertEqual(self.rodar("[painel.hidden, estado.bridge.gravados]"), [True, [{"painelUso": False}]])
 
     def test_na_grade_as_colunas_sao_refeitas(self):
-        self.ligar({})
+        self.ligar(ABERTO)
         self.definir("var grades = 0; reencaixarGrade = function () { grades++; }; estado.emGrade = true; P.alternar(false)")
         self.assertEqual(self.rodar("[grades, aba.ajustes]"), [1, 0])
 
     def test_arrastar_a_alca_para_nas_bordas_e_grava_ao_soltar(self):
-        self.ligar({})
+        self.ligar(ABERTO)
         self.definir('puxador.disparar("mousedown", {button: 0, preventDefault() {}}); naJanela("mousemove", {clientX: 600})')
         self.assertEqual(self.rodar('[painel.estilo["--largura-uso"], estado.cfg.larguraPainelUso]'), ["480px", 480])
         self.assertTrue(self.rodar('corpoFalso.classList.contains("puxando-largura")'))
@@ -701,7 +710,7 @@ class LayoutDoPainel(ComPainel):
         self.assertEqual(self.rodar("estado.bridge.gravados.length"), 1, "solto, o mouse nao arrasta mais")
 
     def test_configuracoes_abrem_fecham_e_mudam_a_largura(self):
-        self.ligar({})
+        self.ligar(ABERTO)
         self.definir("estado.cfg.painelUso = false; P.aplicar()")
         self.assertTrue(self.rodar("painel.hidden"))
         self.definir("estado.cfg.painelUso = true; estado.cfg.larguraPainelUso = 300; P.aplicar()")
@@ -715,20 +724,20 @@ class LayoutDoPainel(ComPainel):
         )
 
     def test_relatorio_novo_pelo_sinal_redesenha(self):
-        self.ligar({})
+        self.ligar(ABERTO)
         self.definir(f"estado.bridge.pronto({json.dumps(json.dumps(CONTRATO))})")
         html = self.rodar("painel.innerHTML")
         self.assertIn('<h3 class="uso-nome" title="Principal">Principal</h3>', html)
         self.assertIn("<b>12%</b> usado", html)
 
     def test_app_sem_o_relatorio_mostra_o_vazio(self):
-        self.ligar({}, com_relatorio=False)
+        self.ligar(ABERTO, com_relatorio=False)
         self.assertIn("Ainda sem uso", self.rodar("painel.innerHTML"))
 
     def test_cliques_trocam_provedor_conta_metrica_e_abrem_a_tabela(self):
         dados = contrato()
         dados["contas"][0]["serie"] = serie_de_30()
-        self.ligar({}, resposta=dados)
+        self.ligar(ABERTO, resposta=dados)
 
         def alvo(atributos: dict, conta: str = "") -> str:
             cartao = "({getAttribute: () => " + json.dumps(conta) + "})"
@@ -752,7 +761,7 @@ class LayoutDoPainel(ComPainel):
         self.assertIn('<details class="uso-tabela" open>', self.rodar("painel.innerHTML"))
 
     def test_clicar_no_painel_nao_tira_o_foco_do_terminal(self):
-        self.ligar({})
+        self.ligar(ABERTO)
         self.assertTrue(self.rodar('(() => { const ev = {target: {}, preventDefault() { this.feito = true; }}; painel.disparar("mousedown", ev); return !!ev.feito; })()'))
         self.assertFalse(self.rodar('(() => { const ev = {target: painel, preventDefault() { this.feito = true; }}; painel.disparar("mousedown", ev); return !!ev.feito; })()'),
                          "a barra de rolagem do painel continua funcionando")
@@ -760,16 +769,16 @@ class LayoutDoPainel(ComPainel):
 
 class ConfigDoPainel(ComPastaPropria):
     def test_aberto_e_largura_sao_gravados_com_a_faixa_da_tela(self):
-        self.assertEqual((config.PADRAO["painelUso"], config.PADRAO["larguraPainelUso"]), (True, 310))
+        self.assertEqual((config.PADRAO["painelUso"], config.PADRAO["larguraPainelUso"]), (False, 310))
         self.assertEqual(config.salvar({"larguraPainelUso": 5000})["larguraPainelUso"], 480)
         self.assertEqual(config.salvar({"larguraPainelUso": 10})["larguraPainelUso"], 280)
         self.assertEqual(config.salvar({"larguraPainelUso": 352.6})["larguraPainelUso"], 352)
-        config.salvar({"painelUso": False})
-        self.assertIs(config.carregar()["painelUso"], False)
+        config.salvar({"painelUso": True})
+        self.assertIs(config.carregar()["painelUso"], True, "aberto pela pessoa, fica aberto")
         # valor de outro tipo, do arquivo editado a mao, nao entra
         config.salvar({"painelUso": "nao", "larguraPainelUso": "largo"})
         lido = config.carregar()
-        self.assertEqual((lido["painelUso"], lido["larguraPainelUso"]), (False, 352))
+        self.assertEqual((lido["painelUso"], lido["larguraPainelUso"]), (True, 352))
 
 
 class PaginaComOPainel(unittest.TestCase):
@@ -783,6 +792,10 @@ class PaginaComOPainel(unittest.TestCase):
         self.assertLess(puxador, painel)
         self.assertLess(painel, fim_do_corpo)
         self.assertIn('id="alternar-uso"', html)
+        # fechado desde o HTML: sem isso o painel aparecia vazio por um instante e o terminal remedia
+        self.assertIn('id="puxador-uso" title="Arraste pra mudar a largura do painel de uso" hidden', html)
+        self.assertIn('id="uso-lateral" aria-label="Uso de cada conta" hidden', html)
+        self.assertIn('<button class="icone" id="alternar-uso"', html)
         self.assertIn('id="cfg-painelUso"', html)
         self.assertIn('id="cfg-larguraPainelUso" min="280" max="480"', html)
 

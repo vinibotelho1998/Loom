@@ -32,8 +32,9 @@ PADRAO = {
     "editor": "code",
     "densidade": "confortavel",
     "desenho": "auto",
-    # o painel de uso a direita dos terminais nasce aberto, na largura base do CodexBar
-    "painelUso": True,
+    # o painel de uso a direita dos terminais nasce fechado: o botao do topo ou Ctrl+Shift+U abre, e
+    # o app lembra do que a pessoa escolheu
+    "painelUso": False,
     "larguraPainelUso": 310,
 }
 
