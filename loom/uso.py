@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import threading
 import time
 from collections import Counter, defaultdict
@@ -21,7 +22,11 @@ CAMPOS = ("entrada", "saida", "raciocinio", "cacheEscrito", "cacheLido", "mensag
 CAMPOS_GUARDADOS = CAMPOS + ("cache5m", "cache1h")
 # o que entra na conta do custo, cada um com o seu preco
 CAMPOS_DE_CUSTO = ("entrada", "saida", "cache5m", "cache1h", "cacheLido")
-VERSAO = 2
+VERSAO = 3
+# O projeto de cada resposta so entrou na versao 3. Cache mais velho vira legado e os transcript sao
+# lidos de novo, que e o que da o projeto ao historico que ainda existe em disco.
+# Os baldes por projeto guardam so este tanto de dias.
+DIAS_DE_PROJETOS = 60
 # Os baldes por hora servem ao bloco de 5 horas e a janela de 7 dias do painel; mais velho sai.
 DIAS_DE_HORAS = 8
 # a coleta do painel roda fora da tela: ler e gravar o cache e de uma thread por vez
@@ -34,7 +39,16 @@ def _pasta_padrao() -> Path:
 
 
 def _cache_vazio() -> dict:
-    return {"versao": VERSAO, "arquivos": {}, "ultimos": {}, "dias": {}, "horas": {}, "vistoEm": {}, "legado": {}}
+    return {
+        "versao": VERSAO,
+        "arquivos": {},
+        "ultimos": {},
+        "dias": {},
+        "horas": {},
+        "vistoEm": {},
+        "legado": {},
+        "projetos": {},
+    }
 
 
 def _ler_cache_bruto(caminho: Path) -> dict | None:
@@ -195,6 +209,22 @@ def _consumo(registro: dict) -> dict | None:
     }
 
 
+def projeto_do_registro(registro: dict, arquivo: Path | None = None) -> str:
+    """A pasta de trabalho de uma resposta, que e o que o Claude grava em cwd de cada linha.
+
+    Sem cwd, o nome da pasta do transcript, que e o caminho com as barras trocadas por traco.
+    """
+    cwd = registro.get("cwd")
+    if isinstance(cwd, str) and cwd.strip():
+        return cwd.strip().rstrip("\\/") or cwd.strip()
+    return arquivo.parent.name if arquivo is not None else "desconhecido"
+
+
+def _podar_projetos(projetos: dict, desde: str) -> dict:
+    """Tira os baldes de dias anteriores a `desde`. A chave e conta|dia|projeto|modelo."""
+    return {chave: valores for chave, valores in projetos.items() if chave.split("|")[1:2] >= [desde]}
+
+
 def _somar(registro: dict, alvo: Counter) -> str | None:
     consumo = _consumo(registro)
     if consumo is None:
@@ -318,7 +348,7 @@ def coletar(pastas: dict[str, Path], estado: dict | None = None) -> dict:
 def coletar_tudo(
     pastas: dict[str, Path], estado: dict | None = None, *, cache: Path | None = None, parar=None
 ) -> dict:
-    """A passada do coletar, devolvendo tudo que o cache sabe: {"dias", "horas", "vistoEm"}.
+    """A passada do coletar, devolvendo tudo que o cache sabe: {"dias", "horas", "vistoEm", "projetos"}.
 
     `horas` sao os baldes por hora dos ultimos dias e `vistoEm`, o instante da ultima resposta de
     cada conta. `cache` e o arquivo do cache, pra thread da coleta nao depender de um global que os
@@ -334,6 +364,7 @@ def _coletar(pastas: dict[str, Path], estado: dict | None, alvo: Path, parar) ->
     dias = cache["dias"]
     horas = cache["horas"]
     vistos_em = cache["vistoEm"]
+    projetos = cache["projetos"]
     # o id da ultima resposta lida de cada arquivo
     ultimos = cache["ultimos"]
     mudou = False
@@ -403,6 +434,10 @@ def _coletar(pastas: dict[str, Path], estado: dict | None, alvo: Path, parar) ->
             if consumo is None:
                 continue
             _acumular(dias.setdefault(f"{chave_perfil}|{consumo['dia']}|{consumo['modelo']}", {}), consumo)
+            projeto = projeto_do_registro(registro, arquivo)
+            _acumular(
+                projetos.setdefault(f"{chave_perfil}|{consumo['dia']}|{projeto}|{consumo['modelo']}", {}), consumo
+            )
             if consumo["ts"] >= corte_das_horas:
                 _acumular_hora(horas, chave_perfil, consumo)
             if consumo["ts"] > vistos_em.get(chave_perfil, 0):
@@ -423,10 +458,18 @@ def _coletar(pastas: dict[str, Path], estado: dict | None, alvo: Path, parar) ->
                 if _dia_do_grupo(chave, grupos) not in cobertos
             }
         cache["horas"] = horas = _podar_horas(horas, corte_das_horas)
+        cache["projetos"] = projetos = _podar_projetos(
+            projetos, str(datetime.now().date() - timedelta(days=DIAS_DE_PROJETOS))
+        )
         _gravar_cache(cache, alvo)
     if estado is not None:
         estado["parcial"] = parcial
-    return {"dias": efetivos, "horas": _podar_horas(horas, corte_das_horas), "vistoEm": dict(vistos_em)}
+    return {
+        "dias": efetivos,
+        "horas": _podar_horas(horas, corte_das_horas),
+        "vistoEm": dict(vistos_em),
+        "projetos": projetos,
+    }
 
 
 def relatorio(pastas: dict[str, Path], estado: dict | None = None) -> dict:
@@ -612,3 +655,60 @@ def custos_por_hora(horas: dict, chaves) -> list[dict]:
         if tokens and not com_preco:
             alvo["comPreco"] = False
     return [juntas[hora] for hora in sorted(juntas)]
+
+
+AVULSAS = "Conversas avulsas"
+TEMPORARIO = "Temporário"
+# O Codex Desktop abre cada chat numa pasta Documents/Codex/<data>/<nome>. O nome e o caminho da
+# pasta do projeto com os separadores trocados por traco, ou o titulo da conversa quando nao houve pasta.
+# O texto ja chega com barras normais.
+_PASTA_DO_CODEX = re.compile(r"/codex/\d{4}-\d{2}-\d{2}/([^/]+)$", re.IGNORECASE)
+_CAMINHO_EM_TRACOS = re.compile(r"^[a-z]-users-[^-]+-(?:documents|desktop)-(?:github-)?(.+)$", re.IGNORECASE)
+
+
+def nome_do_projeto(projeto: str) -> str:
+    """O nome curto que o painel mostra.
+
+    Normalmente e a ultima pasta do caminho. A pasta de rascunho do Codex volta ao projeto de onde
+    veio quando o nome ainda conta o caminho, e vira "Conversas avulsas" quando e so o titulo do chat.
+    """
+    texto = projeto.replace("\\", "/").rstrip("/")
+    do_codex = _PASTA_DO_CODEX.search(texto)
+    if do_codex:
+        em_tracos = _CAMINHO_EM_TRACOS.match(do_codex.group(1))
+        return em_tracos.group(1) if em_tracos else AVULSAS
+    if "/appdata/local/temp/" in texto.lower():
+        return TEMPORARIO
+    return texto.rsplit("/", 1)[-1] or projeto
+
+
+def custos_por_projeto(projetos: dict, chaves, desde: str = "") -> dict[str, dict]:
+    """O consumo de cada projeto das contas dadas, do dia `desde` em diante.
+
+    A chave de entrada e conta|dia|projeto|modelo. Devolve {projeto: {"custo", "tokens", "mensagens",
+    "comPreco", "ultimoDia", "dias": {dia: tokens}}}, com o caminho inteiro como chave.
+    """
+    chaves = set(chaves)
+    fracao = fracao_de_uma_hora(projetos, chaves)
+    saida: dict[str, dict] = {}
+    for chave, valores in projetos.items():
+        partes = chave.split("|")
+        if len(partes) != 4 or partes[0] not in chaves or not isinstance(valores, dict):
+            continue
+        _, dia, projeto, modelo = partes
+        if dia < desde:
+            continue
+        valor, com_preco = custo_do_balde(modelo, valores, fracao)
+        tokens = tokens_do_balde(valores)
+        alvo = saida.setdefault(
+            projeto, {"custo": 0.0, "tokens": 0, "mensagens": 0, "comPreco": True, "ultimoDia": "", "dias": {}}
+        )
+        alvo["custo"] += valor
+        alvo["tokens"] += tokens
+        alvo["mensagens"] += _numero(valores.get("mensagens"))
+        alvo["dias"][dia] = alvo["dias"].get(dia, 0) + tokens
+        if tokens and not com_preco:
+            alvo["comPreco"] = False
+        if dia > alvo["ultimoDia"]:
+            alvo["ultimoDia"] = dia
+    return saida

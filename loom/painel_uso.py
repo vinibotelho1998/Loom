@@ -32,6 +32,8 @@ log = logging.getLogger(__name__)
 VAZIO = {"geradoEm": None, "coletando": True, "contas": []}
 BLOCO = 5 * 3600
 DIAS_DA_SERIE = 30
+# quantos projetos o ranking local do painel mostra
+PROJETOS_NO_PAINEL = 8
 # Uma coleta segue passada atras de passada ate ler tudo, que fora da tela nao ha pressa de
 # devolver a vez; o teto so segura um historico absurdo.
 PASSADAS = 64
@@ -210,7 +212,7 @@ def coletar(pedido: dict, parar=None) -> dict:
         if conta["ferramenta"] == "claude":
             pastas.setdefault(conta["chaves"][0], conta["pasta"])
 
-    lido = {"dias": {}, "horas": {}, "vistoEm": {}}
+    lido = {"dias": {}, "horas": {}, "vistoEm": {}, "projetos": {}}
     estado: dict = {}
     erro = None
     if pastas or pedido.get("uso"):
@@ -473,7 +475,79 @@ def _resumo(por_dia: dict, hoje) -> tuple[dict, dict, list]:
     return custo, tokens, serie if soma_tokens else []
 
 
-def _conta_pronta(conta: dict, janelas: list, bloco, dias: dict, chaves, agora: float, atualizado: float) -> dict:
+def _por_nome(lista: dict[str, dict]) -> dict[str, dict]:
+    """Junta os caminhos que sao o mesmo projeto: a pasta movida de lugar deixa dois caminhos.
+
+    A chave de saida e o nome em minusculas; o nome mostrado e o do caminho que mais gastou.
+    """
+    juntos: dict[str, dict] = {}
+    for caminho, valores in lista.items():
+        nome = mod_uso.nome_do_projeto(caminho)
+        alvo = juntos.setdefault(
+            nome.lower(),
+            {"nome": nome, "maior": -1, "custo": 0.0, "tokens": 0, "mensagens": 0, "comPreco": True,
+             "ultimoDia": "", "caminhos": []},
+        )
+        if valores["tokens"] > alvo["maior"]:
+            alvo["nome"], alvo["maior"] = nome, valores["tokens"]
+        alvo["custo"] += valores["custo"]
+        alvo["tokens"] += valores["tokens"]
+        alvo["mensagens"] += valores["mensagens"]
+        alvo["comPreco"] = alvo["comPreco"] and valores["comPreco"]
+        alvo["ultimoDia"] = max(alvo["ultimoDia"], valores["ultimoDia"])
+        alvo["caminhos"].append(caminho)
+    return juntos
+
+
+def _projetos_da_conta(projetos: dict, chaves, hoje) -> dict:
+    """O que esta maquina gastou, por projeto: os totais de hoje, 7 e 30 dias e o ranking dos 30.
+
+    O limite da conta soma todos os aparelhos; isto sai so dos arquivos daqui. O ranking vai pelo
+    custo e, onde nao ha preco, pelos tokens.
+    """
+    inicio = {
+        "hoje": hoje.isoformat(),
+        "dias7": (hoje - timedelta(days=6)).isoformat(),
+        "dias30": (hoje - timedelta(days=DIAS_DA_SERIE - 1)).isoformat(),
+    }
+    por_periodo = {
+        nome: _por_nome(mod_uso.custos_por_projeto(projetos, chaves, desde)) for nome, desde in inicio.items()
+    }
+    totais = {
+        nome: {
+            "custo": round(sum(p["custo"] for p in lista.values()), 4),
+            "tokens": sum(p["tokens"] for p in lista.values()),
+            "mensagens": sum(p["mensagens"] for p in lista.values()),
+            "semPreco": any(p["tokens"] and not p["comPreco"] for p in lista.values()),
+        }
+        for nome, lista in por_periodo.items()
+    }
+    ranking = []
+    for chave, trinta in por_periodo["dias30"].items():
+        sete = por_periodo["dias7"].get(chave)
+        dia = por_periodo["hoje"].get(chave)
+        ranking.append(
+            {
+                "projeto": trinta["nome"],
+                "caminhos": sorted(trinta["caminhos"]),
+                "custo": round(trinta["custo"], 4),
+                "tokens": trinta["tokens"],
+                "mensagens": trinta["mensagens"],
+                "custo7": round(sete["custo"], 4) if sete else 0.0,
+                "tokens7": sete["tokens"] if sete else 0,
+                "custoHoje": round(dia["custo"], 4) if dia else 0.0,
+                "tokensHoje": dia["tokens"] if dia else 0,
+                "semPreco": bool(trinta["tokens"]) and not trinta["comPreco"],
+                "ultimoDia": trinta["ultimoDia"],
+            }
+        )
+    ranking.sort(key=lambda item: (-item["custo"], -item["tokens"], item["projeto"]))
+    return {"totais": totais, "ranking": ranking[:PROJETOS_NO_PAINEL], "total": len(ranking)}
+
+
+def _conta_pronta(
+    conta: dict, janelas: list, bloco, dias: dict, chaves, agora: float, atualizado: float, projetos: dict | None = None
+) -> dict:
     hoje = datetime.fromtimestamp(agora).date()
     desde = (hoje - timedelta(days=DIAS_DA_SERIE - 1)).isoformat()
     custo, tokens, serie = _resumo(mod_uso.custos_por_dia(dias, chaves, desde), hoje)
@@ -489,6 +563,7 @@ def _conta_pronta(conta: dict, janelas: list, bloco, dias: dict, chaves, agora: 
         "custo": custo,
         "tokens": tokens,
         "serie": serie,
+        "local": _projetos_da_conta(projetos or {}, chaves, hoje),
         "erro": None,
     }
 
@@ -518,7 +593,7 @@ def _conta_do_claude(conta: dict, lido: dict, limites: dict, memoria: dict, agor
         janelas.insert(0, _janela("5h", "Sessao", None, fim, 300, "estimada", ultimo))
     visto = max((_real(lido["vistoEm"].get(chave)) for chave in chaves), default=0.0)
     atualizado = max(visto, leitura["lido"] if leitura else 0.0)
-    return _conta_pronta(conta, janelas, bloco, lido["dias"], chaves, agora, atualizado)
+    return _conta_pronta(conta, janelas, bloco, lido["dias"], chaves, agora, atualizado, lido.get("projetos"))
 
 
 def _conta_do_codex(conta: dict, cache: Path, agora: float, parar) -> dict:
@@ -534,4 +609,6 @@ def _conta_do_codex(conta: dict, cache: Path, agora: float, parar) -> dict:
     bloco, _, _ = _bloco(mod_uso.custos_por_hora(lido["horas"], {chave}), _zera_da_sessao(janelas), agora)
     plano = (limites or {}).get("plano") or conta["plano"]
     atualizado = max(_real(lido.get("vistoEm")), _real((limites or {}).get("ts")))
-    return _conta_pronta({**conta, "plano": plano}, janelas, bloco, lido["dias"], {chave}, agora, atualizado)
+    return _conta_pronta(
+        {**conta, "plano": plano}, janelas, bloco, lido["dias"], {chave}, agora, atualizado, lido.get("projetos")
+    )

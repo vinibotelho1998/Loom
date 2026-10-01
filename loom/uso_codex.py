@@ -15,14 +15,15 @@ from __future__ import annotations
 import json
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from . import precos as mod_precos
 from . import uso as mod_uso
 from .caminhos import gravar_texto
 
-VERSAO = 1
+VERSAO = 2
+# A versao 2 guarda o projeto de cada resposta; o cache da 1 e jogado fora e os rollouts, relidos.
 # Arquivo parado ha mais que isso nao ganha mais registro: o consumo que ficou pendente, tirado da
 # diferenca dos totais, passa a valer. Antes disso ele espera, porque no rollout novo o token_count
 # as vezes chega antes do registro da mesma resposta, e contaria duas vezes.
@@ -37,7 +38,7 @@ CAMPOS_DO_TOTAL = (
     "output_tokens",
     "reasoning_output_tokens",
 )
-_MARCAS = (b"token_usage_record", b"token_count", b"turn_context")
+_MARCAS = (b"token_usage_record", b"token_count", b"turn_context", b"session_meta")
 _TRAVA = threading.Lock()
 
 
@@ -105,8 +106,11 @@ def _diferenca(atual: dict, anterior) -> dict | None:
     return delta if any(delta.values()) else None
 
 
-def _somar(conta: dict, chave: str, consumo: dict, corte: float) -> None:
+def _somar(conta: dict, chave: str, consumo: dict, corte: float, projeto: str = "desconhecido") -> None:
     mod_uso._acumular(conta["dias"].setdefault(f"{chave}|{consumo['dia']}|{consumo['modelo']}", {}), consumo)
+    mod_uso._acumular(
+        conta["projetos"].setdefault(f"{chave}|{consumo['dia']}|{projeto}|{consumo['modelo']}", {}), consumo
+    )
     if consumo["ts"] >= corte:
         mod_uso._acumular_hora(conta["horas"], chave, consumo)
     if consumo["ts"] > conta.get("vistoEm", 0):
@@ -153,9 +157,22 @@ def _assentar(conta: dict, chave: str, arquivo: dict, corte: float) -> None:
         if isinstance(item, dict):
             consumo = _consumo(item, item.get("ts"), str(item.get("modelo") or "desconhecido"))
             if consumo is not None:
-                _somar(conta, chave, consumo, corte)
+                _somar(conta, chave, consumo, corte, arquivo.get("cwd") or "desconhecido")
     arquivo["pendente"] = []
     arquivo["modo"] = "contagem"
+
+
+def _fechar_contagem(carga: dict, conta: dict, chave: str, arquivo: dict, corte: float) -> None:
+    """Passa a valer o consumo tirado dos totais que veio antes do primeiro registro do arquivo."""
+    pendente = [item for item in arquivo.get("pendente") or [] if isinstance(item, dict)]
+    usado = carga.get("usage") if isinstance(carga.get("usage"), dict) else {}
+    desta = _inteiro(usado.get("input_tokens")) + _inteiro(usado.get("output_tokens"))
+    if pendente and desta and _inteiro(pendente[-1].get("input_tokens")) + _inteiro(
+        pendente[-1].get("output_tokens")
+    ) == desta:
+        pendente.pop()
+    arquivo["pendente"] = pendente
+    _assentar(conta, chave, arquivo, corte)
 
 
 def _processar(registros: list, conta: dict, chave: str, arquivo: dict, corte: float) -> None:
@@ -170,6 +187,10 @@ def _processar(registros: list, conta: dict, chave: str, arquivo: dict, corte: f
         carga = registro.get("payload")
         if not isinstance(carga, dict):
             continue
+        if tipo in ("session_meta", "turn_context"):
+            pasta = carga.get("cwd")
+            if isinstance(pasta, str) and pasta.strip():
+                arquivo["cwd"] = pasta.strip().rstrip("\\/") or pasta.strip()
         if tipo == "turn_context":
             modelo = carga.get("model")
             if isinstance(modelo, str) and modelo:
@@ -180,7 +201,11 @@ def _processar(registros: list, conta: dict, chave: str, arquivo: dict, corte: f
                     while len(turnos) > TURNOS_GUARDADOS:
                         del turnos[next(iter(turnos))]
         elif tipo == "token_usage_record":
-            # daqui em diante o consumo vem dos registros; o tirado dos totais nao vale mais
+            # daqui em diante o consumo vem dos registros. O que os totais mostraram antes do primeiro
+            # registro e consumo de verdade e entra, menos o ultimo item quando ele e a propria
+            # resposta deste registro, que o token_count anunciou um instante antes.
+            if arquivo.get("modo") != "registro":
+                _fechar_contagem(carga, conta, chave, arquivo, corte)
             arquivo["modo"] = "registro"
             arquivo["pendente"] = []
             resposta = carga.get("response_id")
@@ -193,7 +218,7 @@ def _processar(registros: list, conta: dict, chave: str, arquivo: dict, corte: f
             modelo = (turnos.get(turno) if isinstance(turno, str) else None) or arquivo.get("modelo") or "desconhecido"
             consumo = _consumo(carga.get("usage"), _instante(registro.get("timestamp")), modelo)
             if consumo is not None:
-                _somar(conta, chave, consumo, corte)
+                _somar(conta, chave, consumo, corte, arquivo.get("cwd") or "desconhecido")
         elif tipo == "event_msg" and carga.get("type") == "token_count":
             instante = _instante(registro.get("timestamp"))
             _anotar_limite(conta, carga.get("rate_limits"), instante)
@@ -234,7 +259,7 @@ def _rollouts(pasta: Path) -> list[tuple[float, int, Path]]:
 
 
 def _conta_vazia() -> dict:
-    return {"arquivos": {}, "dias": {}, "horas": {}, "limites": None, "vistoEm": 0}
+    return {"arquivos": {}, "dias": {}, "horas": {}, "projetos": {}, "limites": None, "vistoEm": 0}
 
 
 def _carregar(caminho: Path) -> dict:
@@ -251,7 +276,7 @@ def _conta_do_cache(dados: dict, chave: str) -> dict:
     conta = dados["contas"].get(chave)
     limpa = _conta_vazia()
     if isinstance(conta, dict):
-        for campo in ("arquivos", "dias", "horas"):
+        for campo in ("arquivos", "dias", "horas", "projetos"):
             if isinstance(conta.get(campo), dict):
                 limpa[campo] = conta[campo]
         if isinstance(conta.get("limites"), dict):
@@ -317,12 +342,16 @@ def coletar(pasta: Path, chave: str, estado: dict | None = None, *, cache: Path,
         mudou, parcial = _ler(Path(pasta), chave, conta, parar)
         if mudou:
             conta["horas"] = mod_uso._podar_horas(conta["horas"], time.time() - mod_uso.DIAS_DE_HORAS * 24 * 3600)
+            conta["projetos"] = mod_uso._podar_projetos(
+                conta["projetos"], str(datetime.now().date() - timedelta(days=mod_uso.DIAS_DE_PROJETOS))
+            )
             gravar_texto(cache, json.dumps(dados))
     if estado is not None:
         estado["parcial"] = parcial
     return {
         "dias": conta["dias"],
         "horas": conta["horas"],
+        "projetos": conta["projetos"],
         "limites": conta["limites"],
         "vistoEm": conta["vistoEm"],
     }

@@ -586,6 +586,58 @@ const PainelUso = (function () {
     return html + '<p class="uso-nota">' + AVISO_ESTIMATIVA + "</p></section>";
   }
 
+  const AVISO_LOCAL =
+    "Lido dos arquivos deste computador. O limite da conta soma todos os aparelhos; isto, só o que rodou aqui.";
+
+  function htmlLocal(conta) {
+    const local = conta.local && typeof conta.local === "object" ? conta.local : null;
+    const ranking = local && Array.isArray(local.ranking) ? local.ranking.filter((p) => p && typeof p === "object") : [];
+    if (!ranking.length) return "";
+    const totais = local.totais && typeof local.totais === "object" ? local.totais : {};
+    const total = (periodo) => {
+      const t = totais[periodo] && typeof totais[periodo] === "object" ? totais[periodo] : {};
+      const tokens = numero(t.tokens);
+      const custo = numero(t.custo);
+      const piso = t.semPreco && custo !== null ? "a partir de " : "";
+      return htmlKpi(
+        { hoje: "Hoje", dias7: "7 dias", dias30: "30 dias" }[periodo],
+        tokens === null ? TRACO : textoTokens(tokens),
+        custo === null ? "" : piso + textoMoedaCompacta(custo)
+      );
+    };
+    const maior = Math.max(1, ...ranking.map((p) => numero(p.tokens) || 0));
+    const linhas = ranking
+      .map((p) => {
+        const tokens = numero(p.tokens) || 0;
+        const custo = numero(p.custo);
+        const caminhos = Array.isArray(p.caminhos) ? p.caminhos.join("\n") : "";
+        const largura = Math.max(2, Math.round((tokens / maior) * 100));
+        const valor = custo === null ? TRACO : (p.semPreco ? "≥ " : "") + textoMoedaCompacta(custo);
+        const detalhe = [
+          textoTokens(tokens) + " em 30 dias",
+          (numero(p.tokens7) ? textoTokens(p.tokens7) + " em 7" : null),
+          (numero(p.tokensHoje) ? textoTokens(p.tokensHoje) + " hoje" : null),
+        ]
+          .filter(Boolean)
+          .join(" · ");
+        return (
+          '<li class="uso-proj" title="' + esc(caminhos) + '"><div class="uso-proj-topo"><span class="uso-proj-nome">' +
+          esc(meioCortado(String(p.projeto || TRACO), 28)) + '</span><b class="uso-proj-valor">' + esc(valor) +
+          '</b></div><div class="uso-proj-barra"><i style="width:' + largura + '%"></i></div><span class="uso-proj-detalhe">' +
+          esc(detalhe) + "</span></li>"
+        );
+      })
+      .join("");
+    const mais = numero(local.total) !== null && local.total > ranking.length ? local.total - ranking.length : 0;
+    let html =
+      '<section class="uso-secao uso-local"><h4 class="uso-secao-titulo">Nesta máquina, por projeto</h4>' +
+      '<div class="uso-kpis uso-kpis-tres">' + total("hoje") + total("dias7") + total("dias30") + "</div>" +
+      '<ul class="uso-projs">' + linhas + "</ul>";
+    if (mais) html += '<p class="uso-nota">e mais ' + mais + " projeto" + (mais > 1 ? "s" : "") + " com menos uso.</p>";
+    if (ranking.some((p) => p.semPreco)) html += '<p class="uso-aviso">' + AVISO_SEM_PRECO + " O valor com ≥ é o mínimo.</p>";
+    return html + '<p class="uso-nota">' + AVISO_LOCAL + "</p></section>";
+  }
+
   function modelosDoDia(dia) {
     const porModelo = dia.porModelo && typeof dia.porModelo === "object" ? dia.porModelo : {};
     return Object.keys(porModelo)
@@ -705,7 +757,7 @@ const PainelUso = (function () {
     html += janelas.length
       ? janelas.map((j) => htmlJanela(j, conta, agoraMs)).join("")
       : '<p class="uso-nota">Sem leitura de limite nesta conta. O limite aparece depois que o Claude roda nela pelo Loom.</p>';
-    html += "</section>" + htmlCusto(conta, agoraMs) + htmlGrafico(conta, vista);
+    html += "</section>" + htmlCusto(conta, agoraMs) + htmlLocal(conta) + htmlGrafico(conta, vista);
     return html + "</section>";
   }
 
