@@ -20,10 +20,11 @@ from pathlib import Path
 
 from . import precos as mod_precos
 from . import uso as mod_uso
+from .uso import SEM_ESFORCO
 from .caminhos import gravar_texto
 
-VERSAO = 2
-# A versao 2 guarda o projeto de cada resposta; o cache da 1 e jogado fora e os rollouts, relidos.
+VERSAO = 3
+# A versao 2 guarda o projeto de cada resposta e a 3, o esforco; o cache da 1 e jogado fora e os rollouts, relidos.
 # Arquivo parado ha mais que isso nao ganha mais registro: o consumo que ficou pendente, tirado da
 # diferenca dos totais, passa a valer. Antes disso ele espera, porque no rollout novo o token_count
 # as vezes chega antes do registro da mesma resposta, e contaria duas vezes.
@@ -106,10 +107,15 @@ def _diferenca(atual: dict, anterior) -> dict | None:
     return delta if any(delta.values()) else None
 
 
-def _somar(conta: dict, chave: str, consumo: dict, corte: float, projeto: str = "desconhecido") -> None:
+def _somar(
+    conta: dict, chave: str, consumo: dict, corte: float, projeto: str = "desconhecido", esforco: str = SEM_ESFORCO
+) -> None:
     mod_uso._acumular(conta["dias"].setdefault(f"{chave}|{consumo['dia']}|{consumo['modelo']}", {}), consumo)
     mod_uso._acumular(
         conta["projetos"].setdefault(f"{chave}|{consumo['dia']}|{projeto}|{consumo['modelo']}", {}), consumo
+    )
+    mod_uso._acumular(
+        conta["esforcos"].setdefault(f"{chave}|{consumo['dia']}|{consumo['modelo']}|{esforco}", {}), consumo
     )
     if consumo["ts"] >= corte:
         mod_uso._acumular_hora(conta["horas"], chave, consumo)
@@ -157,7 +163,9 @@ def _assentar(conta: dict, chave: str, arquivo: dict, corte: float) -> None:
         if isinstance(item, dict):
             consumo = _consumo(item, item.get("ts"), str(item.get("modelo") or "desconhecido"))
             if consumo is not None:
-                _somar(conta, chave, consumo, corte, arquivo.get("cwd") or "desconhecido")
+                _somar(
+                    conta, chave, consumo, corte, arquivo.get("cwd") or "desconhecido", item.get("esforco") or SEM_ESFORCO
+                )
     arquivo["pendente"] = []
     arquivo["modo"] = "contagem"
 
@@ -177,6 +185,7 @@ def _fechar_contagem(carga: dict, conta: dict, chave: str, arquivo: dict, corte:
 
 def _processar(registros: list, conta: dict, chave: str, arquivo: dict, corte: float) -> None:
     turnos = arquivo.setdefault("turnos", {})
+    esforcos_dos_turnos = arquivo.setdefault("esforcosDosTurnos", {})
     ids = set()
     if arquivo.get("ultimo"):
         ids.add(arquivo["ultimo"])
@@ -192,6 +201,13 @@ def _processar(registros: list, conta: dict, chave: str, arquivo: dict, corte: f
             if isinstance(pasta, str) and pasta.strip():
                 arquivo["cwd"] = pasta.strip().rstrip("\\/") or pasta.strip()
         if tipo == "turn_context":
+            nivel = carga.get("effort")
+            if isinstance(nivel, str) and nivel.strip():
+                arquivo["esforco"] = nivel.strip().lower()
+                if isinstance(carga.get("turn_id"), str) and carga["turn_id"]:
+                    esforcos_dos_turnos[carga["turn_id"]] = arquivo["esforco"]
+                    while len(esforcos_dos_turnos) > TURNOS_GUARDADOS:
+                        del esforcos_dos_turnos[next(iter(esforcos_dos_turnos))]
             modelo = carga.get("model")
             if isinstance(modelo, str) and modelo:
                 arquivo["modelo"] = modelo
@@ -218,7 +234,8 @@ def _processar(registros: list, conta: dict, chave: str, arquivo: dict, corte: f
             modelo = (turnos.get(turno) if isinstance(turno, str) else None) or arquivo.get("modelo") or "desconhecido"
             consumo = _consumo(carga.get("usage"), _instante(registro.get("timestamp")), modelo)
             if consumo is not None:
-                _somar(conta, chave, consumo, corte, arquivo.get("cwd") or "desconhecido")
+                nivel = (esforcos_dos_turnos.get(turno) if isinstance(turno, str) else None) or arquivo.get("esforco")
+                _somar(conta, chave, consumo, corte, arquivo.get("cwd") or "desconhecido", nivel or SEM_ESFORCO)
         elif tipo == "event_msg" and carga.get("type") == "token_count":
             instante = _instante(registro.get("timestamp"))
             _anotar_limite(conta, carga.get("rate_limits"), instante)
@@ -233,7 +250,14 @@ def _processar(registros: list, conta: dict, chave: str, arquivo: dict, corte: f
             arquivo["total"] = atual
             pendente = arquivo.setdefault("pendente", [])
             if delta and len(pendente) < PENDENTES_GUARDADOS:
-                pendente.append({"ts": instante, "modelo": arquivo.get("modelo") or "desconhecido", **delta})
+                pendente.append(
+                    {
+                        "ts": instante,
+                        "modelo": arquivo.get("modelo") or "desconhecido",
+                        "esforco": arquivo.get("esforco"),
+                        **delta,
+                    }
+                )
 
 
 def _rollouts(pasta: Path) -> list[tuple[float, int, Path]]:
@@ -259,7 +283,7 @@ def _rollouts(pasta: Path) -> list[tuple[float, int, Path]]:
 
 
 def _conta_vazia() -> dict:
-    return {"arquivos": {}, "dias": {}, "horas": {}, "projetos": {}, "limites": None, "vistoEm": 0}
+    return {"arquivos": {}, "dias": {}, "horas": {}, "projetos": {}, "esforcos": {}, "limites": None, "vistoEm": 0}
 
 
 def _carregar(caminho: Path) -> dict:
@@ -276,7 +300,7 @@ def _conta_do_cache(dados: dict, chave: str) -> dict:
     conta = dados["contas"].get(chave)
     limpa = _conta_vazia()
     if isinstance(conta, dict):
-        for campo in ("arquivos", "dias", "horas", "projetos"):
+        for campo in ("arquivos", "dias", "horas", "projetos", "esforcos"):
             if isinstance(conta.get(campo), dict):
                 limpa[campo] = conta[campo]
         if isinstance(conta.get("limites"), dict):
@@ -342,9 +366,9 @@ def coletar(pasta: Path, chave: str, estado: dict | None = None, *, cache: Path,
         mudou, parcial = _ler(Path(pasta), chave, conta, parar)
         if mudou:
             conta["horas"] = mod_uso._podar_horas(conta["horas"], time.time() - mod_uso.DIAS_DE_HORAS * 24 * 3600)
-            conta["projetos"] = mod_uso._podar_projetos(
-                conta["projetos"], str(datetime.now().date() - timedelta(days=mod_uso.DIAS_DE_PROJETOS))
-            )
+            corte_dos_dias = str(datetime.now().date() - timedelta(days=mod_uso.DIAS_DE_PROJETOS))
+            conta["projetos"] = mod_uso._podar_projetos(conta["projetos"], corte_dos_dias)
+            conta["esforcos"] = mod_uso._podar_projetos(conta["esforcos"], corte_dos_dias)
             gravar_texto(cache, json.dumps(dados))
     if estado is not None:
         estado["parcial"] = parcial
@@ -352,6 +376,7 @@ def coletar(pasta: Path, chave: str, estado: dict | None = None, *, cache: Path,
         "dias": conta["dias"],
         "horas": conta["horas"],
         "projetos": conta["projetos"],
+        "esforcos": conta["esforcos"],
         "limites": conta["limites"],
         "vistoEm": conta["vistoEm"],
     }

@@ -22,8 +22,8 @@ CAMPOS = ("entrada", "saida", "raciocinio", "cacheEscrito", "cacheLido", "mensag
 CAMPOS_GUARDADOS = CAMPOS + ("cache5m", "cache1h")
 # o que entra na conta do custo, cada um com o seu preco
 CAMPOS_DE_CUSTO = ("entrada", "saida", "cache5m", "cache1h", "cacheLido")
-VERSAO = 3
-# O projeto de cada resposta so entrou na versao 3. Cache mais velho vira legado e os transcript sao
+VERSAO = 4
+# O projeto de cada resposta entrou na versao 3 e o esforco, na 4. Cache mais velho vira legado e os transcript sao
 # lidos de novo, que e o que da o projeto ao historico que ainda existe em disco.
 # Os baldes por projeto guardam so este tanto de dias.
 DIAS_DE_PROJETOS = 60
@@ -48,6 +48,7 @@ def _cache_vazio() -> dict:
         "vistoEm": {},
         "legado": {},
         "projetos": {},
+        "esforcos": {},
     }
 
 
@@ -220,8 +221,20 @@ def projeto_do_registro(registro: dict, arquivo: Path | None = None) -> str:
     return arquivo.parent.name if arquivo is not None else "desconhecido"
 
 
+SEM_ESFORCO = "sem registro"
+
+
+def esforco_do_registro(registro: dict) -> str:
+    """O esforco que o Claude Code gravou na resposta. O perTurnEffort so vale quando falta o effort."""
+    for campo in ("effort", "perTurnEffort"):
+        valor = registro.get(campo)
+        if isinstance(valor, str) and valor.strip():
+            return valor.strip().lower()
+    return SEM_ESFORCO
+
+
 def _podar_projetos(projetos: dict, desde: str) -> dict:
-    """Tira os baldes de dias anteriores a `desde`. A chave e conta|dia|projeto|modelo."""
+    """Tira os baldes de dias anteriores a `desde`. A chave e conta|dia|projeto|modelo (ou |esforco)."""
     return {chave: valores for chave, valores in projetos.items() if chave.split("|")[1:2] >= [desde]}
 
 
@@ -348,7 +361,7 @@ def coletar(pastas: dict[str, Path], estado: dict | None = None) -> dict:
 def coletar_tudo(
     pastas: dict[str, Path], estado: dict | None = None, *, cache: Path | None = None, parar=None
 ) -> dict:
-    """A passada do coletar, devolvendo tudo que o cache sabe: {"dias", "horas", "vistoEm", "projetos"}.
+    """A passada do coletar, devolvendo tudo que o cache sabe: {"dias", "horas", "vistoEm", "projetos", "esforcos"}.
 
     `horas` sao os baldes por hora dos ultimos dias e `vistoEm`, o instante da ultima resposta de
     cada conta. `cache` e o arquivo do cache, pra thread da coleta nao depender de um global que os
@@ -365,6 +378,7 @@ def _coletar(pastas: dict[str, Path], estado: dict | None, alvo: Path, parar) ->
     horas = cache["horas"]
     vistos_em = cache["vistoEm"]
     projetos = cache["projetos"]
+    esforcos = cache["esforcos"]
     # o id da ultima resposta lida de cada arquivo
     ultimos = cache["ultimos"]
     mudou = False
@@ -438,6 +452,12 @@ def _coletar(pastas: dict[str, Path], estado: dict | None, alvo: Path, parar) ->
             _acumular(
                 projetos.setdefault(f"{chave_perfil}|{consumo['dia']}|{projeto}|{consumo['modelo']}", {}), consumo
             )
+            _acumular(
+                esforcos.setdefault(
+                    f"{chave_perfil}|{consumo['dia']}|{consumo['modelo']}|{esforco_do_registro(registro)}", {}
+                ),
+                consumo,
+            )
             if consumo["ts"] >= corte_das_horas:
                 _acumular_hora(horas, chave_perfil, consumo)
             if consumo["ts"] > vistos_em.get(chave_perfil, 0):
@@ -458,9 +478,9 @@ def _coletar(pastas: dict[str, Path], estado: dict | None, alvo: Path, parar) ->
                 if _dia_do_grupo(chave, grupos) not in cobertos
             }
         cache["horas"] = horas = _podar_horas(horas, corte_das_horas)
-        cache["projetos"] = projetos = _podar_projetos(
-            projetos, str(datetime.now().date() - timedelta(days=DIAS_DE_PROJETOS))
-        )
+        corte_dos_dias = str(datetime.now().date() - timedelta(days=DIAS_DE_PROJETOS))
+        cache["projetos"] = projetos = _podar_projetos(projetos, corte_dos_dias)
+        cache["esforcos"] = esforcos = _podar_projetos(esforcos, corte_dos_dias)
         _gravar_cache(cache, alvo)
     if estado is not None:
         estado["parcial"] = parcial
@@ -469,6 +489,7 @@ def _coletar(pastas: dict[str, Path], estado: dict | None, alvo: Path, parar) ->
         "horas": _podar_horas(horas, corte_das_horas),
         "vistoEm": dict(vistos_em),
         "projetos": projetos,
+        "esforcos": esforcos,
     }
 
 
@@ -711,4 +732,35 @@ def custos_por_projeto(projetos: dict, chaves, desde: str = "") -> dict[str, dic
             alvo["comPreco"] = False
         if dia > alvo["ultimoDia"]:
             alvo["ultimoDia"] = dia
+    return saida
+
+
+def custos_por_modelo(esforcos: dict, chaves, desde: str = "") -> dict[str, dict]:
+    """O consumo de cada modelo das contas dadas, do dia `desde` em diante, aberto por esforco.
+
+    A chave de entrada e conta|dia|modelo|esforco. O nome do modelo sai normalizado, como na tabela
+    de precos. Devolve {modelo: {"custo", "tokens", "mensagens", "comPreco", "esforcos": {nivel: {...}}}}.
+    """
+    chaves = set(chaves)
+    fracao = fracao_de_uma_hora(esforcos, chaves)
+    saida: dict[str, dict] = {}
+    for chave, valores in esforcos.items():
+        partes = chave.split("|")
+        if len(partes) != 4 or partes[0] not in chaves or not isinstance(valores, dict):
+            continue
+        _, dia, modelo, nivel = partes
+        if dia < desde:
+            continue
+        valor, com_preco = custo_do_balde(modelo, valores, fracao)
+        tokens = tokens_do_balde(valores)
+        mensagens = _numero(valores.get("mensagens"))
+        nome = mod_precos.normalizar(modelo) or modelo
+        alvo = saida.setdefault(nome, {"custo": 0.0, "tokens": 0, "mensagens": 0, "comPreco": True, "esforcos": {}})
+        parte = alvo["esforcos"].setdefault(nivel, {"custo": 0.0, "tokens": 0, "mensagens": 0, "comPreco": True})
+        for destino in (alvo, parte):
+            destino["custo"] += valor
+            destino["tokens"] += tokens
+            destino["mensagens"] += mensagens
+            if tokens and not com_preco:
+                destino["comPreco"] = False
     return saida

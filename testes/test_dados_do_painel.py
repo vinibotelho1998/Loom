@@ -92,7 +92,7 @@ def limite_semanal(usado: float, zera: float) -> dict:
 
 
 CHAVES_DA_CONTA = {"id", "ferramenta", "nome", "plano", "email", "atualizadoEm"}
-CHAVES_DA_CONTA |= {"janelas", "bloco", "custo", "tokens", "serie", "local", "erro"}
+CHAVES_DA_CONTA |= {"janelas", "bloco", "custo", "tokens", "serie", "local", "modelos", "erro"}
 CHAVES_DA_JANELA = {"tipo", "rotulo", "usado", "zeraEm", "duracaoMin", "origem", "lidoEm"}
 CHAVES_DO_BLOCO = {"inicio", "fim", "tokens", "custo", "porMinuto", "projecaoCusto", "estimado"}
 

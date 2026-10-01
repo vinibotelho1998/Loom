@@ -34,6 +34,9 @@ BLOCO = 5 * 3600
 DIAS_DA_SERIE = 30
 # quantos projetos o ranking local do painel mostra
 PROJETOS_NO_PAINEL = 8
+MODELOS_NO_PAINEL = 8
+# do menor esforco pro maior; o que nao esta aqui vai depois, em ordem alfabetica, e o sem registro por ultimo
+ORDEM_DO_ESFORCO = ("minimal", "low", "medium", "high", "xhigh", "max", "ultra")
 # Uma coleta segue passada atras de passada ate ler tudo, que fora da tela nao ha pressa de
 # devolver a vez; o teto so segura um historico absurdo.
 PASSADAS = 64
@@ -212,7 +215,7 @@ def coletar(pedido: dict, parar=None) -> dict:
         if conta["ferramenta"] == "claude":
             pastas.setdefault(conta["chaves"][0], conta["pasta"])
 
-    lido = {"dias": {}, "horas": {}, "vistoEm": {}, "projetos": {}}
+    lido = {"dias": {}, "horas": {}, "vistoEm": {}, "projetos": {}, "esforcos": {}}
     estado: dict = {}
     erro = None
     if pastas or pedido.get("uso"):
@@ -499,6 +502,52 @@ def _por_nome(lista: dict[str, dict]) -> dict[str, dict]:
     return juntos
 
 
+def _ordem_do_esforco(nivel: str) -> tuple:
+    if nivel in ORDEM_DO_ESFORCO:
+        return (0, ORDEM_DO_ESFORCO.index(nivel), nivel)
+    return (2, 0, nivel) if nivel == mod_uso.SEM_ESFORCO else (1, 0, nivel)
+
+
+def _modelos_da_conta(esforcos: dict, chaves, hoje) -> dict:
+    """O que esta maquina gastou em cada modelo nos 30 dias, com o esforco usado em cada um.
+
+    O esforco e o que o Claude Code ou o Codex gravou na resposta. A fatia de cada nivel e em tokens e
+    em respostas. Sem preco na tabela, o custo do modelo e so o piso e o item sai marcado.
+    """
+    trinta = mod_uso.custos_por_modelo(esforcos, chaves, (hoje - timedelta(days=DIAS_DA_SERIE - 1)).isoformat())
+    sete = mod_uso.custos_por_modelo(esforcos, chaves, (hoje - timedelta(days=6)).isoformat())
+    total = sum(m["tokens"] for m in trinta.values())
+    ranking = []
+    for nome, dados in trinta.items():
+        # o <synthetic> do Claude e mensagem do proprio programa, sem token e sem modelo por tras
+        if not dados["tokens"]:
+            continue
+        niveis = [
+            {
+                "nivel": nivel,
+                "tokens": parte["tokens"],
+                "mensagens": parte["mensagens"],
+                "custo": round(parte["custo"], 4),
+            }
+            for nivel, parte in sorted(dados["esforcos"].items(), key=lambda par: _ordem_do_esforco(par[0]))
+            if parte["tokens"] or parte["mensagens"]
+        ]
+        ranking.append(
+            {
+                "modelo": nome,
+                "tokens": dados["tokens"],
+                "mensagens": dados["mensagens"],
+                "custo": round(dados["custo"], 4),
+                "semPreco": bool(dados["tokens"]) and not dados["comPreco"],
+                "tokens7": sete[nome]["tokens"] if nome in sete else 0,
+                "parte": round(dados["tokens"] / total, 4) if total else 0.0,
+                "esforcos": niveis,
+            }
+        )
+    ranking.sort(key=lambda item: (-item["tokens"], item["modelo"]))
+    return {"ranking": ranking[:MODELOS_NO_PAINEL], "total": len(ranking)}
+
+
 def _projetos_da_conta(projetos: dict, chaves, hoje) -> dict:
     """O que esta maquina gastou, por projeto: os totais de hoje, 7 e 30 dias e o ranking dos 30.
 
@@ -546,7 +595,15 @@ def _projetos_da_conta(projetos: dict, chaves, hoje) -> dict:
 
 
 def _conta_pronta(
-    conta: dict, janelas: list, bloco, dias: dict, chaves, agora: float, atualizado: float, projetos: dict | None = None
+    conta: dict,
+    janelas: list,
+    bloco,
+    dias: dict,
+    chaves,
+    agora: float,
+    atualizado: float,
+    projetos: dict | None = None,
+    esforcos: dict | None = None,
 ) -> dict:
     hoje = datetime.fromtimestamp(agora).date()
     desde = (hoje - timedelta(days=DIAS_DA_SERIE - 1)).isoformat()
@@ -564,6 +621,7 @@ def _conta_pronta(
         "tokens": tokens,
         "serie": serie,
         "local": _projetos_da_conta(projetos or {}, chaves, hoje),
+        "modelos": _modelos_da_conta(esforcos or {}, chaves, hoje),
         "erro": None,
     }
 
@@ -593,7 +651,7 @@ def _conta_do_claude(conta: dict, lido: dict, limites: dict, memoria: dict, agor
         janelas.insert(0, _janela("5h", "Sessao", None, fim, 300, "estimada", ultimo))
     visto = max((_real(lido["vistoEm"].get(chave)) for chave in chaves), default=0.0)
     atualizado = max(visto, leitura["lido"] if leitura else 0.0)
-    return _conta_pronta(conta, janelas, bloco, lido["dias"], chaves, agora, atualizado, lido.get("projetos"))
+    return _conta_pronta(conta, janelas, bloco, lido["dias"], chaves, agora, atualizado, lido.get("projetos"), lido.get("esforcos"))
 
 
 def _conta_do_codex(conta: dict, cache: Path, agora: float, parar) -> dict:
@@ -610,5 +668,13 @@ def _conta_do_codex(conta: dict, cache: Path, agora: float, parar) -> dict:
     plano = (limites or {}).get("plano") or conta["plano"]
     atualizado = max(_real(lido.get("vistoEm")), _real((limites or {}).get("ts")))
     return _conta_pronta(
-        {**conta, "plano": plano}, janelas, bloco, lido["dias"], {chave}, agora, atualizado, lido.get("projetos")
+        {**conta, "plano": plano},
+        janelas,
+        bloco,
+        lido["dias"],
+        {chave},
+        agora,
+        atualizado,
+        lido.get("projetos"),
+        lido.get("esforcos"),
     )

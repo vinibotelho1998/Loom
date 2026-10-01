@@ -638,6 +638,56 @@ const PainelUso = (function () {
     return html + '<p class="uso-nota">' + AVISO_LOCAL + "</p></section>";
   }
 
+  const AVISO_ESFORCO =
+    "Esforço é o que o Claude Code ou o Codex gravou em cada resposta. A fatia de cada nível é em tokens.";
+
+  function textoParte(parte) {
+    const p = numero(parte);
+    if (p === null) return TRACO;
+    const cem = p * 100;
+    return cem > 0 && cem < 1 ? "<1%" : Math.round(cem) + "%";
+  }
+
+  function htmlModelos(conta) {
+    const dados = conta.modelos && typeof conta.modelos === "object" ? conta.modelos : null;
+    const ranking = dados && Array.isArray(dados.ranking) ? dados.ranking.filter((m) => m && typeof m === "object") : [];
+    if (!ranking.length) return "";
+    const linhas = ranking
+      .map((m) => {
+        const tokens = numero(m.tokens) || 0;
+        const custo = numero(m.custo);
+        const valor = custo === null ? TRACO : (m.semPreco ? "≥ " : "") + textoMoedaCompacta(custo);
+        const niveis = Array.isArray(m.esforcos) ? m.esforcos.filter((n) => n && typeof n === "object") : [];
+        const somaNiveis = niveis.reduce((total, n) => total + (numero(n.tokens) || 0), 0);
+        const fatias = niveis
+          .map((n) => {
+            const parte = somaNiveis ? (numero(n.tokens) || 0) / somaNiveis : 0;
+            const titulo = textoTokens(numero(n.tokens) || 0) + " tokens em " + (numero(n.mensagens) || 0) + " respostas";
+            return (
+              '<span class="uso-esforco" title="' + esc(titulo) + '"><b>' + esc(String(n.nivel || TRACO)) + "</b> " +
+              textoParte(parte) + "</span>"
+            );
+          })
+          .join("");
+        const largura = Math.max(2, Math.round((numero(m.parte) || 0) * 100));
+        return (
+          '<li class="uso-proj"><div class="uso-proj-topo"><span class="uso-proj-nome">' +
+          esc(meioCortado(String(m.modelo || TRACO), 28)) + '</span><b class="uso-proj-valor">' + esc(valor) +
+          '</b></div><div class="uso-proj-barra"><i style="width:' + largura + '%"></i></div><span class="uso-proj-detalhe">' +
+          esc(textoTokens(tokens) + " em 30 dias · " + textoParte(m.parte) + " do total") + "</span>" +
+          (fatias ? '<div class="uso-esforcos">' + fatias + "</div>" : "") + "</li>"
+        );
+      })
+      .join("");
+    const mais = numero(dados.total) !== null && dados.total > ranking.length ? dados.total - ranking.length : 0;
+    let html =
+      '<section class="uso-secao uso-modelos"><h4 class="uso-secao-titulo">Por modelo e esforço</h4>' +
+      '<ul class="uso-projs">' + linhas + "</ul>";
+    if (mais) html += '<p class="uso-nota">e mais ' + mais + " modelo" + (mais > 1 ? "s" : "") + " com menos uso.</p>";
+    if (ranking.some((m) => m.semPreco)) html += '<p class="uso-aviso">' + AVISO_SEM_PRECO + " O valor com ≥ é o mínimo.</p>";
+    return html + '<p class="uso-nota">' + AVISO_ESFORCO + "</p></section>";
+  }
+
   function modelosDoDia(dia) {
     const porModelo = dia.porModelo && typeof dia.porModelo === "object" ? dia.porModelo : {};
     return Object.keys(porModelo)
@@ -757,7 +807,7 @@ const PainelUso = (function () {
     html += janelas.length
       ? janelas.map((j) => htmlJanela(j, conta, agoraMs)).join("")
       : '<p class="uso-nota">Sem leitura de limite nesta conta. O limite aparece depois que o Claude roda nela pelo Loom.</p>';
-    html += "</section>" + htmlCusto(conta, agoraMs) + htmlLocal(conta) + htmlGrafico(conta, vista);
+    html += "</section>" + htmlCusto(conta, agoraMs) + htmlLocal(conta) + htmlModelos(conta) + htmlGrafico(conta, vista);
     return html + "</section>";
   }
 

@@ -210,6 +210,159 @@ class NomeDoProjeto(unittest.TestCase):
         self.assertEqual(uso.nome_do_projeto("/home/x/proj/"), "proj")
 
 
+def com_esforco(registro: dict, esforco: str | None = None, por_turno: str | None = None) -> dict:
+    if esforco is not None:
+        registro["effort"] = esforco
+    if por_turno is not None:
+        registro["perTurnEffort"] = por_turno
+    return registro
+
+
+class EsforcoDoClaude(ComPainel):
+    def ler(self, registros: list[dict]) -> dict:
+        self.escrever_transcript(self.casa / ".claude" / "projects" / "a" / "s.jsonl", registros)
+        return uso.coletar_tudo({"__padrao__": self.casa / ".claude"}, cache=self.dados / "uso-cache-v2.json")
+
+    def test_cada_resposta_vai_pro_esforco_que_o_claude_gravou(self):
+        lido = self.ler(
+            [
+                com_esforco(resposta_claude(carimbo(300), "m1", "r1", input_tokens=100, output_tokens=0), "xhigh"),
+                com_esforco(resposta_claude(carimbo(200), "m2", "r2", input_tokens=10, output_tokens=0), "xhigh"),
+                com_esforco(resposta_claude(carimbo(100), "m3", "r3", input_tokens=1, output_tokens=0), "medium"),
+            ]
+        )
+        (modelo,) = uso.custos_por_modelo(lido["esforcos"], {"__padrao__"}).values()
+        self.assertEqual({n: (p["tokens"], p["mensagens"]) for n, p in modelo["esforcos"].items()},
+                         {"xhigh": (110, 2), "medium": (1, 1)})
+        self.assertEqual((modelo["tokens"], modelo["mensagens"]), (111, 3))
+
+    def test_sem_effort_vale_o_do_turno_e_sem_nenhum_vira_sem_registro(self):
+        self.assertEqual(uso.esforco_do_registro({"effort": " High "}), "high")
+        self.assertEqual(uso.esforco_do_registro({"perTurnEffort": "max"}), "max")
+        self.assertEqual(uso.esforco_do_registro({"effort": "medium", "perTurnEffort": "max"}), "medium")
+        self.assertEqual(uso.esforco_do_registro({"effort": None}), uso.SEM_ESFORCO)
+        self.assertEqual(uso.esforco_do_registro({"effort": 3}), uso.SEM_ESFORCO)
+
+    def test_total_por_esforco_bate_com_o_total_dos_dias(self):
+        lido = self.ler(
+            [
+                com_esforco(resposta_claude(carimbo(300), "m1", "r1", output_tokens=50), "high"),
+                resposta_claude(carimbo(200), "m2", "r2", output_tokens=70),
+            ]
+        )
+        modelo = next(iter(uso.custos_por_modelo(lido["esforcos"], {"__padrao__"}).values()))
+        self.assertEqual(set(modelo["esforcos"]), {"high", uso.SEM_ESFORCO})
+        self.assertEqual(modelo["tokens"], sum(uso.tokens_do_balde(v) for v in lido["dias"].values()))
+
+    def test_ler_de_novo_nao_soma_o_esforco_duas_vezes(self):
+        registros = [com_esforco(resposta_claude(carimbo(300), "m1", "r1", output_tokens=50), "high")]
+        self.ler(registros)
+        lido = uso.coletar_tudo({"__padrao__": self.casa / ".claude"}, cache=self.dados / "uso-cache-v2.json")
+        (modelo,) = uso.custos_por_modelo(lido["esforcos"], {"__padrao__"}).values()
+        self.assertEqual(modelo["mensagens"], 1)
+
+
+class EsforcoDoCodex(ComPainel):
+    def contexto(self, quando: str, turno_id: str, modelo: str, esforco: str) -> dict:
+        return linha_codex("turn_context", quando, {"turn_id": turno_id, "model": modelo, "effort": esforco})
+
+    def test_o_esforco_de_cada_turno_vai_pra_resposta_dele(self):
+        self.rollout(
+            "a",
+            [
+                self.contexto(carimbo(500), "t1", "gpt-6-sol", "ultra"),
+                registro_codex(carimbo(490), "r1", "t1", entrada=100, lida=0, saida=0),
+                self.contexto(carimbo(300), "t2", "gpt-6-sol", "medium"),
+                registro_codex(carimbo(290), "r2", "t2", entrada=10, lida=0, saida=0),
+                registro_codex(carimbo(280), "r3", "t1", entrada=1, lida=0, saida=0),
+            ],
+        )
+        (modelo,) = uso.custos_por_modelo(self.ler_codex()["esforcos"], {"padrao"}).values()
+        self.assertEqual({n: p["tokens"] for n, p in modelo["esforcos"].items()}, {"ultra": 101, "medium": 10})
+
+    def test_sem_esforco_no_rollout_vira_sem_registro(self):
+        self.rollout(
+            "a",
+            [
+                turno(carimbo(300), "t1", "gpt-6-sol"),
+                registro_codex(carimbo(290), "r1", "t1", entrada=7, lida=0, saida=0),
+            ],
+        )
+        (modelo,) = uso.custos_por_modelo(self.ler_codex()["esforcos"], {"padrao"}).values()
+        self.assertEqual(set(modelo["esforcos"]), {uso.SEM_ESFORCO})
+
+    def test_consumo_tirado_dos_totais_leva_o_esforco_do_turno(self):
+        self.rollout(
+            "velho",
+            [
+                self.contexto(carimbo(7200), "t1", "gpt-6-sol", "high"),
+                contagem_codex(carimbo(7100), 100, 0, 10),
+            ],
+            idade=3600,
+        )
+        (modelo,) = uso.custos_por_modelo(self.ler_codex()["esforcos"], {"padrao"}).values()
+        self.assertEqual({n: p["tokens"] for n, p in modelo["esforcos"].items()}, {"high": 110})
+
+    def test_consumo_anterior_ao_primeiro_registro_tambem_leva_o_esforco(self):
+        self.rollout(
+            "misto",
+            [
+                self.contexto(carimbo(900), "t1", "gpt-6-sol", "xhigh"),
+                contagem_codex(carimbo(800), 100, 0, 10),
+                contagem_codex(carimbo(700), 300, 0, 30),
+                registro_codex(carimbo(699), "r1", "t1", entrada=200, lida=0, saida=20),
+            ],
+        )
+        (modelo,) = uso.custos_por_modelo(self.ler_codex()["esforcos"], {"padrao"}).values()
+        self.assertEqual({n: p["tokens"] for n, p in modelo["esforcos"].items()}, {"xhigh": 330})
+
+
+class ModelosNoPainel(ComPainel):
+    def test_ordena_os_niveis_do_menor_pro_maior_e_deixa_o_sem_registro_no_fim(self):
+        modelo = "claude-opus-5-5"
+        esforcos = {
+            f"c|2026-10-01|{modelo}|max": {"entrada": 10, "mensagens": 1},
+            f"c|2026-10-01|{modelo}|sem registro": {"entrada": 10, "mensagens": 1},
+            f"c|2026-10-01|{modelo}|low": {"entrada": 10, "mensagens": 1},
+            f"c|2026-10-01|{modelo}|xhigh": {"entrada": 20, "mensagens": 1},
+        }
+        resultado = painel_uso._modelos_da_conta(esforcos, {"c"}, date(2026, 10, 1))
+        (item,) = resultado["ranking"]
+        self.assertEqual([n["nivel"] for n in item["esforcos"]], ["low", "xhigh", "max", "sem registro"])
+        self.assertEqual((item["tokens"], item["mensagens"], item["parte"]), (50, 4, 1.0))
+
+    def test_parte_de_cada_modelo_no_total_e_marca_de_sem_preco(self):
+        esforcos = {
+            "c|2026-10-01|claude-opus-5-5|high": {"entrada": 30, "mensagens": 1},
+            "c|2026-10-01|modelo-sem-preco|high": {"entrada": 10, "mensagens": 1},
+        }
+        ranking = painel_uso._modelos_da_conta(esforcos, {"c"}, date(2026, 10, 1))["ranking"]
+        self.assertEqual([m["modelo"] for m in ranking], ["claude-opus-5-5", "modelo-sem-preco"])
+        self.assertEqual([m["parte"] for m in ranking], [0.75, 0.25])
+        self.assertEqual([m["semPreco"] for m in ranking], [False, True])
+
+    def test_so_entram_os_ultimos_30_dias_e_os_7_ficam_a_parte(self):
+        esforcos = {
+            "c|2026-10-01|claude-opus-5-5|high": {"entrada": 10, "mensagens": 1},
+            "c|2026-09-20|claude-opus-5-5|high": {"entrada": 20, "mensagens": 1},
+            "c|2026-08-01|claude-opus-5-5|high": {"entrada": 40, "mensagens": 1},
+        }
+        (item,) = painel_uso._modelos_da_conta(esforcos, {"c"}, date(2026, 10, 1))["ranking"]
+        self.assertEqual((item["tokens"], item["tokens7"]), (30, 10))
+
+    def test_modelo_sem_nenhum_token_nao_entra_no_ranking(self):
+        esforcos = {
+            "c|2026-10-01|<synthetic>|sem registro": {"entrada": 0, "saida": 0, "mensagens": 2},
+            "c|2026-10-01|claude-opus-5-5|high": {"entrada": 5, "mensagens": 1},
+        }
+        resultado = painel_uso._modelos_da_conta(esforcos, {"c"}, date(2026, 10, 1))
+        self.assertEqual([m["modelo"] for m in resultado["ranking"]], ["claude-opus-5-5"])
+        self.assertEqual(resultado["total"], 1)
+
+    def test_sem_dado_o_ranking_vem_vazio(self):
+        self.assertEqual(painel_uso._modelos_da_conta({}, {"c"}, date(2026, 10, 1)), {"ranking": [], "total": 0})
+
+
 class ProjetosNoPainel(ComPainel):
     def painel(self) -> dict:
         return painel_uso.coletar(painel_uso.pedido_do_painel(perfis.listar(), casa=self.casa))["painel"]

@@ -295,6 +295,18 @@
 .uso-proj-barra i { display: block; height: 100%; border-radius: 2px; background: var(--marca-apagada, var(--marca)); }
 .uso-proj-detalhe { color: var(--uso-ter); font-size: 11px; }
 
+.uso-esforcos { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
+.uso-esforco {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--uso-bloco);
+  border: 1px solid var(--uso-bloco-borda);
+  color: var(--uso-sec);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.uso-esforco b { color: var(--uso-texto); font-weight: 600; }
+
 /* ---------------------------------------------------------------- grafico */
 
 .uso-alternar {

@@ -71,5 +71,65 @@ class SecaoLocal(PainelNoMotor):
         self.assertIn("Limites", self.desenho(CONTRATO))
 
 
+def modelo(nome: str, tokens: int, parte: float, esforcos: list[tuple], **extra) -> dict:
+    item = {
+        "modelo": nome,
+        "tokens": tokens,
+        "mensagens": sum(n[2] for n in esforcos),
+        "custo": 10.0,
+        "semPreco": False,
+        "tokens7": tokens // 2,
+        "parte": parte,
+        "esforcos": [{"nivel": n[0], "tokens": n[1], "mensagens": n[2], "custo": 1.0} for n in esforcos],
+    }
+    item.update(extra)
+    return item
+
+
+def com_modelos(ranking: list[dict], total: int | None = None) -> dict:
+    dados = copy.deepcopy(CONTRATO)
+    dados["contas"][0]["modelos"] = {"ranking": ranking, "total": len(ranking) if total is None else total}
+    return dados
+
+
+class SecaoPorModelo(PainelNoMotor):
+    def test_mostra_cada_modelo_com_a_fatia_de_cada_esforco(self):
+        html = self.desenho(
+            com_modelos([modelo("claude-opus-5-5", 3_000_000, 0.75, [("high", 1_000_000, 3), ("xhigh", 3_000_000, 9)])])
+        )
+        self.assertIn("Por modelo e esforço", html)
+        self.assertIn('<span class="uso-proj-nome">claude-opus-5-5</span>', html)
+        self.assertIn("3 mi em 30 dias · 75% do total", html)
+        self.assertIn('<span class="uso-esforco" title="1 mi tokens em 3 respostas"><b>high</b> 25%</span>', html)
+        self.assertIn("<b>xhigh</b> 75%", html)
+        self.assertIn("Esforço é o que o Claude Code ou o Codex gravou", html)
+
+    def test_aceita_o_ultra_do_codex(self):
+        html = self.desenho(com_modelos([modelo("gpt-6-sol", 100, 1.0, [("ultra", 100, 4)])]))
+        self.assertIn("<b>ultra</b> 100%", html)
+
+    def test_modelo_sem_preco_mostra_o_minimo(self):
+        html = self.desenho(com_modelos([modelo("gpt-6.1-sol", 100, 1.0, [("ultra", 100, 1)], semPreco=True)]))
+        self.assertIn('<b class="uso-proj-valor">≥ US$ 10</b>', html)
+        self.assertIn("O valor com ≥ é o mínimo.", html)
+
+    def test_parte_minuscula_diz_menos_de_um_por_cento(self):
+        html = self.desenho(com_modelos([modelo("x", 1, 0.001, [("high", 1, 1)])]))
+        self.assertIn("&#60;1% do total", html)
+
+    def test_nome_de_modelo_e_de_nivel_nao_viram_html(self):
+        html = self.desenho(com_modelos([modelo("<b>m</b>", 1, 1.0, [("<i>n</i>", 1, 1)])]))
+        self.assertNotIn("<b>m</b>", html)
+        self.assertNotIn("<i>n</i>", html)
+
+    def test_diz_quantos_modelos_ficaram_de_fora(self):
+        html = self.desenho(com_modelos([modelo("a", 1, 1.0, [("high", 1, 1)])], total=3))
+        self.assertIn("e mais 2 modelos com menos uso.", html)
+
+    def test_sem_modelo_a_secao_nao_aparece(self):
+        self.assertNotIn("Por modelo e esforço", self.desenho(com_modelos([])))
+        self.assertNotIn("Por modelo e esforço", self.desenho(CONTRATO))
+
+
 if __name__ == "__main__":
     unittest.main()
