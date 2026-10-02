@@ -198,6 +198,7 @@ class Bridge(QObject):
             self._abas = list(nucleo.abas_iniciais)
             for estado in nucleo.estado_inicial:
                 self._adotar(estado)
+            nucleo.terminar_adocao()
 
         # olho nos transcript: assim que o Claude escreve, a tela sabe, sem esperar ciclo
         self._vigia = QFileSystemWatcher(self)
@@ -631,6 +632,8 @@ class Bridge(QObject):
                     "rows": rows,
                     "apelido": str(nota.get("apelido", "")),
                     "ativa": bool(nota.get("ativa")),
+                    "conversa": str(nota.get("conversa") or ""),
+                    "titulo": str(nota.get("titulo") or ""),
                     "historico": self._historico_de(session_id),
                 }
             )
@@ -742,12 +745,12 @@ class Bridge(QObject):
         )
         sessao.output.connect(self._on_output, Qt.QueuedConnection)
         sessao.exited.connect(self._on_exit, Qt.QueuedConnection)
-        self._nucleo.registrar(sessao)
         self._sessions[session_id] = sessao
         self._origem[session_id] = dict(origem)
         historico = str(estado.get("historico") or "")
         if historico:
             self._guardar_historico(session_id, historico)
+        self._nucleo.registrar(sessao)
 
     def _digitar(self, session_id: str, texto: str, espera_ms: int) -> None:
         """Digita na aba depois de um tempo, com o Enter no fim.

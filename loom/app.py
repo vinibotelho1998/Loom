@@ -390,16 +390,15 @@ class MainWindow(QMainWindow):
 
     @Slot()
     def _nucleo_caiu(self) -> None:
-        """O nucleo morreu, e os shells com ele. Sobe um Loom novo, que restaura as abas, e sai.
-
-        Ficar de pe aqui deixaria abas mortas que nao abrem shell nenhum, porque quem abre e o nucleo.
-        """
-        log.error("o nucleo caiu; subindo o Loom de novo, que restaura as abas salvas")
+        """Recupera a conexao sem declarar um fechamento voluntario dos shells."""
+        log.error("o canal com o nucleo caiu; recuperando a tela")
         comando = mod_nucleo.comando_do_nucleo()
         QProcess.startDetached(comando[0], comando[1:])
         app = QApplication.instance()
         if app is not None:
-            app.quit()
+            # O canal tambem cai quando a tela fica lenta, com o nucleo vivo.
+            # Saida limpa faria o supervisor matar os shells em vez de relancar.
+            app.exit(1)
 
     def _trazer_pra_frente(self) -> None:
         # showNormal tirava a janela de maximizada; aqui so sai do minimizado

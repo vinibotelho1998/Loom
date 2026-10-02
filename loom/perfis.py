@@ -273,9 +273,22 @@ def _pendurar_ganchos(atual: dict, chamada: str, perfil_id: str) -> None:
         ganchos = atual["hooks"] = {}
     for evento, bandeira in GANCHOS_DO_COLETOR:
         existentes = ganchos.get(evento)
-        grupos = [g for g in existentes if not _grupo_nosso(g)] if isinstance(existentes, list) else []
+        grupos = _sem_nossos_ganchos(existentes) if isinstance(existentes, list) else []
         grupos.append({"hooks": [{"type": "command", "command": f"{chamada} {bandeira} {perfil_id}"}]})
         ganchos[evento] = grupos
+
+
+def _sem_nossos_ganchos(grupos: list) -> list:
+    resultado = []
+    for grupo in grupos:
+        if not _grupo_nosso(grupo):
+            resultado.append(grupo)
+            continue
+        hooks = [h for h in grupo["hooks"]
+                 if not (isinstance(h, dict) and _gancho_nosso(str(h.get("command", ""))))]
+        if hooks:
+            resultado.append({**grupo, "hooks": hooks})
+    return resultado
 
 
 def _tirar_ganchos(atual: dict) -> None:
@@ -286,7 +299,7 @@ def _tirar_ganchos(atual: dict) -> None:
         existentes = ganchos.get(evento)
         if not isinstance(existentes, list):
             continue
-        sobram = [g for g in existentes if not _grupo_nosso(g)]
+        sobram = _sem_nossos_ganchos(existentes)
         if sobram:
             ganchos[evento] = sobram
         else:
@@ -407,9 +420,13 @@ def instalar_coletor(perfil: Perfil, python: str, projeto: str) -> bool:
     try:
         atual = json.loads(alvo.read_text(encoding="utf-8")) if alvo.exists() else {}
     except (ValueError, OSError):
-        atual = {}
+        return False
     if not isinstance(atual, dict):
-        atual = {}
+        return False
+    if "env" in atual and not isinstance(atual["env"], dict):
+        return False
+    if "hooks" in atual and not isinstance(atual["hooks"], dict):
+        return False
 
     anterior = _statusline_anterior(perfil.config_dir)
     chamada = _chamada_coletor(python, projeto)

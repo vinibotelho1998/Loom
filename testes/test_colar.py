@@ -62,7 +62,7 @@ class Colar(unittest.TestCase):
             colado = self.colar(tela)
 
             self.assertEqual(len(colado), 1)
-            caminho = Path(colado[0].strip('"'))
+            caminho = Path(colado[0].strip("\"'"))
             self.assertEqual(caminho.suffix, ".png")
             self.assertTrue(caminho.is_file(), "o arquivo tem que existir de verdade")
             self.assertGreater(caminho.stat().st_size, 0)

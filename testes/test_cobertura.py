@@ -189,9 +189,9 @@ class ConversaRepetida(unittest.TestCase):
     def sessao(self, **campos) -> dict:
         return {"perfil": "c", "pasta": r"C:\proj", "titulo": "deploy", "idade": 10, **campos}
 
-    def test_nome_e_pasta_em_outra_caixa_ainda_sao_a_mesma_conversa(self):
+    def test_so_o_id_repetido_na_mesma_conta_colapsa(self):
         sobram = sessoes._colapsar(
-            [self.sessao(idade=50), self.sessao(pasta=r"c:\PROJ", titulo="Deploy", idade=5)]
+            [self.sessao(sessao="s1", idade=50), self.sessao(sessao="s1", titulo="Deploy", idade=5)]
         )
         self.assertEqual([s["idade"] for s in sobram], [5])
 
@@ -200,6 +200,9 @@ class ConversaRepetida(unittest.TestCase):
             [self.sessao(), self.sessao(perfil="outra"), self.sessao(pasta=r"C:\outro")]
         )
         self.assertEqual(len(sobram), 3)
+
+    def test_ids_distintos_com_mesmo_titulo_e_pasta_ficam(self):
+        self.assertEqual(len(sessoes._colapsar([self.sessao(sessao="s1"), self.sessao(sessao="s2")])), 2)
 
 
 class IdadeDosSubagentes(ComPastaPropria):
@@ -374,8 +377,14 @@ class SettingsForaDoFormato(ComPastaPropria):
         self.conta = perfis.criar("Uma")
         self.settings = self.conta.config_dir / "settings.json"
 
-    def test_json_de_outro_formato_e_refeito_com_o_coletor(self):
-        for texto in ("null", "[]", '"texto"', '{"statusLine": "barra.cmd"}', '{"statusLine": {"command": 3}}'):
+    def test_json_de_outro_formato_e_preservado(self):
+        for texto in ("null", "[]", '"texto"'):
+            self.settings.write_text(texto, encoding="utf-8")
+            self.assertFalse(perfis.instalar_coletor(self.conta, "py.exe", "C:\\proj"), texto)
+            self.assertEqual(self.settings.read_text(encoding="utf-8"), texto)
+
+    def test_status_line_incompativel_no_objeto_valido_recebe_coletor(self):
+        for texto in ('{"statusLine": "barra.cmd"}', '{"statusLine": {"command": 3}}'):
             self.settings.write_text(texto, encoding="utf-8")
             self.assertTrue(perfis.instalar_coletor(self.conta, "py.exe", "C:\\proj"), texto)
             salvo = json.loads(self.settings.read_text(encoding="utf-8"))
@@ -1141,7 +1150,7 @@ class ArquivoSoltoNaGrade(ComPaginaInteira):
         return self.com_trocas(
             {"ativar": "(a) => anotado.push(['ativou', a.sessionId])", "piscarAviso": "() => {}"},
             "const telaDeBaixo = {}, telaDoPainel = {};"
-            " const aba = (sid, tela) => ({sessionId: sid, tela, foco() {},"
+            " const aba = (sid, tela) => ({sessionId: sid, shell: {id:'pwsh'}, tela, foco() {},"
             "   term: {paste: (t) => anotado.push([sid, t])}});"
             " const deCima = aba('a1', {}), deBaixo = aba('a2', telaDeBaixo);"
             " const painel = {ehPainel: true, sessionId: 'p', tela: telaDoPainel};"
@@ -1164,10 +1173,10 @@ class ArquivoSoltoNaGrade(ComPaginaInteira):
             self.soltar(),
             [
                 ["ativou", "a2"],
-                ["a2", "C:\\a.png "],
-                ["a1", "C:\\b.png "],
-                ["a1", "C:\\c.png "],
-                ["a1", "C:\\d.png "],
+                ["a2", "'C:\\a.png' "],
+                ["a1", "'C:\\b.png' "],
+                ["a1", "'C:\\c.png' "],
+                ["a1", "'C:\\d.png' "],
             ],
         )
 

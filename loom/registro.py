@@ -1,7 +1,7 @@
-"""Log do Loom em ~/.loom/loom.log.
+"""Log do Loom em ~/.loom/loom-<pid>.log.
 
 No exe sem console os print nao iam a lugar nenhum, e a tela caindo nao deixava rastro: nem o
-erro do Python, nem o aviso do Qt, nem o console da pagina. Aqui tudo vai pro mesmo arquivo, que
+erro do Python, nem o aviso do Qt, nem o console da pagina. Cada processo tem seu arquivo, que
 gira em 1 MB e guarda tres anteriores.
 
 O faulthandler escreve no mesmo arquivo, direto no descritor dele, sem passar pelo Python. E ele
@@ -27,6 +27,7 @@ from . import caminhos as mod_caminhos
 
 TAMANHO = 1024 * 1024
 COPIAS = 3
+PROCESSOS_GUARDADOS = 20
 # outro Loom segurando o arquivo: nao adianta tentar girar a cada linha
 ADIAMENTO = 300.0
 # o numero do processo separa as linhas do Loom instalado, do que roda do codigo e da segunda
@@ -89,7 +90,28 @@ class ArquivoQueGira(RotatingFileHandler):
 
 
 def arquivo() -> Path:
-    return mod_caminhos.RAIZ / "loom.log"
+    # No Windows outro processo mantendo o log aberto impede sua rotacao.
+    # Cada processo tem seu arquivo, inclusive o nucleo e a tela.
+    return mod_caminhos.RAIZ / f"loom-{os.getpid()}.log"
+
+
+def _limpar_antigos() -> None:
+    import re
+    raiz = mod_caminhos.RAIZ.resolve()
+    try:
+        arquivos = [p for p in raiz.glob("loom-*.log") if re.fullmatch(r"loom-\d+\.log", p.name)]
+        arquivos.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+        for velho in arquivos[PROCESSOS_GUARDADOS:]:
+            for p in [velho, *(velho.with_name(velho.name + f".{i}") for i in range(1, COPIAS + 1))]:
+                if p.resolve().parent != raiz:
+                    continue
+                try:
+                    # No Windows o log aberto por outro Loom nao pode ser apagado.
+                    p.unlink(missing_ok=True)
+                except OSError:
+                    pass
+    except OSError:
+        pass
 
 
 def _excecao_solta(tipo, valor, rastro) -> None:
@@ -117,7 +139,9 @@ def configurar(destino: Path | None = None) -> logging.Logger:
     log = logging.getLogger("loom")
     if _ligado.get("manipuladores"):
         return log
-    destino = destino or arquivo()
+    if destino is None:
+        _limpar_antigos()
+        destino = arquivo()
     try:
         destino.parent.mkdir(parents=True, exist_ok=True)
         manipulador = ArquivoQueGira(destino)

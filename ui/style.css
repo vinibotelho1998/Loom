@@ -133,6 +133,33 @@ body { display: flex; flex-direction: column; }
 .tela.tela-painel { padding: 0; overflow: hidden; }
 .tela.ativa { visibility: visible; }
 
+/* Usa o gutter nativo de 12px que o fit ja reserva, sem roubar outra coluna de texto. */
+.tela.com-rolagem .xterm-viewport::-webkit-scrollbar-track,
+.tela.com-rolagem .xterm-viewport::-webkit-scrollbar-thumb {
+  background: transparent; border-color: transparent;
+}
+.rolagem-terminal {
+  position: absolute;
+  top: 8px; right: 4px; bottom: 8px;
+  width: 12px;
+  border: 1px solid #394352;
+  border-radius: 7px;
+  background: #222a35;
+  cursor: default;
+  touch-action: none;
+}
+.rolagem-terminal-polegar {
+  position: absolute;
+  left: 2px; right: 2px;
+  min-height: 0;
+  border-radius: 5px;
+  background: #8996aa;
+}
+.rolagem-terminal:hover .rolagem-terminal-polegar { background: #a6b4c9; }
+.rolagem-terminal.arrastando .rolagem-terminal-polegar { background: #c3d2e8; }
+.rolagem-terminal:focus-visible { outline: 2px solid var(--acento); outline-offset: 1px; }
+.rolagem-terminal.sem-historico .rolagem-terminal-polegar { background: #394352; }
+
 /* Barra de rolagem: a mesma nos terminais, nas listas, no painel de uso e nos ajustes, sempre
    visivel e com contraste. O polegar era quase da cor do fundo e as listas ainda tinham
    scrollbar-color, que faz o navegador ignorar estas regras. */
@@ -1007,6 +1034,7 @@ body.puxando-largura .tela { pointer-events: none; }
   background: #131519;
   overflow: hidden;
 }
+.palco.grade .rolagem-terminal { top: 26px; bottom: 6px; }
 /* na grade o painel selecionado tambem precisa gritar: antes o anel era quase invisivel
    e com seis terminais lado a lado nao dava pra saber onde a tecla ia cair */
 .palco.grade .tela.ativa {

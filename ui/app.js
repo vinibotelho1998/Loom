@@ -35,7 +35,7 @@ function pilhaDeFonte(nome) {
 /* Caminho de arquivo com numero de linha, que e o formato que o Claude Code imprime o dia
    inteiro. Aceita caminho do Windows e do Unix, com ou sem coluna no fim. */
 const ARQUIVO_COM_LINHA =
-  /(?:[A-Za-z]:[\\/])?(?:[\w.@~-]+[\\/])*[\w.@-]+\.[A-Za-z0-9]{1,8}:\d+(?::\d+)?/g;
+  /(?:[A-Za-z]:[\\/]|\\\\|\/)[^:"<>\r\n]*?\.[A-Za-z0-9]{1,12}:\d+(?::\d+)?|(?:[^\s:"'<>|()[\]{}\\/]+[\\/])*[^\s:"'<>|()[\]{}\\/]+\.[A-Za-z0-9]{1,12}:\d+(?::\d+)?/g;
 
 function abrirExterno(alvo, aba) {
   /* URL vai pro navegador; caminho com linha vai pro editor. O caminho impresso costuma ser
@@ -87,6 +87,23 @@ function pastaDoOsc(dado) {
   return texto.replace(/^"|"$/g, "");
 }
 
+function colunaDoTexto(linha, deslocamento, fim = false) {
+  // O texto usa offsets UTF-16, mas links do xterm usam colunas: um emoji
+  // pode ocupar duas, e uma letra com acento combinado ocupa apenas uma.
+  if (typeof linha.getCell !== "function" || typeof linha.length !== "number")
+    return deslocamento + (fim ? 0 : 1);
+  let indice = 0;
+  for (let coluna = 0; coluna < linha.length; coluna++) {
+    const celula = linha.getCell(coluna);
+    if (!celula || celula.getWidth() === 0) continue;
+    const proximo = indice + (celula.getChars() || " ").length;
+    if (fim && deslocamento <= proximo) return coluna + celula.getWidth();
+    if (!fim && deslocamento < proximo) return coluna + 1;
+    indice = proximo;
+  }
+  return linha.length + (fim ? 0 : 1);
+}
+
 function provedorDeArquivos(aba) {
   return {
     provideLinks(numero, entregar) {
@@ -99,9 +116,13 @@ function provedorDeArquivos(aba) {
       while ((m = ARQUIVO_COM_LINHA.exec(texto)) !== null) {
         // url tem porta e viraria falso positivo aqui; dela cuida o addon de links
         if (texto.slice(Math.max(0, m.index - 8), m.index).includes("//")) continue;
-        const inicio = m.index + 1;
+        // Nunca transforma a cauda de um caminho absoluto ou de URL em caminho relativo.
+        if (m.index && /[^\s"'([{:]/.test(texto[m.index - 1])) continue;
+        if (m.index > 1 && texto[m.index - 1] === "'" && /[^\s([{]/.test(texto[m.index - 2])) continue;
+        const inicio = colunaDoTexto(linha, m.index);
+        const fim = colunaDoTexto(linha, m.index + m[0].length, true);
         achados.push({
-          range: { start: { x: inicio, y: numero }, end: { x: inicio + m[0].length - 1, y: numero } },
+          range: { start: { x: inicio, y: numero }, end: { x: fim, y: numero } },
           text: m[0],
           activate: (ev, alvo) => abrirLink(ev, alvo, aba),
         });
@@ -181,6 +202,111 @@ class AbaBase {
 
 /* --------------------------------------------------------- aba terminal */
 
+function montarRolagemTerminal(term, tela, aoAtivar = () => {}) {
+  // O trilho pertence ao Loom: continua visivel quando o Chromium oculta a barra nativa.
+  // A rolagem e o historico continuam no xterm, pela API publica, inclusive roda/busca.
+  const trilho = document.createElement("div");
+  trilho.className = "rolagem-terminal";
+  trilho.tabIndex = 0;
+  trilho.setAttribute("role", "scrollbar");
+  trilho.setAttribute("aria-label", "Histórico do terminal");
+  trilho.setAttribute("aria-orientation", "vertical");
+  trilho.setAttribute("aria-valuemin", "0");
+  if (!term.element.id) {
+    montarRolagemTerminal.proximoId = (montarRolagemTerminal.proximoId || 0) + 1;
+    term.element.id = "terminal-rolagem-" + montarRolagemTerminal.proximoId;
+  }
+  trilho.setAttribute("aria-controls", term.element.id);
+  const polegar = document.createElement("div");
+  polegar.className = "rolagem-terminal-polegar";
+  trilho.appendChild(polegar);
+  tela.classList.add("com-rolagem");
+  tela.appendChild(trilho);
+
+  let quadro = 0, destruida = false, arrasto = null;
+  const limite = () => term.buffer.active.baseY;
+  const rolar = (linha) => term.scrollToLine(Math.max(0, Math.min(limite(), Math.round(linha))));
+  function pintar() {
+    quadro = 0;
+    if (destruida) return;
+    const maximo = limite();
+    if (!maximo && arrasto) soltar();
+    const posicao = term.buffer.active.viewportY;
+    const altura = trilho.clientHeight;
+    const tamanho = Math.min(altura, Math.max(32, altura * term.rows / (term.rows + maximo)));
+    polegar.style.height = tamanho + "px";
+    polegar.style.top = (maximo ? (altura - tamanho) * posicao / maximo : 0) + "px";
+    trilho.classList.toggle("sem-historico", maximo === 0);
+    trilho.setAttribute("aria-disabled", String(maximo === 0));
+    trilho.setAttribute("aria-valuemax", String(maximo));
+    trilho.setAttribute("aria-valuenow", String(posicao));
+    trilho.title = maximo
+      ? "Arraste para navegar no histórico · Home/End vão ao início/fim"
+      : term.buffer.active.type === "alternate"
+        ? "Este aplicativo usa tela cheia e não mantém histórico neste buffer"
+        : "O histórico aparece quando a saída ultrapassa a altura do terminal";
+    trilho.setAttribute("aria-valuetext", maximo ? "Linha " + posicao + " de " + maximo : trilho.title);
+  }
+  function agendar() {
+    if (!destruida && !quadro) quadro = requestAnimationFrame(pintar);
+  }
+  trilho.addEventListener("pointerdown", (ev) => {
+    if (ev.button !== 0) return;
+    ev.preventDefault();
+    aoAtivar();
+    trilho.focus({ preventScroll: true });
+    // Na grade, ativar tambem agenda o foco do terminal; o trilho vem depois dele.
+    requestAnimationFrame(() => { if (!destruida) trilho.focus({ preventScroll: true }); });
+    if (!limite()) return;
+    if (ev.target !== polegar) {
+      const acima = ev.clientY < polegar.getBoundingClientRect().top;
+      rolar(term.buffer.active.viewportY + (acima ? -term.rows : term.rows));
+      return;
+    }
+    arrasto = { id: ev.pointerId, y: ev.clientY, linha: term.buffer.active.viewportY };
+    trilho.setPointerCapture(ev.pointerId);
+    trilho.classList.add("arrastando");
+  });
+  trilho.addEventListener("pointermove", (ev) => {
+    if (!arrasto || arrasto.id !== ev.pointerId) return;
+    const percurso = trilho.clientHeight - polegar.offsetHeight;
+    if (percurso > 0) rolar(arrasto.linha + (ev.clientY - arrasto.y) * limite() / percurso);
+  });
+  const soltar = () => {
+    const id = arrasto && arrasto.id;
+    arrasto = null;
+    trilho.classList.remove("arrastando");
+    if (id !== null && trilho.hasPointerCapture(id)) trilho.releasePointerCapture(id);
+  };
+  trilho.addEventListener("pointerup", soltar);
+  trilho.addEventListener("pointercancel", soltar);
+  trilho.addEventListener("lostpointercapture", soltar);
+  trilho.addEventListener("keydown", (ev) => {
+    const passos = { ArrowUp: -1, ArrowDown: 1, PageUp: -term.rows, PageDown: term.rows };
+    if (!(ev.key in passos) && ev.key !== "Home" && ev.key !== "End") return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    rolar(ev.key === "Home" ? 0 : ev.key === "End" ? limite() : term.buffer.active.viewportY + passos[ev.key]);
+  });
+  const assinaturas = [term.onScroll(agendar), term.onResize(agendar), term.onWriteParsed(agendar),
+    term.buffer.onBufferChange(() => { soltar(); agendar(); })];
+  const observador = typeof ResizeObserver === "function" ? new ResizeObserver(agendar) : null;
+  if (observador) observador.observe(trilho);
+  agendar();
+  return {
+    atualizar: agendar,
+    dispose() {
+      destruida = true;
+      soltar();
+      if (quadro) window.cancelAnimationFrame(quadro);
+      if (observador) observador.disconnect();
+      for (const assinatura of assinaturas) assinatura.dispose();
+      trilho.remove();
+      tela.classList.remove("com-rolagem");
+    },
+  };
+}
+
 function opcoesTerminal() {
   return {
     theme: TEMA,
@@ -247,6 +373,17 @@ class Aba extends AbaBase {
     this.tela.appendChild(this.chapeu);
 
     this.term.open(this.tela);
+    this.tela.addEventListener("paste", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (!this.viva || !this.sessionId || veuAberto()) return;
+      const texto = ev.clipboardData && ev.clipboardData.getData("text/plain");
+      if (texto) entregarColagem(this, texto);
+      else colarAqui(this);
+    }, true);
+    this.rolagem = montarRolagemTerminal(this.term, this.tela, () => {
+      if (emGrade && abaAtiva !== this) ativar(this);
+    });
     this.tela.addEventListener("mousedown", () => {
       if (emGrade && abaAtiva !== this) ativar(this);
     });
@@ -613,7 +750,10 @@ class Aba extends AbaBase {
       this.term.options[chave] = o[chave];
       mudou = true;
     }
-    if (mudou) this.fit.fit();
+    if (mudou) {
+      this.fit.fit();
+      this.rolagem.atualizar();
+    }
   }
 
   ligarWebgl() {
@@ -665,6 +805,7 @@ class Aba extends AbaBase {
     if (bridge && this.sessionId && this.viva) bridge.closeSession(this.sessionId);
     if (this.sessionId) porSessao.delete(this.sessionId);
     this.largarWebgl();
+    this.rolagem.dispose();
     this.term.dispose();
     super.destruir();
   }
@@ -735,6 +876,7 @@ function ativar(aba) {
     aba.ajustar();
     aba.foco();
   });
+  anotarAbas();
 }
 
 function mostrarNaLateral(aba) {
@@ -804,6 +946,8 @@ function reconectarAbas(depois) {
       if (!shell) continue;
       const perfil = perfis.find((p) => p.id === v.perfil) || null;
       const aba = new Aba(shell, perfil, v.elevado);
+      aba.conversaAnterior = v.conversa || "";
+      aba.tituloAnterior = v.titulo || "";
       if (v.apelido) {
         aba.apelido = v.apelido;
         aba.chaveRefletida = "";
@@ -2640,13 +2784,34 @@ function colarAqui(aba) {
       return;
     }
     if (dados.tipo === "texto") entregarColagem(aba, dados.valor);
-    else if (dados.tipo === "imagem") aba.term.paste(comAspas(dados.valor));
-    else if (dados.tipo === "arquivos") aba.term.paste(dados.valor.map(comAspas).join(" "));
+    else if (dados.tipo === "imagem") colarCaminhos(aba, [dados.valor]);
+    else if (dados.tipo === "arquivos") colarCaminhos(aba, dados.valor);
   });
 }
 
 function comAspas(caminho) {
   return /[\s"']/.test(caminho) ? '"' + caminho.replace(/"/g, '\\"') + '"' : caminho;
+}
+
+function caminhoLiteral(caminho, aba) {
+  const texto = String(caminho);
+  if (/[\r\n\0]/.test(texto)) return null;
+  const shell = aba.shell && aba.shell.id;
+  if (shell === "pwsh" || shell === "powershell") return "'" + texto.replace(/'/g, "''") + "'";
+  if (shell === "bash" || shell === "wsl") return "'" + texto.replace(/'/g, "'\"'\"'") + "'";
+  // cmd expande %VAR% mesmo entre aspas; !VAR! tambem com expansao atrasada.
+  if (shell === "cmd" && !/["%!]/.test(texto)) return '"' + texto + '"';
+  return null;
+}
+
+function colarCaminhos(aba, caminhos, fim = "") {
+  const citados = caminhos.map((c) => caminhoLiteral(c, aba));
+  if (citados.some((c) => c === null)) {
+    piscarAviso("Esse caminho contém caracteres que o shell pode interpretar. Cole como texto no programa.");
+    return false;
+  }
+  aba.term.paste(citados.join(" ") + fim);
+  return true;
 }
 
 async function colarPeloNavegador(aba) {
@@ -2660,7 +2825,7 @@ async function colarPeloNavegador(aba) {
         const blob = await item.getType(tipoImagem);
         const base64 = await paraBase64(blob);
         bridge.salvarColagem(base64, tipoImagem.split("/")[1] || "png", (caminho) => {
-          if (caminho) aba.term.paste(comAspas(caminho));
+          if (caminho) colarCaminhos(aba, [caminho]);
           else piscarAviso("Não consegui guardar essa imagem");
         });
         return;
@@ -2691,10 +2856,9 @@ function soltarArquivos(caminhos, ponto) {
   const noPonto = abaNoPonto(ponto);
   const aba = noPonto && !noPonto.ehPainel && noPonto.sessionId ? noPonto : abaAtiva;
   if (!aba || aba.ehPainel || !aba.sessionId) return;
-  const texto = caminhos.map(comAspas).join(" ");
-  if (!texto) return;
+  if (!caminhos.length) return;
   if (aba !== abaAtiva) ativar(aba);
-  aba.term.paste(texto + " ");
+  if (!colarCaminhos(aba, caminhos, " ")) return;
   aba.foco();
   piscarAviso(caminhos.length === 1 ? "Caminho colado" : caminhos.length + " caminhos colados");
 }

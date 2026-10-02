@@ -4,6 +4,8 @@ import json
 import os
 import re
 import threading
+import tempfile
+from collections import OrderedDict
 import time
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
@@ -106,53 +108,76 @@ TETO_POR_PASSADA = 32 * 1024 * 1024
 TETO_TOTAL_POR_PASSADA = 48 * 1024 * 1024
 
 
-def _ler_novidades(
-    caminho: Path, desde: int, teto: int | None = None, filtro=None
-) -> tuple[list[dict], int]:
-    """Le so o que cresceu no arquivo desde a ultima passada.
+# A sobra pode ser uma imagem de mais de 32 MB numa unica linha JSONL. O arquivo
+# temporario guarda essa linha entre passadas sem carregar todo o transcript nem
+# exceder o orcamento de leitura. Ao reiniciar, o offset confirmado permite reler.
+_LINHAS_PENDENTES = OrderedDict()
 
-    Em binario e por blocos, porque o deslocamento guardado e em bytes. A versao anterior
-    carregava o resto do arquivo como texto e depois recodificava duas vezes so pra descobrir
-    onde tinha parado, o que custava varias copias inteiras na memoria. `filtro` diz, pelos bytes,
-    que linha vale o json.loads; sem ele, so a que traz consumo.
-    """
+
+def _ler_novidades(
+    caminho: Path, desde: int, teto: int | None = None, filtro=None, medicao: dict | None = None
+) -> tuple[list[dict], int]:
     try:
-        tamanho = caminho.stat().st_size
+        marca = caminho.stat()
     except OSError:
         return [], desde
+    tamanho = marca.st_size
     if tamanho < desde:
         desde = 0
-    if tamanho == desde:
-        return [], desde
-
-    linhas: list[dict] = []
+    chave = (str(caminho.resolve()), desde, filtro)
+    pendente = _LINHAS_PENDENTES.pop(chave, None)
+    if pendente and (pendente[2] != marca.st_ino or
+                     (marca.st_mtime_ns != pendente[3] and tamanho <= pendente[4])):
+        pendente[0].close()
+        pendente = None
+    sobra = pendente[0] if pendente else tempfile.SpooledTemporaryFile(max_size=BLOCO)
+    posicao = pendente[1] if pendente else desde
     fim = desde
-    restante = min(tamanho - desde, TETO_POR_PASSADA if teto is None else teto)
-    # sobra sempre comeca no byte `fim`: e o pedaco lido que ainda nao terminou em quebra
-    sobra = b""
+    restante = min(max(0, tamanho - posicao), TETO_POR_PASSADA if teto is None else teto)
+    linhas = []
+    lidos = 0
     try:
         with open(caminho, "rb") as fh:
-            fh.seek(desde)
+            fh.seek(posicao)
             while restante > 0:
                 pedaco = fh.read(min(restante, BLOCO))
                 if not pedaco:
                     break
                 restante -= len(pedaco)
-                sobra += pedaco
-                corte = sobra.rfind(b"\n")
-                if corte == -1:
-                    continue
-                for linha in sobra[:corte].split(b"\n"):
-                    if (b'"usage"' not in linha) if filtro is None else not filtro(linha):
-                        continue
-                    try:
-                        linhas.append(json.loads(linha.decode("utf-8", errors="replace")))
-                    except ValueError:
-                        continue
-                fim += corte + 1
-                sobra = sobra[corte + 1 :]
+                lidos += len(pedaco)
+                posicao += len(pedaco)
+                partes = pedaco.split(b"\n")
+                for parte in partes[:-1]:
+                    sobra.write(parte)
+                    comprimento = sobra.tell()
+                    sobra.seek(0)
+                    linha = sobra.read()
+                    if (b'"usage"' in linha) if filtro is None else filtro(linha):
+                        try:
+                            registro = json.loads(linha)
+                            if isinstance(registro, dict):
+                                linhas.append(registro)
+                        except (ValueError, UnicodeError):
+                            pass
+                    fim += comprimento + 1
+                    sobra.seek(0)
+                    sobra.truncate()
+                sobra.write(partes[-1])
     except OSError:
-        return linhas, fim
+        pass
+    if medicao is not None:
+        medicao["bytes"] = lidos
+    if sobra.tell():
+        nova_chave = (chave[0], fim, filtro)
+        anterior = _LINHAS_PENDENTES.pop(nova_chave, None)
+        if anterior:
+            anterior[0].close()
+        _LINHAS_PENDENTES[nova_chave] = (sobra, posicao, marca.st_ino, marca.st_mtime_ns, tamanho)
+        while len(_LINHAS_PENDENTES) > 128:
+            _, antigo = _LINHAS_PENDENTES.popitem(last=False)
+            antigo[0].close()
+    else:
+        sobra.close()
     return linhas, fim
 
 
@@ -420,15 +445,13 @@ def _coletar(pastas: dict[str, Path], estado: dict | None, alvo: Path, parar) ->
             parcial = True
             continue
         teto = min(TETO_POR_PASSADA, orcamento)
-        registros, novo_fim = _ler_novidades(arquivo, desde, teto)
-        base_lida = desde if novo_fim >= desde else 0
-        orcamento -= novo_fim - base_lida
+        medicao = {}
+        registros, novo_fim = _ler_novidades(arquivo, desde, teto, medicao=medicao)
+        orcamento -= medicao.get("bytes", 0)
         # andou mas nao chegou no fim: o resto entra na proxima passada, e ate la o numero
         # da tela e menor que o real. A linha que o Claude ainda esta escrevendo nao conta.
         # Com a sobra do orcamento pequena, nem andar ele anda, e mesmo assim falta ler
-        if tamanho - (desde if tamanho >= desde else 0) > teto and (
-            novo_fim > desde or teto < TETO_POR_PASSADA
-        ):
+        if tamanho - (desde if tamanho >= desde else 0) > teto:
             parcial = True
         if not registros and novo_fim == desde:
             continue

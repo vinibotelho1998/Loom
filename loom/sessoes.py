@@ -332,17 +332,16 @@ def _estado_de(arquivo: Path, mtime: float, tamanho: int) -> dict:
 def _colapsar(achadas: list[dict]) -> list[dict]:
     """Junta so o que e mesmo repeticao da mesma conversa.
 
-    Duas sessoes com o mesmo nome, na mesma conta e na mesma pasta, sao a mesma conversa
-    retomada. Fica a mais recente. Conversa sem nome nao e agrupada com ninguem: agrupar por
-    pasta escondia conversa de verdade, que foi o que aconteceu antes.
+    So um ID repetido na mesma conta identifica a mesma conversa retomada.
+    Titulos e pastas podem coincidir em conversas diferentes.
     """
-    grupos: dict[tuple[str, str, str], list[dict]] = {}
+    grupos: dict[tuple[str, str], list[dict]] = {}
     soltas = []
     for s in achadas:
-        if not s.get("titulo"):
+        if not s.get("sessao"):
             soltas.append(s)
             continue
-        grupos.setdefault((s["perfil"], s["pasta"].lower(), s["titulo"].lower()), []).append(s)
+        grupos.setdefault((s["perfil"], s["sessao"]), []).append(s)
 
     sobreviventes = list(soltas)
     for membros in grupos.values():

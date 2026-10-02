@@ -37,6 +37,8 @@ class ClienteDoNucleo(QObject):
         self._sessoes: dict[str, SessaoRemota] = {}
         self._tem_estado = False
         self._encerrando = False
+        self._hidratando = True
+        self._pendentes: dict[str, list[dict]] = {}
         # o que o nucleo tinha quando esta tela nasceu
         self.estado_inicial: list[dict] = []
         self.abas_iniciais: list[dict] = []
@@ -63,6 +65,12 @@ class ClienteDoNucleo(QObject):
 
     def registrar(self, sessao: "SessaoRemota") -> None:
         self._sessoes[sessao.session_id] = sessao
+        for mensagem in self._pendentes.pop(sessao.session_id, []):
+            self._atender(mensagem)
+
+    def terminar_adocao(self) -> None:
+        self._hidratando = False
+        self._pendentes.clear()
 
     def abrir(self, sessao: "SessaoRemota", argv, cwd, env, cols: int, rows: int, origem: dict) -> None:
         self.registrar(sessao)
@@ -114,6 +122,13 @@ class ClienteDoNucleo(QObject):
     def _atender(self, mensagem: dict) -> None:
         tipo = mensagem["tipo"]
         session_id = str(mensagem.get("id") or "")
+        # O estado e a primeira saida podem vir no mesmo pacote, antes de a ponte existir.
+        # Guardamos apenas IDs do estado inicial, ate todos eles terem sido adotados.
+        if (self._hidratando and tipo in ("saida", "saiu", "aberta")
+                and session_id not in self._sessoes
+                and any(str(s.get("id") or "") == session_id for s in self.estado_inicial)):
+            self._pendentes.setdefault(session_id, []).append(dict(mensagem))
+            return
         if tipo == "saida":
             sessao = self._sessoes.get(session_id)
             if sessao is not None:

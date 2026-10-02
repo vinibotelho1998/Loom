@@ -206,7 +206,7 @@ class Filtros(ComPastaPropria):
         achadas = sessoes.listar({"conta": str(pasta)})
         self.assertEqual(sorted(s["titulo"] for s in achadas), ["Primeira", "Segunda"])
 
-    def test_mesma_conversa_repetida_fica_so_a_mais_nova(self):
+    def test_conversas_com_mesmo_titulo_e_ids_distintos_ficam(self):
         pasta = self.raiz / "conta"
         for nome, idade in (("velha", 900), ("nova", 300)):
             self.escrever_transcript(
@@ -219,8 +219,8 @@ class Filtros(ComPastaPropria):
             )
         sessoes._LEMBRADO.clear()
         achadas = sessoes.listar({"conta": str(pasta)})
-        self.assertEqual(len(achadas), 1)
-        self.assertLess(achadas[0]["idade"], 600)
+        self.assertEqual(len(achadas), 2)
+        self.assertEqual({s["sessao"] for s in achadas}, {"velha", "nova"})
 
     def test_pasta_de_servico_nao_vira_o_lugar_da_sessao(self):
         """Uma conversa que passou pela pasta de memoria virava memory na lista."""

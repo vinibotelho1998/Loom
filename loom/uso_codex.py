@@ -354,13 +354,14 @@ def _ler(pasta: Path, chave: str, conta: dict, parar) -> tuple[bool, bool]:
             parcial = True
             continue
         teto = min(mod_uso.TETO_POR_PASSADA, orcamento)
-        registros, novo_fim = mod_uso._ler_novidades(caminho, desde, teto, filtro=_interessa)
+        medicao = {}
+        registros, novo_fim = mod_uso._ler_novidades(caminho, desde, teto, filtro=_interessa, medicao=medicao)
         if novo_fim < desde:
             # o arquivo foi reescrito do zero: o que se sabia dele nao vale mais
             arquivo, desde = {}, 0
-        orcamento -= novo_fim - desde
+        orcamento -= medicao.get("bytes", 0)
         cortado = tamanho - desde > teto
-        if cortado and (novo_fim > desde or teto < mod_uso.TETO_POR_PASSADA):
+        if cortado:
             parcial = True
         if not registros and novo_fim == desde:
             continue

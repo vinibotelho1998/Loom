@@ -446,12 +446,19 @@ class Hospedeiro(QObject):
         processo.setProgram(self._comando[0])
         processo.setArguments(self._comando[1:])
         processo.finished.connect(self._tela_saiu)
+        processo.errorOccurred.connect(self._erro_da_tela)
         self._processo = processo
         processo.start()
         log.info("tela subindo: %s", " ".join(self._comando))
 
     @Slot(int, QProcess.ExitStatus)
     def _tela_saiu(self, codigo: int, status: QProcess.ExitStatus) -> None:
+        processo = self.sender()
+        if processo is not None and processo is not self._processo:
+            return
+        if self._processo is not None:
+            self._processo.deleteLater()
+            self._processo = None
         caiu = status == QProcess.ExitStatus.CrashExit or codigo != 0
         decisao = self.supervisor.depois_que_a_tela_saiu(codigo, caiu)
         if caiu:
@@ -460,6 +467,13 @@ class Hospedeiro(QObject):
             self.encerrar()
         elif decisao != Supervisor.ESPERAR:
             self._relance.start(int(decisao * 1000))
+
+    @Slot(QProcess.ProcessError)
+    def _erro_da_tela(self, erro: QProcess.ProcessError) -> None:
+        # FailedToStart nao emite finished; Crash emite e sera tratado por ele.
+        if erro == QProcess.ProcessError.FailedToStart:
+            log.error("a tela nao conseguiu iniciar")
+            self._tela_saiu(-1, QProcess.ExitStatus.CrashExit)
 
     @Slot()
     def _mostrar(self) -> None:

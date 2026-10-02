@@ -158,10 +158,10 @@ class StatusLineEGanchos(ComPastaPropria):
         self.assertEqual(salvo["env"]["PYTHONPATH"], "C:\\proj")
         self.assertEqual(salvo["statusLine"]["command"], f'"py.exe" "C:\\proj\\coletar.py" {self.conta.id}')
 
-    def test_settings_estragado_e_refeito_com_o_coletor(self):
+    def test_settings_estragado_e_preservado(self):
         self.settings.write_text("{quebrado", encoding="utf-8")
-        self.assertTrue(perfis.instalar_coletor(self.conta, "py.exe", "C:\\proj"))
-        self.assertIn("coletar.py", self.ler()["statusLine"]["command"])
+        self.assertFalse(perfis.instalar_coletor(self.conta, "py.exe", "C:\\proj"))
+        self.assertEqual(self.settings.read_text(encoding="utf-8"), "{quebrado")
 
 
 class DeQuemEOLogin(ComPastaPropria):

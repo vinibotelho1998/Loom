@@ -209,6 +209,21 @@ class NucleoComShellFalso(ComShellFalso):
 
 
 class PoliticaDeRelancar(unittest.TestCase):
+    def test_perder_canal_pede_recuperacao_sem_encerramento_limpo(self):
+        from types import SimpleNamespace
+        from loom.app import MainWindow
+
+        app = unittest.mock.Mock()
+        with (
+            unittest.mock.patch("loom.app.QApplication.instance", return_value=app),
+            unittest.mock.patch("loom.app.QProcess.startDetached", return_value=True),
+        ):
+            MainWindow._nucleo_caiu(SimpleNamespace())
+        app.exit.assert_called_once_with(1)
+        app.quit.assert_not_called()
+        supervisor = nucleo.Supervisor(relogio=lambda: 0.0)
+        self.assertEqual(supervisor.depois_que_a_tela_saiu(app.exit.call_args.args[0], False), 0.0)
+
     def test_tela_que_cai_volta_com_espera_crescente_e_para_no_teto(self):
         agora = [1000.0]
         s = nucleo.Supervisor(relogio=lambda: agora[0])
@@ -409,6 +424,9 @@ class ClienteFalso:
 
     def registrar(self, sessao) -> None:
         self.registradas[sessao.session_id] = sessao
+
+    def terminar_adocao(self) -> None:
+        pass
 
     def abrir(self, sessao, argv, cwd, env, cols, rows, origem) -> None:
         self.registrar(sessao)

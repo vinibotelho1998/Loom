@@ -293,8 +293,8 @@ class ArrastarPraAba(ComPagina):
         )
 
     def test_varios_caminhos_vao_numa_linha_so_com_aspas_quando_precisa(self):
-        colado = self.soltar('{sessionId: "a1", foco() {}}', ["C:\\a.txt", "C:\\Meus Docs\\b.txt"])
-        self.assertEqual(colado, ['C:\\a.txt "C:\\Meus Docs\\b.txt" '])
+        colado = self.soltar('{sessionId: "a1", shell: {id: "pwsh"}, foco() {}}', ["C:\\a.txt", "C:\\Meus Docs\\b.txt"])
+        self.assertEqual(colado, ["'C:\\a.txt' 'C:\\Meus Docs\\b.txt' "])
 
     def test_painel_ou_aba_sem_shell_nao_recebe(self):
         self.assertEqual(self.soltar('{ehPainel: true, sessionId: "a1", foco() {}}', ["C:\\a.txt"]), [])
