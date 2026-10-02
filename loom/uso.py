@@ -10,6 +10,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from . import precos as mod_precos
+from . import uso_fora as mod_fora
 from .caminhos import RAIZ, gravar_texto
 
 # A versao 2 do cache mora em arquivo proprio. O Loom de antes, instalado e aberto ao mesmo tempo,
@@ -22,8 +23,8 @@ CAMPOS = ("entrada", "saida", "raciocinio", "cacheEscrito", "cacheLido", "mensag
 CAMPOS_GUARDADOS = CAMPOS + ("cache5m", "cache1h")
 # o que entra na conta do custo, cada um com o seu preco
 CAMPOS_DE_CUSTO = ("entrada", "saida", "cache5m", "cache1h", "cacheLido")
-VERSAO = 4
-# O projeto de cada resposta entrou na versao 3 e o esforco, na 4. Cache mais velho vira legado e os transcript sao
+VERSAO = 5
+# O projeto de cada resposta entrou na versao 3, o esforco na 4 e o uso por balde de 5 minutos na 5. Cache mais velho vira legado e os transcript sao
 # lidos de novo, que e o que da o projeto ao historico que ainda existe em disco.
 # Os baldes por projeto guardam so este tanto de dias.
 DIAS_DE_PROJETOS = 60
@@ -49,6 +50,7 @@ def _cache_vazio() -> dict:
         "legado": {},
         "projetos": {},
         "esforcos": {},
+        "tempo": {},
     }
 
 
@@ -78,7 +80,10 @@ def _carregar_cache(caminho: Path | None = None) -> dict:
         # Cache da versao 1: os dias dele nao separam o cache de 1 hora do de 5 minutos. Eles viram
         # legado e os transcript que ainda existem sao lidos de novo do zero. O dia que a releitura
         # cobrir inteiro deixa o legado; o que o Claude ja apagou continua valendo, como aproximado.
-        cache["legado"] = bruto["dias"]
+        # O legado da versao anterior continua sendo o unico registro dos dias que o Claude ja apagou
+        # do disco, entao ele segue junto; os dias da releitura entram por cima, que sao os exatos.
+        antigo = bruto.get("legado") if isinstance(bruto.get("legado"), dict) else {}
+        cache["legado"] = {**antigo, **bruto["dias"]}
         return cache
     for campo in cache:
         if campo != "versao" and isinstance(bruto.get(campo), dict):
@@ -361,7 +366,7 @@ def coletar(pastas: dict[str, Path], estado: dict | None = None) -> dict:
 def coletar_tudo(
     pastas: dict[str, Path], estado: dict | None = None, *, cache: Path | None = None, parar=None
 ) -> dict:
-    """A passada do coletar, devolvendo tudo que o cache sabe: {"dias", "horas", "vistoEm", "projetos", "esforcos"}.
+    """A passada do coletar, devolvendo tudo que o cache sabe: {"dias", "horas", "vistoEm", "projetos", "esforcos", "tempo"}.
 
     `horas` sao os baldes por hora dos ultimos dias e `vistoEm`, o instante da ultima resposta de
     cada conta. `cache` e o arquivo do cache, pra thread da coleta nao depender de um global que os
@@ -379,6 +384,7 @@ def _coletar(pastas: dict[str, Path], estado: dict | None, alvo: Path, parar) ->
     vistos_em = cache["vistoEm"]
     projetos = cache["projetos"]
     esforcos = cache["esforcos"]
+    tempo = cache["tempo"]
     # o id da ultima resposta lida de cada arquivo
     ultimos = cache["ultimos"]
     mudou = False
@@ -458,6 +464,7 @@ def _coletar(pastas: dict[str, Path], estado: dict | None, alvo: Path, parar) ->
                 ),
                 consumo,
             )
+            mod_fora.somar_tempo(tempo, consumo["ts"], tokens_do_balde(consumo), f"{chave_perfil}|")
             if consumo["ts"] >= corte_das_horas:
                 _acumular_hora(horas, chave_perfil, consumo)
             if consumo["ts"] > vistos_em.get(chave_perfil, 0):
@@ -481,6 +488,7 @@ def _coletar(pastas: dict[str, Path], estado: dict | None, alvo: Path, parar) ->
         corte_dos_dias = str(datetime.now().date() - timedelta(days=DIAS_DE_PROJETOS))
         cache["projetos"] = projetos = _podar_projetos(projetos, corte_dos_dias)
         cache["esforcos"] = esforcos = _podar_projetos(esforcos, corte_dos_dias)
+        cache["tempo"] = tempo = mod_fora.podar_tempo(tempo, time.time())
         _gravar_cache(cache, alvo)
     if estado is not None:
         estado["parcial"] = parcial
@@ -490,6 +498,7 @@ def _coletar(pastas: dict[str, Path], estado: dict | None, alvo: Path, parar) ->
         "vistoEm": dict(vistos_em),
         "projetos": projetos,
         "esforcos": esforcos,
+        "tempo": tempo,
     }
 
 

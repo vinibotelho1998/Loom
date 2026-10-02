@@ -20,11 +20,12 @@ from pathlib import Path
 
 from . import precos as mod_precos
 from . import uso as mod_uso
+from . import uso_fora as mod_fora
 from .uso import SEM_ESFORCO
 from .caminhos import gravar_texto
 
-VERSAO = 3
-# A versao 2 guarda o projeto de cada resposta e a 3, o esforco; o cache da 1 e jogado fora e os rollouts, relidos.
+VERSAO = 4
+# A versao 2 guarda o projeto de cada resposta, a 3 o esforco e a 4 as leituras de limite e o uso por balde; o cache da 1 e jogado fora e os rollouts, relidos.
 # Arquivo parado ha mais que isso nao ganha mais registro: o consumo que ficou pendente, tirado da
 # diferenca dos totais, passa a valer. Antes disso ele espera, porque no rollout novo o token_count
 # as vezes chega antes do registro da mesma resposta, e contaria duas vezes.
@@ -117,10 +118,28 @@ def _somar(
     mod_uso._acumular(
         conta["esforcos"].setdefault(f"{chave}|{consumo['dia']}|{consumo['modelo']}|{esforco}", {}), consumo
     )
+    mod_fora.somar_tempo(conta["tempo"], consumo["ts"], mod_uso.tokens_do_balde(consumo))
     if consumo["ts"] >= corte:
         mod_uso._acumular_hora(conta["horas"], chave, consumo)
     if consumo["ts"] > conta.get("vistoEm", 0):
         conta["vistoEm"] = int(consumo["ts"])
+
+
+def _anotar_leituras(conta: dict, bruto, instante: float | None) -> None:
+    """Guarda cada valor de percentual de cada janela com a primeira e a ultima vez em que apareceu."""
+    if not isinstance(bruto, dict) or instante is None or bruto.get("limit_id") not in (None, "codex"):
+        return
+    for lado in ("primary", "secondary"):
+        janela = bruto.get(lado)
+        if not isinstance(janela, dict):
+            continue
+        zera = janela.get("resets_at")
+        if isinstance(zera, bool) or not isinstance(zera, (int, float)):
+            falta = janela.get("resets_in_seconds")
+            zera = instante + falta if isinstance(falta, (int, float)) and not isinstance(falta, bool) else None
+        mod_fora.registrar_leitura(
+            conta["janelas"], janela.get("window_minutes"), zera, janela.get("used_percent"), instante
+        )
 
 
 def _anotar_limite(conta: dict, bruto, instante: float | None) -> None:
@@ -239,6 +258,7 @@ def _processar(registros: list, conta: dict, chave: str, arquivo: dict, corte: f
         elif tipo == "event_msg" and carga.get("type") == "token_count":
             instante = _instante(registro.get("timestamp"))
             _anotar_limite(conta, carga.get("rate_limits"), instante)
+            _anotar_leituras(conta, carga.get("rate_limits"), instante)
             if arquivo.get("modo") == "registro" or instante is None:
                 continue
             info = carga.get("info")
@@ -283,7 +303,7 @@ def _rollouts(pasta: Path) -> list[tuple[float, int, Path]]:
 
 
 def _conta_vazia() -> dict:
-    return {"arquivos": {}, "dias": {}, "horas": {}, "projetos": {}, "esforcos": {}, "limites": None, "vistoEm": 0}
+    return {"arquivos": {}, "dias": {}, "horas": {}, "projetos": {}, "esforcos": {}, "janelas": {}, "tempo": {}, "limites": None, "vistoEm": 0}
 
 
 def _carregar(caminho: Path) -> dict:
@@ -300,7 +320,7 @@ def _conta_do_cache(dados: dict, chave: str) -> dict:
     conta = dados["contas"].get(chave)
     limpa = _conta_vazia()
     if isinstance(conta, dict):
-        for campo in ("arquivos", "dias", "horas", "projetos", "esforcos"):
+        for campo in ("arquivos", "dias", "horas", "projetos", "esforcos", "janelas", "tempo"):
             if isinstance(conta.get(campo), dict):
                 limpa[campo] = conta[campo]
         if isinstance(conta.get("limites"), dict):
@@ -369,6 +389,8 @@ def coletar(pasta: Path, chave: str, estado: dict | None = None, *, cache: Path,
             corte_dos_dias = str(datetime.now().date() - timedelta(days=mod_uso.DIAS_DE_PROJETOS))
             conta["projetos"] = mod_uso._podar_projetos(conta["projetos"], corte_dos_dias)
             conta["esforcos"] = mod_uso._podar_projetos(conta["esforcos"], corte_dos_dias)
+            conta["janelas"] = mod_fora.podar_janelas(conta["janelas"], time.time())
+            conta["tempo"] = mod_fora.podar_tempo(conta["tempo"], time.time())
             gravar_texto(cache, json.dumps(dados))
     if estado is not None:
         estado["parcial"] = parcial
@@ -377,6 +399,8 @@ def coletar(pasta: Path, chave: str, estado: dict | None = None, *, cache: Path,
         "horas": conta["horas"],
         "projetos": conta["projetos"],
         "esforcos": conta["esforcos"],
+        "janelas": conta["janelas"],
+        "tempo": conta["tempo"],
         "limites": conta["limites"],
         "vistoEm": conta["vistoEm"],
     }

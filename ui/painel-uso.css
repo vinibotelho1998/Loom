@@ -38,22 +38,11 @@
   overscroll-behavior: contain;
   /* redesenhar o painel nao pode fazer o navegador remedir a coluna dos terminais */
   contain: content;
-  scrollbar-width: thin;
-  scrollbar-color: #1e222a transparent;
 }
 .uso-lateral > * { flex: 0 0 auto; }
 .uso-lateral p { margin: 0; }
 .uso-lateral h3, .uso-lateral h4 { margin: 0; font-weight: 600; }
 .uso-lateral button { font-family: inherit; cursor: default; }
-.uso-lateral::-webkit-scrollbar { width: 8px; }
-.uso-lateral::-webkit-scrollbar-track { background: transparent; }
-.uso-lateral::-webkit-scrollbar-thumb {
-  background: #1a1d24;
-  border-radius: 8px;
-  border: 2px solid transparent;
-  background-clip: content-box;
-}
-.uso-lateral:hover::-webkit-scrollbar-thumb { background: #262b34; background-clip: content-box; }
 
 /* o botao do topo fica aceso com o painel aberto */
 #alternar-uso.ativo { color: var(--texto); }
@@ -259,6 +248,13 @@
 .uso-janela-zera { white-space: nowrap; color: var(--uso-ter); font-variant-numeric: tabular-nums; }
 .uso-ritmo { min-width: 0; display: inline-flex; align-items: baseline; gap: 5px; white-space: nowrap; }
 .uso-janela-alerta { color: var(--uso-alto); font-size: 11.5px; }
+.uso-fora { display: flex; flex-direction: column; gap: 3px; margin-top: 2px; }
+.uso-fora-linha { color: var(--uso-sec); font-size: 11.5px; }
+.uso-fora-linha b { color: var(--uso-texto); font-weight: 600; }
+.uso-fora-linha.nada, .uso-fora-linha.sem-base { color: var(--uso-ter); }
+.uso-fora-titulo { margin: 4px 0 0; color: var(--uso-ter); font-size: 11px; }
+.uso-fora-antes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.uso-fora-antes li { display: flex; justify-content: space-between; gap: 8px; color: var(--uso-ter); font-size: 11px; font-variant-numeric: tabular-nums; }
 .nivel-critico .uso-janela-alerta { color: var(--uso-erro-texto); }
 .uso-ritmo i { font-style: normal; font-size: 9px; }
 .uso-ritmo.reserva i { color: var(--uso-bom); }

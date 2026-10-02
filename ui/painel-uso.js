@@ -508,6 +508,74 @@ const PainelUso = (function () {
     return html;
   }
 
+  const DICA_FORA =
+    "Soma de outro aparelho, da versão web e de outras pessoas na conta. É um piso: só conta o que o uso deste computador não explica nem na proporção mais generosa já medida.";
+  const DICA_SEM_BASE =
+    "Para separar o que veio de fora é preciso ter visto trabalho contínuo suficiente nesta conta. O Loom ainda não tem.";
+  // so vale como fato a janela aberta bem antes do primeiro uso daqui
+  const FOLGA_DA_ABERTURA_MS = 30 * 60 * 1000;
+
+  function textoQuando(iso) {
+    const ms = instante(iso);
+    return ms === null ? null : dataCurta(ms) + " às " + horaCurta(ms);
+  }
+
+  function htmlSaltosDeFora(saltos) {
+    return saltos
+      .filter((s) => s && typeof s === "object" && numero(s.pts) !== null)
+      .map((s) => {
+        const de = textoQuando(s.de);
+        const ate = textoQuando(s.ate);
+        const tokens = numero(s.tokens) === null ? "" : " com " + textoTokens(s.tokens) + " tokens daqui";
+        return (de && ate ? de + " até " + ate + ": " : "") + "ao menos " + textoPercentual(s.pts) + tokens;
+      })
+      .join("\n");
+  }
+
+  function htmlFora(j) {
+    const f = j.fora && typeof j.fora === "object" ? j.fora : null;
+    if (!f) return "";
+    const partes = [];
+    const piso = numero(f.foraMinimo);
+    if (f.calibrado && piso !== null) {
+      if (piso >= 1) {
+        const detalhe = htmlSaltosDeFora(Array.isArray(f.saltos) ? f.saltos : []);
+        const dica = DICA_FORA + (detalhe ? "\n\n" + detalhe : "");
+        partes.push(
+          '<p class="uso-fora-linha" title="' + esc(dica) + '">Fora deste computador: <b>no mínimo ' +
+          textoPercentual(piso) + "</b></p>"
+        );
+      } else {
+        partes.push('<p class="uso-fora-linha nada" title="' + esc(DICA_FORA) + '">Nada de fora detectado nesta janela</p>');
+      }
+    } else {
+      partes.push('<p class="uso-fora-linha sem-base" title="' + esc(DICA_SEM_BASE) + '">Ainda sem base para separar o que veio de fora</p>');
+    }
+    const aberta = instante(f.abertaEm);
+    const primeiro = instante(f.primeiroUsoAqui);
+    if (aberta !== null && primeiro !== null && primeiro - aberta > FOLGA_DA_ABERTURA_MS) {
+      partes.push(
+        '<p class="uso-nota">Janela aberta em ' + esc(textoQuando(f.abertaEm)) + ". O primeiro uso daqui foi em " +
+        esc(textoQuando(f.primeiroUsoAqui)) + ".</p>"
+      );
+    }
+    const antes = Array.isArray(f.anteriores) ? f.anteriores.filter((a) => a && typeof a === "object" && numero(a.final) !== null) : [];
+    if (antes.some((a) => numero(a.foraMinimo) !== null)) {
+      const linhas = antes
+        .map((a) => {
+          const zeraMs = instante(a.zeraEm);
+          const rotulo = zeraMs === null ? TRACO : "até " + dataCurta(zeraMs);
+          const fora = numero(a.foraMinimo);
+          const texto = fora === null ? TRACO : fora >= 1 ? "fora, no mínimo " + textoPercentual(fora) : "sem consumo de fora";
+          return "<li><span>" + esc(rotulo) + "</span><span>" + esc(textoPercentual(a.final) + " usado · " + texto) + "</span></li>";
+        })
+        .join("");
+      partes.push('<p class="uso-fora-titulo">Janelas anteriores</p>');
+      partes.push('<ul class="uso-fora-antes" aria-label="Janelas anteriores">' + linhas + "</ul>");
+    }
+    return '<div class="uso-fora">' + partes.join("") + "</div>";
+  }
+
   function htmlJanela(j, conta, agoraMs) {
     const sobre = sobreJanela(j);
     const zeraMs = instante(j.zeraEm);
@@ -547,7 +615,7 @@ const PainelUso = (function () {
       '<span class="uso-janela-valor">' + (rotuloNivel ? '<span class="uso-nivel">' + rotuloNivel + "</span>" : "") +
       "<b>" + textoPercentual(usado) + "</b> usado</span></div>" + medidor +
       '<div class="uso-janela-base">' + base + "</div>" +
-      (previsao ? '<p class="uso-janela-alerta">' + esc(previsao) + "</p>" : "") + "</div>"
+      (previsao ? '<p class="uso-janela-alerta">' + esc(previsao) + "</p>" : "") + htmlFora(j) + "</div>"
     );
   }
 
@@ -589,6 +657,13 @@ const PainelUso = (function () {
   const AVISO_LOCAL =
     "Lido dos arquivos deste computador. O limite da conta soma todos os aparelhos; isto, só o que rodou aqui.";
 
+  function textoCustoLocal(custo, semPreco) {
+    if (numero(custo) === null) return TRACO;
+    // sem preco na tabela e sem nada somado, "a partir de zero" nao diz coisa nenhuma
+    if (semPreco && custo < 0.005) return "sem preço";
+    return (semPreco ? "≥ " : "") + textoMoedaCompacta(custo);
+  }
+
   function htmlLocal(conta) {
     const local = conta.local && typeof conta.local === "object" ? conta.local : null;
     const ranking = local && Array.isArray(local.ranking) ? local.ranking.filter((p) => p && typeof p === "object") : [];
@@ -612,7 +687,7 @@ const PainelUso = (function () {
         const custo = numero(p.custo);
         const caminhos = Array.isArray(p.caminhos) ? p.caminhos.join("\n") : "";
         const largura = Math.max(2, Math.round((tokens / maior) * 100));
-        const valor = custo === null ? TRACO : (p.semPreco ? "≥ " : "") + textoMoedaCompacta(custo);
+        const valor = textoCustoLocal(custo, p.semPreco);
         const detalhe = [
           textoTokens(tokens) + " em 30 dias",
           (numero(p.tokens7) ? textoTokens(p.tokens7) + " em 7" : null),
@@ -656,7 +731,7 @@ const PainelUso = (function () {
       .map((m) => {
         const tokens = numero(m.tokens) || 0;
         const custo = numero(m.custo);
-        const valor = custo === null ? TRACO : (m.semPreco ? "≥ " : "") + textoMoedaCompacta(custo);
+        const valor = textoCustoLocal(custo, m.semPreco);
         const niveis = Array.isArray(m.esforcos) ? m.esforcos.filter((n) => n && typeof n === "object") : [];
         const somaNiveis = niveis.reduce((total, n) => total + (numero(n.tokens) || 0), 0);
         const fatias = niveis

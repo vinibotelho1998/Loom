@@ -23,6 +23,7 @@ import sys
 import time
 from pathlib import Path
 
+from . import uso_fora as mod_fora
 from .caminhos import RAIZ
 
 PASTA = RAIZ / "sessoes"
@@ -101,6 +102,11 @@ def guardar(perfil: str, dados: dict) -> None:
         resumo["titulo"] = str(nome).strip()
 
     _gravar(alvo, resumo)
+    try:
+        mod_fora.guardar_leituras_do_claude(perfil, resumo["faixas"], resumo["lido"])
+    except (OSError, TypeError, ValueError, AttributeError):
+        # o historico das janelas e extra: nada dele pode tirar a barra de baixo do ar
+        pass
 
 
 def esconder_aqui() -> bool:

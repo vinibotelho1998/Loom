@@ -24,6 +24,7 @@ from . import caminhos as mod_caminhos
 from . import coletor as mod_coletor
 from . import perfis as mod_perfis
 from . import uso as mod_uso
+from . import uso_fora as mod_fora
 from . import uso_codex as mod_uso_codex
 from .caminhos import gravar_texto
 
@@ -215,7 +216,7 @@ def coletar(pedido: dict, parar=None) -> dict:
         if conta["ferramenta"] == "claude":
             pastas.setdefault(conta["chaves"][0], conta["pasta"])
 
-    lido = {"dias": {}, "horas": {}, "vistoEm": {}, "projetos": {}, "esforcos": {}}
+    lido = {"dias": {}, "horas": {}, "vistoEm": {}, "projetos": {}, "esforcos": {}, "tempo": {}}
     estado: dict = {}
     erro = None
     if pastas or pedido.get("uso"):
@@ -327,7 +328,79 @@ def _janela(tipo: str, rotulo: str, usado, zera, minutos, origem: str, lido) -> 
         "duracaoMin": minutos,
         "origem": origem,
         "lidoEm": _iso(lido) if lido else None,
+        "fora": None,
     }
+
+
+# quantas janelas anteriores o painel conta
+JANELAS_ANTERIORES = 4
+
+
+def _fora_pronto(resumo: dict, anteriores: list[dict]) -> dict:
+    """O resumo de uma janela como a tela le: horarios em texto e so o que ela usa."""
+    return {
+        "foraMinimo": resumo["foraMinimo"],
+        "calibrado": resumo["foraMinimo"] is not None,
+        "final": resumo["final"],
+        "chegouEm": resumo["chegouEm"],
+        "primeiraLeituraEm": _iso(resumo["primeiraLeituraEm"]),
+        "abertaEm": _iso(resumo["abertaEm"]),
+        "primeiroUsoAqui": _iso(resumo["primeiroUsoAqui"]),
+        "tokensPorPonto": None if resumo["tokensPorPonto"] is None else round(resumo["tokensPorPonto"]),
+        "saltos": [
+            {"de": _iso(s["de"]), "ate": _iso(s["ate"]), "pts": s["pts"], "tokens": s["tokens"]}
+            for s in resumo["saltos"]
+        ],
+        "anteriores": anteriores,
+    }
+
+
+def _fora_das_janelas(janelas: list[dict], guardadas: dict, baldes: dict, apertado: bool, abertura_de) -> None:
+    """Poe em cada janela mostrada o que desta conta nao veio deste computador.
+
+    `guardadas` sao as leituras de percentual que o Loom viu, `baldes` o uso daqui no tempo e
+    `abertura_de` diz quando uma janela guardada comecou, ou None quando nao se sabe.
+    """
+    if not guardadas or not janelas:
+        return
+    linha = mod_fora.LinhaDoTempo(baldes)
+    todas = [
+        janela
+        for janela in guardadas.values()
+        if isinstance(janela, dict)
+        and isinstance(janela.get("min"), int)
+        and isinstance(janela.get("zera"), (int, float))
+        and not isinstance(janela.get("zera"), bool)
+    ]
+    for exibida in janelas:
+        minutos, zera = exibida.get("duracaoMin"), _instante(exibida.get("zeraEm"))
+        if not isinstance(minutos, int) or zera is None:
+            continue
+        atual = next((janela for janela in todas if mod_fora.mesma_janela(janela, minutos, zera)), None)
+        if atual is None:
+            continue
+        razao = mod_fora.proporcao(todas, linha, minutos, abertura_de, apertado)
+        antes = sorted(
+            (
+                janela
+                for janela in todas
+                if janela.get("min") == minutos and janela["zera"] < atual["zera"] - mod_fora.TOLERANCIA_DA_JANELA
+            ),
+            key=lambda janela: -janela["zera"],
+        )[:JANELAS_ANTERIORES]
+        anteriores = []
+        for janela in antes:
+            resumo = mod_fora.resumir(janela, linha, razao, abertura_de(janela), apertado)
+            anteriores.append(
+                {"zeraEm": _iso(janela["zera"]), "final": resumo["final"], "foraMinimo": resumo["foraMinimo"]}
+            )
+        resumo = mod_fora.resumir(atual, linha, razao, abertura_de(atual), apertado)
+        exibida["fora"] = _fora_pronto(resumo, anteriores)
+
+
+def _abertura_do_claude(janela: dict) -> float | None:
+    """So a sessao de 5 horas e fixa e comeca em zero, entao so ela tem abertura conhecida no Claude."""
+    return mod_fora.abertura_da_janela(janela) if janela.get("min") == 300 else None
 
 
 def _janelas_do_claude(leitura: dict | None, agora: float) -> list[dict]:
@@ -649,6 +722,13 @@ def _conta_do_claude(conta: dict, lido: dict, limites: dict, memoria: dict, agor
     if zera is None and bloco is not None and not any(janela["tipo"] == "5h" for janela in janelas):
         # sem a leitura da status line, a sessao de 5 horas sai da regra do bloco do ccusage
         janelas.insert(0, _janela("5h", "Sessao", None, fim, 300, "estimada", ultimo))
+    _fora_das_janelas(
+        janelas,
+        mod_fora.ler_leituras_do_claude(conta["chaves"]),
+        mod_fora.baldes_da_conta(lido.get("tempo") or {}, chaves),
+        False,
+        _abertura_do_claude,
+    )
     visto = max((_real(lido["vistoEm"].get(chave)) for chave in chaves), default=0.0)
     atualizado = max(visto, leitura["lido"] if leitura else 0.0)
     return _conta_pronta(conta, janelas, bloco, lido["dias"], chaves, agora, atualizado, lido.get("projetos"), lido.get("esforcos"))
@@ -664,6 +744,13 @@ def _conta_do_codex(conta: dict, cache: Path, agora: float, parar) -> dict:
             break
     limites = lido.get("limites") if isinstance(lido.get("limites"), dict) else None
     janelas = _janelas_do_codex(limites, agora)
+    _fora_das_janelas(
+        janelas,
+        lido.get("janelas") or {},
+        mod_fora.baldes_da_conta(lido.get("tempo") or {}),
+        True,
+        mod_fora.abertura_da_janela,
+    )
     bloco, _, _ = _bloco(mod_uso.custos_por_hora(lido["horas"], {chave}), _zera_da_sessao(janelas), agora)
     plano = (limites or {}).get("plano") or conta["plano"]
     atualizado = max(_real(lido.get("vistoEm")), _real((limites or {}).get("ts")))

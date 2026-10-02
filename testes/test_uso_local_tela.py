@@ -5,7 +5,7 @@ from __future__ import annotations
 import copy
 import unittest
 
-from test_painel_uso import CONTRATO
+from test_painel_uso import CONTRATO, local
 from test_painel_uso import ComPainel as PainelNoMotor
 
 
@@ -53,6 +53,10 @@ class SecaoLocal(PainelNoMotor):
         self.assertIn("a partir de US$ 10", html)
         self.assertIn("O valor com ≥ é o mínimo.", html)
 
+    def test_projeto_sem_preco_e_sem_nada_somado_diz_sem_preco(self):
+        html = self.desenho(com_local([projeto("alfa", 2_000_000, 0.0, sem_preco=True)], sem_preco=True))
+        self.assertIn('<b class="uso-proj-valor">sem preço</b>', html)
+
     def test_diz_quantos_projetos_ficaram_de_fora(self):
         html = self.desenho(com_local([projeto("a", 10, 1.0)], total=4))
         self.assertIn("e mais 3 projetos com menos uso.", html)
@@ -69,6 +73,85 @@ class SecaoLocal(PainelNoMotor):
 
     def test_relatorio_antigo_sem_local_continua_desenhando(self):
         self.assertIn("Limites", self.desenho(CONTRATO))
+
+
+def com_fora(**campos) -> dict:
+    """O contrato do painel com o que veio de fora na semana do Claude, que e a segunda janela."""
+    fora = {
+        "foraMinimo": 46.7,
+        "calibrado": True,
+        "final": 100.0,
+        "chegouEm": 48.0,
+        "primeiraLeituraEm": "2026-09-28T20:39:00-03:00",
+        "abertaEm": "2026-09-26T13:58:00-03:00",
+        "primeiroUsoAqui": "2026-09-28T20:35:00-03:00",
+        "tokensPorPonto": 2_080_528,
+        "saltos": [
+            {"de": "2026-09-26T13:58:00-03:00", "ate": "2026-09-28T20:39:00-03:00", "pts": 46.7, "tokens": 302_514}
+        ],
+        "anteriores": [],
+    }
+    fora.update(campos)
+    dados = copy.deepcopy(CONTRATO)
+    dados["contas"][0]["janelas"][1]["fora"] = fora
+    return dados
+
+
+class SecaoDeFora(PainelNoMotor):
+    def test_mostra_o_piso_do_que_veio_de_fora_e_o_detalhe_no_tooltip(self):
+        html = self.desenho(com_fora())
+        self.assertIn("Fora deste computador: <b>no mínimo 47%</b>", html)
+        self.assertIn("ao menos 47% com 303 mil tokens daqui", html)
+        self.assertIn("Soma de outro aparelho, da versão web e de outras pessoas na conta.", html)
+
+    def test_diz_quando_a_janela_abriu_bem_antes_do_primeiro_uso_daqui(self):
+        html = self.desenho(com_fora())
+        aberta = f"{local('2026-09-26T13:58:00-03:00'):%H:%M}"
+        primeiro = f"{local('2026-09-28T20:35:00-03:00'):%H:%M}"
+        self.assertIn(f"Janela aberta em", html)
+        self.assertIn(f"às {aberta}. O primeiro uso daqui foi em", html)
+        self.assertIn(f"às {primeiro}.", html)
+
+    def test_janela_aberta_junto_com_o_primeiro_uso_nao_vira_fato(self):
+        html = self.desenho(com_fora(primeiroUsoAqui="2026-09-26T14:10:00-03:00"))
+        self.assertNotIn("Janela aberta em", html)
+
+    def test_abaixo_de_um_por_cento_diz_que_nao_detectou_nada(self):
+        html = self.desenho(com_fora(foraMinimo=0.4, saltos=[]))
+        self.assertIn("Nada de fora detectado nesta janela", html)
+        self.assertNotIn("no mínimo", html.split("uso-fora")[1])
+
+    def test_sem_base_de_calibracao_diz_isso_e_nao_inventa_numero(self):
+        html = self.desenho(com_fora(foraMinimo=None, calibrado=False, saltos=[]))
+        self.assertIn("Ainda sem base para separar o que veio de fora", html)
+        self.assertNotIn("Fora deste computador:", html)
+
+    def test_lista_as_janelas_anteriores_com_o_que_se_sabe_de_cada_uma(self):
+        anteriores = [
+            {"zeraEm": "2026-09-26T21:58:00-03:00", "final": 85.0, "foraMinimo": 69.9},
+            {"zeraEm": "2026-09-19T11:25:00-03:00", "final": 44.0, "foraMinimo": 0.0},
+            {"zeraEm": "2026-09-16T18:26:00-03:00", "final": 47.0, "foraMinimo": None},
+        ]
+        html = self.desenho(com_fora(anteriores=anteriores))
+        self.assertIn('<p class="uso-fora-titulo">Janelas anteriores</p>', html)
+        self.assertIn("85% usado · fora, no mínimo 70%", html)
+        self.assertIn("44% usado · sem consumo de fora", html)
+        self.assertIn("47% usado · --", html)
+
+    def test_anteriores_sem_nenhum_piso_nao_aparecem(self):
+        anteriores = [{"zeraEm": "2026-09-26T21:58:00-03:00", "final": 85.0, "foraMinimo": None}]
+        self.assertNotIn("uso-fora-antes", self.desenho(com_fora(anteriores=anteriores)))
+
+    def test_dado_fora_do_formato_nao_derruba_a_tela(self):
+        html = self.desenho(com_fora(foraMinimo="x", saltos="lixo", anteriores="lixo", abertaEm=5, primeiroUsoAqui=[]))
+        self.assertIn("Ainda sem base", html)
+        self.assertIn("Limites", html)
+
+    def test_sem_o_campo_a_janela_continua_igual(self):
+        self.assertNotIn("uso-fora", self.desenho(CONTRATO))
+        dados = copy.deepcopy(CONTRATO)
+        dados["contas"][0]["janelas"][1]["fora"] = None
+        self.assertNotIn("uso-fora", self.desenho(dados))
 
 
 def modelo(nome: str, tokens: int, parte: float, esforcos: list[tuple], **extra) -> dict:
@@ -112,6 +195,11 @@ class SecaoPorModelo(PainelNoMotor):
         html = self.desenho(com_modelos([modelo("gpt-6.1-sol", 100, 1.0, [("ultra", 100, 1)], semPreco=True)]))
         self.assertIn('<b class="uso-proj-valor">≥ US$ 10</b>', html)
         self.assertIn("O valor com ≥ é o mínimo.", html)
+
+    def test_modelo_sem_preco_e_sem_nada_somado_diz_sem_preco_e_nao_a_partir_de_zero(self):
+        html = self.desenho(com_modelos([modelo("gpt-6.1-sol", 100, 1.0, [("ultra", 100, 1)], semPreco=True, custo=0.0)]))
+        self.assertIn('<b class="uso-proj-valor">sem preço</b>', html)
+        self.assertNotIn("≥ US$ 0", html)
 
     def test_parte_minuscula_diz_menos_de_um_por_cento(self):
         html = self.desenho(com_modelos([modelo("x", 1, 0.001, [("high", 1, 1)])]))
