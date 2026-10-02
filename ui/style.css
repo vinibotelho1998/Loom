@@ -133,15 +133,42 @@ body { display: flex; flex-direction: column; }
 .tela.tela-painel { padding: 0; overflow: hidden; }
 .tela.ativa { visibility: visible; }
 
-.xterm-viewport::-webkit-scrollbar { width: 10px; }
-.xterm-viewport::-webkit-scrollbar-track { background: transparent; }
-/* o polegar na cor do cromo sumia sobre o terminal: rolando o historico nao dava pra ver onde se estava */
-.xterm-viewport::-webkit-scrollbar-thumb {
-  background: #2c313a;
+/* Barra de rolagem: a mesma nos terminais, nas listas, no painel de uso e nos ajustes, sempre
+   visivel e com contraste. O polegar era quase da cor do fundo e as listas ainda tinham
+   scrollbar-color, que faz o navegador ignorar estas regras. */
+.xterm-viewport::-webkit-scrollbar,
+.lateral-lista::-webkit-scrollbar,
+.uso-lateral::-webkit-scrollbar,
+.painel-corpo::-webkit-scrollbar { width: 12px; height: 12px; }
+.xterm-viewport::-webkit-scrollbar-track,
+.lateral-lista::-webkit-scrollbar-track,
+.uso-lateral::-webkit-scrollbar-track,
+.painel-corpo::-webkit-scrollbar-track { background: #12151b; }
+.xterm-viewport::-webkit-scrollbar-thumb,
+.lateral-lista::-webkit-scrollbar-thumb,
+.uso-lateral::-webkit-scrollbar-thumb,
+.painel-corpo::-webkit-scrollbar-thumb {
+  background: #5a6474;
   border-radius: 6px;
-  border: 3px solid var(--preto);
+  border: 2px solid #12151b;
+  min-height: 36px;
 }
-.xterm-viewport::-webkit-scrollbar-thumb:hover { background: #3a404b; }
+.xterm-viewport::-webkit-scrollbar-thumb:hover,
+.lateral-lista::-webkit-scrollbar-thumb:hover,
+.uso-lateral::-webkit-scrollbar-thumb:hover,
+.painel-corpo::-webkit-scrollbar-thumb:hover { background: #7b879a; }
+.xterm-viewport::-webkit-scrollbar-thumb:active,
+.lateral-lista::-webkit-scrollbar-thumb:active,
+.uso-lateral::-webkit-scrollbar-thumb:active,
+.painel-corpo::-webkit-scrollbar-thumb:active { background: #97a3b5; }
+.xterm-viewport::-webkit-scrollbar-button,
+.lateral-lista::-webkit-scrollbar-button,
+.uso-lateral::-webkit-scrollbar-button,
+.painel-corpo::-webkit-scrollbar-button { display: none; }
+.xterm-viewport::-webkit-scrollbar-corner,
+.lateral-lista::-webkit-scrollbar-corner,
+.uso-lateral::-webkit-scrollbar-corner,
+.painel-corpo::-webkit-scrollbar-corner { background: transparent; }
 
 /* ------------------------------------------------------------------- menu */
 
@@ -538,8 +565,6 @@ select.campo { cursor: default; }
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 0 8px 8px;
-  scrollbar-width: thin;
-  scrollbar-color: #1e222a transparent;
 }
 /* A de cima fica do tamanho do que tem, e a de fora usa o que sobra, com o divisor marcando o
    piso dela. Com altura fixa, poucas abas deixavam um buraco em cima e a de fora cortava cartao.
@@ -551,15 +576,6 @@ select.campo { cursor: default; }
   min-height: var(--altura-externas, 25%);
   padding-top: 2px;
 }
-.lateral-lista::-webkit-scrollbar { width: 8px; }
-.lateral-lista::-webkit-scrollbar-track { background: transparent; }
-.lateral-lista::-webkit-scrollbar-thumb {
-  background: #1a1d24;
-  border-radius: 8px;
-  border: 2px solid transparent;
-  background-clip: content-box;
-}
-.lateral-lista:hover::-webkit-scrollbar-thumb { background: #262b34; background-clip: content-box; }
 
 
 .sessao {
