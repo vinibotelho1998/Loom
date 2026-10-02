@@ -1,5 +1,28 @@
 # -*- mode: python ; coding: utf-8 -*-
 import os
+import sys
+
+# O analisador procura DLLs no PATH. Ferramentas como Poppler podem oferecer
+# ICU/UCRT com os mesmos nomes do Windows, mas exports incompatíveis com o Qt.
+# Dependências do app vêm dos hooks/pastas dos módulos; o PATH fica restrito
+# ao Python usado no build e ao próprio Windows.
+if os.name == "nt":
+    WINDOWS = os.environ.get("SystemRoot", r"C:\Windows")
+    os.environ["PATH"] = os.pathsep.join(dict.fromkeys([
+        os.path.join(sys.prefix, "Scripts"), sys.base_prefix,
+        os.path.join(WINDOWS, "System32"), WINDOWS,
+    ]))
+
+
+def _verificar_runtime_windows(binarios):
+    if os.name != "nt":
+        return
+    raiz = os.path.normcase(os.path.abspath(WINDOWS)) + os.sep
+    for destino, origem, _tipo in binarios:
+        nome = os.path.basename(destino).lower()
+        if nome in ("icuuc.dll", "icuin.dll", "ucrtbase.dll") or nome.startswith("api-ms-win-"):
+            if not os.path.normcase(os.path.abspath(origem)).startswith(raiz):
+                raise RuntimeError(f"DLL do Windows resolvida fora do sistema: {origem}")
 
 from PyInstaller.utils.hooks import collect_dynamic_libs, get_module_file_attribute
 
@@ -53,6 +76,9 @@ coletor = Analysis(
     noarchive=False,
     optimize=0,
 )
+
+_verificar_runtime_windows(app.binaries)
+_verificar_runtime_windows(coletor.binaries)
 
 pyz_app = PYZ(app.pure)
 pyz_coletor = PYZ(coletor.pure)
