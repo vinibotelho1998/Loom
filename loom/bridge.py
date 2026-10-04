@@ -22,6 +22,7 @@ from . import caminhos as mod_caminhos
 from . import coletor as mod_coletor
 from . import config as mod_config
 from . import ferramentas as mod_ferramentas
+from . import historico_salvo as mod_historico
 from . import motor as mod_motor
 from . import painel_uso as mod_painel_uso
 from . import perfis as mod_perfis
@@ -29,6 +30,7 @@ from . import pty_session as mod_pty
 from . import queda as mod_queda
 from . import sessao_salva as mod_salvas
 from . import sessoes as mod_sessoes
+from . import sessoes_codex as mod_sessoes_codex
 from . import uso as mod_uso
 from . import shells as mod_shells
 from .cliente_nucleo import SessaoRemota
@@ -49,8 +51,19 @@ TETO_DE_VIGIA = 400
 # o aviso de limite olha as leituras de uso uma vez por minuto; a primeira, logo depois de subir
 AVISO_DE_LIMITE_MS = 60000
 PRIMEIRO_AVISO_MS = 20000
+# varredura de sessoes que passa disto sem responder travou: a proxima sobe mesmo assim, senao uma
+# leitura presa num arquivo deixava a lista parada ate fechar o app
+VARREDURA_PRESA = 30.0
 # o que cada shell ja mostrou, pra tela refeita redesenhar o terminal como estava
 HISTORICO_POR_SESSAO = 512 * 1024  # caracteres
+# O historico de cada aba vai pro disco ao fechar o app e, das que mudaram, neste intervalo: uma
+# queda do app ou do Windows perde no maximo isso.
+GRAVAR_HISTORICO_MS = 60000
+# O historico guardado entra na memoria da aba nova em pedacos. Inteiro, ele era um pedaco so do
+# tamanho do teto, e a primeira saida do shell novo empurrava ele todo pra fora de uma vez.
+PEDACO_DA_SEMENTE = 8192
+# o fim que a pagina escreveu depois do historico guardado: zera o estado, linha de Restaurado
+TETO_DA_EMENDA = 512
 RAIZ_PROJETO = Path(__file__).resolve().parent.parent
 RAIZ_DADOS = mod_caminhos.RAIZ
 # conversa vira argumento de um comando digitado no shell: so o formato de id passa
@@ -172,6 +185,8 @@ class Bridge(QObject):
         self._provando_sudo = False
         self._elevacaoRespondida.connect(self._guardar_elevacao)
         self._varrendo = False
+        self._varrendo_desde = 0.0
+        self._ultima_lista = "[]"
         self._sessoesVarridas.connect(self._entregar_sessoes)
         # Toda ligacao a um metodo da ponte nasce aqui, antes de o canal ler a ponte, e todo
         # metodo ligado e slot declarado. Ligado depois, um metodo sem @Slot vira slot novo na
@@ -187,6 +202,8 @@ class Bridge(QObject):
         self._historico: dict[str, deque[str]] = {}
         self._tamanho_historico: dict[str, int] = {}
         self._historico_cortado: set[str] = set()
+        # quem mostrou algo desde a ultima ida ao disco
+        self._historico_mudou: set[str] = set()
         self._abas: list[dict] = []
         self.ultimo_pulso = 0.0
         self._volume_recente = 0
@@ -224,6 +241,11 @@ class Bridge(QObject):
         self._flush_timer.setInterval(FLUSH_MINIMO_MS)
         self._flush_timer.timeout.connect(self._flush)
         self._flush_timer.start()
+
+        self._relogio_do_historico = QTimer(self)
+        self._relogio_do_historico.setInterval(GRAVAR_HISTORICO_MS)
+        self._relogio_do_historico.timeout.connect(self._gravar_historicos_mudados)
+        self._relogio_do_historico.start()
 
     # -- catalogo -------------------------------------------------------
 
@@ -398,7 +420,7 @@ class Bridge(QObject):
         ferramenta = mod_ferramentas.por_id(perfil.ferramenta if perfil is not None else "claude")
         if not ferramenta.comando:
             return False
-        self._digitar(session_id, f"{ferramenta.comando} --resume {conversa}", 0)
+        self._digitar(session_id, mod_ferramentas.comando_de_retomar(ferramenta, conversa), 0)
         return True
 
     @Slot(result=bool)
@@ -586,7 +608,22 @@ class Bridge(QObject):
 
     @Slot(result=str)
     def savedTabs(self) -> str:
-        return json.dumps(mod_salvas.ler() if mod_config.carregar().get("restaurarAbas") else [])
+        """As abas guardadas e, com guardarHistorico ligado, o que cada uma mostrava."""
+        ajustes = mod_config.carregar()
+        if not ajustes.get("restaurarAbas"):
+            return "[]"
+        abas = mod_salvas.ler()
+        if ajustes.get("guardarHistorico"):
+            for aba in abas:
+                if not isinstance(aba, dict):
+                    continue
+                salvo = mod_historico.ler(str(aba.get("sessao") or ""))
+                if salvo is not None:
+                    aba["historico"] = salvo["texto"]
+                    aba["cols"] = salvo["cols"]
+                    aba["rows"] = salvo["rows"]
+                    aba["historicoEm"] = salvo["em"]
+        return json.dumps(abas)
 
     @Slot(str)
     def saveTabs(self, bruto: str) -> None:
@@ -645,6 +682,7 @@ class Bridge(QObject):
         self.ultimo_pulso = time.monotonic()
 
     def _guardar_historico(self, session_id: str, texto: str) -> None:
+        self._historico_mudou.add(session_id)
         fila = self._historico.setdefault(session_id, deque())
         fila.append(texto)
         total = self._tamanho_historico.get(session_id, 0) + len(texto)
@@ -674,6 +712,63 @@ class Bridge(QObject):
         self._historico.pop(session_id, None)
         self._tamanho_historico.pop(session_id, None)
         self._historico_cortado.discard(session_id)
+        self._historico_mudou.discard(session_id)
+
+    def _pode_guardar_historico(self) -> bool:
+        # sem restaurar abas, nada volta no proximo start, e o historico em disco seria so rastro
+        ajustes = mod_config.carregar()
+        return bool(ajustes.get("guardarHistorico") and ajustes.get("restaurarAbas"))
+
+    @staticmethod
+    def _tamanho_de(sessao) -> tuple[int, int]:
+        try:
+            cols, rows = sessao.tamanho
+            return int(cols), int(rows)
+        except (TypeError, ValueError):
+            return 120, 30
+
+    def _gravar_historicos(self, ids) -> list[str]:
+        """Grava o historico das abas vivas daquela lista. Devolve as que foram pro disco."""
+        gravados = []
+        agora = time.time()
+        for session_id in ids:
+            sessao = self._sessions.get(session_id)
+            if sessao is None or not sessao.alive:
+                continue
+            texto = self._historico_de(session_id)
+            if not texto:
+                continue
+            cols, rows = self._tamanho_de(sessao)
+            if mod_historico.gravar(session_id, texto, cols, rows, agora):
+                gravados.append(session_id)
+        return gravados
+
+    @Slot()
+    def _gravar_historicos_mudados(self) -> None:
+        """So as abas que mostraram algo desde a ultima vez: as paradas ja estao no disco."""
+        mudados, self._historico_mudou = self._historico_mudou, set()
+        if not mudados or not self._pode_guardar_historico():
+            return
+        gravados = set(self._gravar_historicos(sorted(mudados)))
+        # a que nao foi por falha de disco tenta de novo na proxima volta
+        self._historico_mudou |= {s for s in mudados - gravados if s in self._sessions}
+
+    def _semear(self, session_id: str, anterior: str, emenda: str) -> None:
+        """A aba reaberta continua o historico da aba de antes.
+
+        A pagina ja desenhou o historico guardado; aqui ele entra na memoria do shell novo, com o
+        fim que a pagina escreveu depois dele, pra tela refeita e o proximo start mostrarem a mesma
+        coisa. O arquivo passa a ter o nome do shell novo, e a continuidade vale por varias aberturas.
+        """
+        if not anterior or session_id not in self._sessions or not self._pode_guardar_historico():
+            return
+        salvo = mod_historico.ler(anterior)
+        if salvo is None:
+            return
+        texto = salvo["texto"] + emenda
+        for inicio in range(0, len(texto), PEDACO_DA_SEMENTE):
+            self._guardar_historico(session_id, texto[inicio : inicio + PEDACO_DA_SEMENTE])
+        mod_historico.renomear(anterior, session_id)
 
     @Slot(str, str, int, int, str, result=str)
     def openSessionWith(self, shell_id: str, perfil_id: str, cols: int, rows: int, extra: str) -> str:
@@ -688,6 +783,8 @@ class Bridge(QObject):
         if conversa and not ID_DE_CONVERSA.fullmatch(conversa):
             conversa = ""
         entrar = bool(pedido.get("entrar"))
+        anterior = str(pedido.get("anterior") or "")
+        emenda = pedido.get("emenda") if isinstance(pedido.get("emenda"), str) else ""
 
         # a pasta vai pro proprio ConPTY. Digitar `cd` depois de 700 ms deixava o comando
         # escrito na tela, competia com o prompt sendo desenhado e errava quando o shell
@@ -695,32 +792,42 @@ class Bridge(QObject):
         pasta = str(pedido.get("pasta") or "")
         inicio = pasta if pasta and Path(pasta).is_dir() else None
 
-        # retomar e entrar digitam o proprio comando, entao a abertura automatica do CLI sai. A aba
-        # reaberta que tinha conversa tambem nao abre: nascia um Claude em branco em cada uma, e a
-        # conversa de antes so voltava por outra aba
+        # O comando que o shell ja nasce rodando. Retomar e entrar trazem o proprio, entao a
+        # abertura automatica do CLI sai. A aba reaberta que tinha conversa tambem nao abre: nascia
+        # um Claude em branco em cada uma, e a conversa de antes so voltava por outra aba
+        perfil = mod_perfis.por_id(perfil_id) if perfil_id else None
+        comando = ""
+        depois: list[tuple[int, str]] = []
+        if conversa:
+            # aba sem conta roda na pasta de login de sempre, que e a do Claude: a conversa da
+            # conta principal nao cadastrada abria a aba na pasta e nao retomava nada
+            # sem conta, a conversa do Codex da pasta padrao vem marcada pela tela; o resto e do Claude
+            sem_conta = "codex" if pedido.get("cli") == "codex" else "claude"
+            ferramenta = mod_ferramentas.por_id(perfil.ferramenta if perfil is not None else sem_conta)
+            comando = mod_ferramentas.comando_de_retomar(ferramenta, conversa)
+        elif entrar and perfil is not None:
+            # o clique em Entrar foi explicito, entao o CLI sobe mesmo com a abertura automatica
+            # desligada; antes o /login caia no PowerShell como comando inexistente. So o primeiro
+            # passo vai pelo shell: o /login e de dentro do CLI e continua digitado depois
+            passos = mod_ferramentas.passos_para_entrar(mod_ferramentas.por_id(perfil.ferramenta))
+            if passos:
+                comando, depois = passos[0][1], passos[1:]
+
         self._sem_autoabrir = bool(conversa) or entrar or bool(pedido.get("semCli"))
         try:
             session_id = self._abrir(
-                shell_id, perfil_id, cols, rows, bool(pedido_bruto.get("elevar")), inicio
+                shell_id, perfil_id, cols, rows, bool(pedido_bruto.get("elevar")), inicio, comando=comando
             )
         finally:
             self._sem_autoabrir = False
 
-        if not conversa and not entrar:
-            return session_id
-
-        perfil = mod_perfis.por_id(perfil_id) if perfil_id else None
-        if conversa:
-            # aba sem conta roda na pasta de login de sempre, que e a do Claude: a conversa da
-            # conta principal nao cadastrada abria a aba na pasta e nao retomava nada
-            ferramenta = mod_ferramentas.por_id(perfil.ferramenta if perfil is not None else "claude")
-            if ferramenta.comando:
-                self._digitar(session_id, f"{ferramenta.comando} --resume {conversa}", 700)
-        elif perfil is not None:
-            # o clique em Entrar foi explicito, entao o CLI sobe mesmo com a abertura automatica
-            # desligada; antes o /login caia no PowerShell como comando inexistente
-            for espera, texto in mod_ferramentas.passos_para_entrar(mod_ferramentas.por_id(perfil.ferramenta)):
+        if session_id in self._sessions:
+            for espera, texto in depois:
                 self._digitar(session_id, texto, espera)
+            if conversa and session_id in self._origem:
+                # a conversa retomada do Codex nasceu antes da aba; e por aqui que ela acha a aba
+                self._origem[session_id]["conversa"] = conversa
+        self._semear(session_id, anterior, emenda[:TETO_DA_EMENDA])
         return session_id
 
     def _adotar(self, estado: dict) -> None:
@@ -798,21 +905,58 @@ class Bridge(QObject):
         janela inteira parava, terminais incluidos. O pedido que chega com uma varredura andando
         fica com a resposta dela.
         """
-        if self._varrendo:
+        if self._varrendo and time.monotonic() - self._varrendo_desde < VARREDURA_PRESA:
             return
         # o cadastro e a pasta do coletor sao pequenos e ficam aqui: o cache do coletor tambem e
         # mexido pelo getLimits, nesta thread
-        pastas = {k: str(v) for k, v in mod_uso.pastas_de(mod_perfis.listar()).items()}
-        vistas = mod_coletor.ler_todas()
+        try:
+            perfis = mod_perfis.listar()
+            pastas = {k: str(v) for k, v in mod_uso.pastas_de(perfis).items()}
+            vistas = mod_coletor.ler_todas()
+        except Exception:  # noqa: BLE001 - sem resposta a tela fica esperando pra sempre
+            # perfis.json no meio de uma gravacao, disco ocupado: a tela recebe a ultima lista boa
+            # e pede de novo no proximo relogio, em vez de ficar com a lista parada
+            log.warning("nao consegui preparar a varredura de sessoes", exc_info=True)
+            self.sessoesProntas.emit(self._ultima_lista)
+            return
+        # O Codex vem a parte, com as abas vivas tiradas aqui, na thread da tela, que e quem mexe nelas.
+        # Erro no Codex fica so no Codex: a lista do Claude sai do mesmo jeito.
+        pastas_codex: dict[str, str] = {}
+        abas_codex: list[dict] = []
+        try:
+            pastas_codex = mod_sessoes_codex.pastas_do_codex(perfis)
+            notas = {a.get("sessao"): a for a in self._abas if a.get("sessao")}
+            for session_id, sessao in self._sessions.items():
+                if not sessao.alive:
+                    continue
+                aba = mod_sessoes_codex.aba_pra_parear(
+                    session_id, self._origem.get(session_id, {}), notas.get(session_id, {}), pastas_codex
+                )
+                if aba is not None:
+                    abas_codex.append(aba)
+        except Exception:  # noqa: BLE001
+            log.warning("nao consegui preparar a varredura do Codex", exc_info=True)
+            pastas_codex = {}
         self._varrendo = True
+        self._varrendo_desde = time.monotonic()
+
+        anterior = self._ultima_lista
 
         def varrer() -> None:
-            lista = "[]"
+            lista = anterior
             try:
-                lista = json.dumps(mod_sessoes.listar(pastas, vistas))
+                sessoes = mod_sessoes.listar(pastas, vistas)
+                if pastas_codex:
+                    try:
+                        do_codex = mod_sessoes_codex.parear(mod_sessoes_codex.listar(pastas_codex), abas_codex)
+                        sessoes = mod_sessoes_codex.juntar(sessoes, do_codex)
+                    except Exception:  # noqa: BLE001 - rollout ilegivel nao apaga a lista do Claude
+                        log.warning("nao consegui ler as sessoes do Codex", exc_info=True)
+                lista = json.dumps(sessoes)
             finally:
-                # com erro vai a lista vazia, como antes: sem resposta a tela esperava pra sempre e
-                # a lista parava de andar. O erro segue pro log pelo gancho das threads
+                # com erro vai a ultima lista boa: sem resposta a tela esperava pra sempre e a lista
+                # parava de andar, e a lista vazia apagava o estado de todos os cartoes. O erro
+                # segue pro log pelo gancho das threads
                 try:
                     self._sessoesVarridas.emit(lista)
                 except RuntimeError:
@@ -824,7 +968,62 @@ class Bridge(QObject):
     @Slot(str)
     def _entregar_sessoes(self, lista: str) -> None:
         self._varrendo = False
+        self._ultima_lista = lista
         self.sessoesProntas.emit(lista)
+
+    # -- conversas da paleta --------------------------------------------
+    # A paleta de comandos acha conversas de ate 30 dias, alem das 24 horas da lateral. A leitura vai
+    # pra uma thread e o slot devolve na hora a ultima lista pronta, com coletando ligado enquanto a
+    # nova nao chega, e a pagina pergunta de novo sozinha. Sem sinal novo, nada muda na ligacao dos
+    # sinais que ja existem.
+
+    # lista mais nova que isso volta direto, sem varrer o disco de novo a cada abertura da paleta
+    CONVERSAS_FRESCAS = 20.0
+
+    @Slot(result=str)
+    def listarConversas(self) -> str:
+        from . import conversas as mod_conversas
+
+        estado = getattr(self, "_conversas", None)
+        if estado is None:
+            estado = self._conversas = {"lista": [], "em": 0.0, "linha": None}
+        linha = estado["linha"]
+        andando = linha is not None and linha.is_alive()
+        if not andando and time.monotonic() - estado["em"] > self.CONVERSAS_FRESCAS:
+            try:
+                perfis = mod_perfis.listar()
+                claude = {k: str(v) for k, v in mod_uso.pastas_de(perfis).items()}
+                codex = {p.id: str(p.config_dir) for p in perfis if p.ferramenta == "codex"}
+            except Exception:  # noqa: BLE001 - a paleta abre mesmo sem a lista nova
+                log.warning("nao consegui preparar a lista de conversas", exc_info=True)
+                return json.dumps({"coletando": False, "conversas": estado["lista"]})
+
+            def varrer() -> None:
+                try:
+                    estado["lista"] = mod_conversas.listar(claude, codex)
+                except Exception:  # noqa: BLE001 - fica a ultima lista boa
+                    log.warning("nao consegui listar as conversas", exc_info=True)
+                finally:
+                    estado["em"] = time.monotonic()
+
+            linha = estado["linha"] = threading.Thread(target=varrer, name="conversas", daemon=True)
+            linha.start()
+            andando = True
+        return json.dumps({"coletando": andando, "conversas": estado["lista"]})
+
+    @Slot(result=str)
+    def ladosDaDivisao(self) -> str:
+        """Que shell estava em cada lado da tela dividida, pela anotacao das abas em memoria.
+
+        A anotacao vem inteira da pagina e fica aqui e no nucleo, entao a tela refeita reencontra a
+        divisao junto com as abas. O abas.json do disco nao guarda isso: o app reaberto volta inteiro.
+        """
+        lados = {}
+        for aba in self._abas:
+            lado = aba.get("lado")
+            if lado in ("esq", "dir") and aba.get("sessao"):
+                lados[lado] = str(aba["sessao"])
+        return json.dumps(lados)
 
     # -- uso e painel de uso --------------------------------------------
     # A aba Uso e o painel de uso leem o mesmo historico, numa thread so e fora da tela: a primeira
@@ -1040,7 +1239,13 @@ class Bridge(QObject):
         rows: int,
         elevar: bool,
         pasta: str | None = None,
+        comando: str = "",
     ) -> str:
+        """Sobe o shell da aba. Com comando, ele ja nasce rodando o comando, pelo argv.
+
+        Sem comando pedido, a conta com abertura automatica ligada traz o CLI dela. So a aba
+        elevada e o shell que nao sabe rodar comando na subida voltam a digitar depois de 700 ms.
+        """
         shell = next((s for s in self._shells if s.id == shell_id), None)
         if shell is None:
             shell = mod_shells.padrao(self._shells)
@@ -1048,12 +1253,24 @@ class Bridge(QObject):
         perfil = mod_perfis.por_id(perfil_id) if perfil_id else None
         session_id = uuid.uuid4().hex[:8]
 
+        if not comando and perfil is not None and not self._sem_autoabrir and mod_config.carregar().get("abrirCliDaConta"):
+            comando = mod_ferramentas.por_id(perfil.ferramenta).comando
+
         argv = [shell.caminho, *shell.args]
+        elevada = False
         if elevar:
             if self._elevacao is None:
                 self._elevacao = mod_shells.elevacao()
             if self._elevacao.get("disponivel"):
                 argv = mod_shells.elevado(shell, self._elevacao["comando"])
+                elevada = True
+        digitar = ""
+        if comando:
+            montado = None if elevada else mod_shells.com_comando(shell, comando)
+            if montado is not None:
+                argv = montado
+            else:
+                digitar = comando
 
         env = {"LOOM_ABA": session_id}
         if perfil is not None:
@@ -1073,6 +1290,9 @@ class Bridge(QObject):
             "perfil": perfil.id if perfil is not None else "",
             "pasta": pasta or "",
             "elevado": bool(elevar),
+            # o rollout do Codex nao guarda a marca da aba: o pareamento olha se a conversa nasceu
+            # depois de a aba abrir
+            "aberta": time.time(),
         }
         if self._nucleo is not None:
             session = SessaoRemota(
@@ -1102,10 +1322,8 @@ class Bridge(QObject):
         self._sessions[session_id] = session
         self._origem[session_id] = origem
 
-        if perfil is not None and not self._sem_autoabrir and mod_config.carregar().get("abrirCliDaConta"):
-            comando = mod_ferramentas.por_id(perfil.ferramenta).comando
-            if comando:
-                self._digitar(session_id, comando, 700)
+        if digitar:
+            self._digitar(session_id, digitar, 700)
 
         return session_id
 
@@ -1125,6 +1343,8 @@ class Bridge(QObject):
     def closeSession(self, session_id: str) -> None:
         session = self._sessions.pop(session_id, None)
         self._esquecer(session_id)
+        # aba fechada pela pessoa nao volta, e o que ela mostrava tambem nao fica no disco
+        mod_historico.apagar(session_id)
         if session is not None:
             session.stop()
             # filha da ponte, ficava na memoria ate o app fechar, uma por aba que ja fechou
@@ -1233,11 +1453,30 @@ class Bridge(QObject):
     def sessoes_vivas(self) -> int:
         return sum(1 for s in self._sessions.values() if s.alive)
 
+    def _guardar_ao_fechar(self) -> None:
+        """Grava o historico de toda aba viva antes de os shells cairem, e limpa o que sobrou.
+
+        Desligado, o que ja estava no disco sai junto: quem desligou nao quer o terminal guardado.
+        """
+        try:
+            # o que esta no buffer ainda nao entrou no historico
+            self._flush()
+            if self._pode_guardar_historico():
+                gravados = self._gravar_historicos(list(self._sessions))
+                citados = {str(a.get("sessao")) for a in self._abas if a.get("sessao")}
+                mod_historico.limpar(set(gravados) | citados)
+            else:
+                mod_historico.limpar(set(), idade_minima=0)
+        except Exception:  # noqa: BLE001 - guardar e bonus; travar aqui deixaria os shells vivos
+            log.warning("nao consegui guardar o historico das abas ao fechar", exc_info=True)
+
     def shutdown(self) -> None:
         self._parar_coleta_de_uso()
         self._flush_timer.stop()
         self._relistar.stop()
         self._limites.stop()
+        self._relogio_do_historico.stop()
+        self._guardar_ao_fechar()
         if self._nucleo is not None:
             # quem derruba os shells e o nucleo, que sai junto quando esta tela sair
             self._nucleo.encerrar()
@@ -1250,3 +1489,4 @@ class Bridge(QObject):
         self._historico.clear()
         self._tamanho_historico.clear()
         self._historico_cortado.clear()
+        self._historico_mudou.clear()

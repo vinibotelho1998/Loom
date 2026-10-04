@@ -102,13 +102,10 @@ html, body {
   white-space: nowrap;
   color: var(--apagado-3);
 }
-/* numa janela estreita a versao some de vez, em vez de empurrar a engrenagem pra fora da
-   barra: com o fps ligado o cromo precisa de 303px pra caber tudo */
+/* numa janela estreita a versao some de vez, em vez de empurrar a engrenagem pra fora da barra */
 @media (max-width: 320px) { .versao { display: none; } }
 
 .folga { flex: 1; }
-/* a pessoa liga o contador pra ler: em #2f3540 sobre o cromo ele ficava em 1,3 pra 1 */
-.fps { font: 500 10.5px/1 var(--mono); color: var(--apagado); letter-spacing: .04em; }
 
 /* ------------------------------------------------------------------ palco */
 
@@ -508,16 +505,6 @@ select.campo { cursor: default; }
 .ferramenta-linha .campo { font-size: 11.5px; padding: 6px 9px; }
 .ferramenta-linha label { font: 10px/1 var(--mono); color: var(--apagado-2); display: block; margin-bottom: 5px; letter-spacing: .06em; text-transform: uppercase; }
 
-/* ------------------------------------------------------------ estatisticas */
-
-.vazio {
-  padding: 26px;
-  border: 1px dashed var(--linha-forte);
-  border-radius: 10px;
-  color: var(--apagado);
-  font-size: 12.5px;
-  line-height: 1.7;
-}
 
 /* As caixinhas nascem antes do painel no documento, entao sem isto elas abrem
    atras dele e o clique parece nao ter feito nada. */
@@ -580,11 +567,6 @@ select.campo { cursor: default; }
   letter-spacing: .12em; text-transform: uppercase;
   color: var(--apagado);
 }
-.lateral-atualiza {
-  border: 0; background: transparent; color: var(--apagado);
-  font-size: 12px; cursor: default; padding: 2px 4px; border-radius: 5px;
-}
-.lateral-atualiza:hover { color: var(--texto); background: #1d212a; }
 
 .lateral-lista {
   flex: 1 1 auto;
@@ -731,27 +713,6 @@ select.campo { cursor: default; }
 .menu-perigo:hover { background: #1c1114; color: #f0a0a6; }
 .menu-item[disabled] { opacity: .35; }
 
-.bloco-topo { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
-/* mesmo desenho do titulo de Limite do plano: eram dois h3 irmaos em linguagens diferentes */
-.bloco-topo h3 {
-  margin: 0;
-  font: 500 10px/1 var(--mono);
-  letter-spacing: .08em; text-transform: uppercase;
-  color: var(--apagado-3);
-}
-
-.filtro { display: flex; gap: 2px; padding: 2px; border: 1px solid var(--linha); border-radius: 8px; }
-.aba-filtro {
-  padding: 4px 11px;
-  border: 0; border-radius: 6px;
-  background: transparent;
-  color: var(--apagado-2);
-  font: 11px inherit;
-  cursor: default;
-  transition: background .12s ease, color .12s ease;
-}
-.aba-filtro:hover { color: var(--texto); }
-.aba-filtro.ativa { background: #1f232b; color: var(--texto); }
 
 /* ready fica com a borda ambar e o fundo dos outros: o marrom antigo era mais escuro que a
    propria lateral e brigava com o destaque da aba selecionada */
@@ -783,22 +744,27 @@ select.campo { cursor: default; }
 }
 
 /* na grade quem respira e o painel inteiro, pra dar pra ver de longe */
-.palco.grade .tela.pensando { animation: respira-painel 1.9s ease-in-out infinite; }
+.palco.grade .tela.pensando,
+.palco.dividido .tela.lado.pensando { animation: respira-painel 1.9s ease-in-out infinite; }
 @keyframes respira-painel {
   0%, 100% { border-color: #1f1b29; }
   50% { border-color: #3d3156; }
 }
-.palco.grade .tela.pensando .chapeu { animation: respira-chapeu 1.9s ease-in-out infinite; }
+.palco.grade .tela.pensando .chapeu,
+.palco.dividido .tela.lado.pensando .chapeu { animation: respira-chapeu 1.9s ease-in-out infinite; }
 @keyframes respira-chapeu {
   0%, 100% { background: #19171f; }
   50% { background: #141219; }
 }
 /* o painel que espera voce e o que mais precisa aparecer: borda ambar fixa, sem piscar. O ativo
    continua com o azul, que vem depois na folha */
-.palco.grade .tela.aguardando { border-color: #6b5c33; }
+.palco.grade .tela.aguardando,
+.palco.dividido .tela.lado.aguardando { border-color: #6b5c33; }
 /* no ativo a animacao da borda venceria o azul que diz onde a tecla cai */
 .palco.grade .tela.ativa.pensando,
-.palco.grade .tela.ativa.pensando .chapeu { animation: none; }
+.palco.grade .tela.ativa.pensando .chapeu,
+.palco.dividido .tela.lado.ativa.pensando,
+.palco.dividido .tela.lado.ativa.pensando .chapeu { animation: none; }
 
 /* com a janela na frente, a sessao que acabou de ficar pronta acende um instante em vez do balao */
 .sessao.avisou { animation: acende 1.8s ease-out; }
@@ -832,19 +798,19 @@ select.campo { cursor: default; }
 }
 .aviso.visivel { opacity: 1; transform: translate(-50%, 0); }
 
-.uso-conta {
+.barra-conta {
   display: flex; align-items: center; gap: 7px;
   padding: 0 11px 0 9px; height: 28px;
   border-radius: 7px;
   background: #171a20;
 }
-.uso-conta i { width: 6px; height: 6px; border-radius: 50%; }
-.uso-conta b {
+.barra-conta i { width: 6px; height: 6px; border-radius: 50%; }
+.barra-conta b {
   font: 600 12.5px/1 inherit; color: var(--texto);
   white-space: nowrap;
   max-width: 190px; overflow: hidden; text-overflow: ellipsis;
 }
-.uso-conta { flex: 0 0 auto; }
+.barra-conta { flex: 0 0 auto; }
 
 
 .divisor {
@@ -1023,7 +989,8 @@ body.puxando-largura .tela { pointer-events: none; }
   grid-template-columns: repeat(var(--colunas, 2), minmax(0, 1fr));
   grid-auto-rows: minmax(0, 1fr);
 }
-.palco.grade .tela {
+.palco.grade .tela,
+.palco.dividido .tela.lado {
   position: relative;
   inset: auto;
   visibility: visible;
@@ -1034,19 +1001,24 @@ body.puxando-largura .tela { pointer-events: none; }
   background: #131519;
   overflow: hidden;
 }
-.palco.grade .rolagem-terminal { top: 26px; bottom: 6px; }
+.palco.grade .rolagem-terminal,
+.palco.dividido .tela.lado .rolagem-terminal { top: 26px; bottom: 6px; }
 /* na grade o painel selecionado tambem precisa gritar: antes o anel era quase invisivel
    e com seis terminais lado a lado nao dava pra saber onde a tecla ia cair */
-.palco.grade .tela.ativa {
+.palco.grade .tela.ativa,
+.palco.dividido .tela.lado.ativa {
   border-color: var(--acento);
   box-shadow: 0 0 0 1px var(--acento), 0 4px 18px rgba(0, 0, 0, .5);
 }
-.palco.grade .tela:not(.ativa) { opacity: .82; }
-.palco.grade .tela:not(.ativa):hover { opacity: 1; }
+.palco.grade .tela:not(.ativa),
+.palco.dividido .tela.lado:not(.ativa) { opacity: .82; }
+.palco.grade .tela:not(.ativa):hover,
+.palco.dividido .tela.lado:not(.ativa):hover { opacity: 1; }
 
 .chapeu { display: none; }
 
-.palco.grade .chapeu {
+.palco.grade .chapeu,
+.palco.dividido .tela.lado .chapeu {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1062,13 +1034,15 @@ body.puxando-largura .tela { pointer-events: none; }
   overflow: hidden;
   z-index: 2;
 }
-.palco.grade .tela.ativa .chapeu {
+.palco.grade .tela.ativa .chapeu,
+.palco.dividido .tela.lado.ativa .chapeu {
   background: #202634;
   border-bottom-color: #46506180;
   color: #8a93a1;
 }
 /* a cor da conta na borda do chapeu: com varios paineis, um ponto de 6px nao dava conta */
-.palco.grade .chapeu { box-shadow: inset 3px 0 0 var(--cor-conta, transparent); }
+.palco.grade .chapeu,
+.palco.dividido .tela.lado .chapeu { box-shadow: inset 3px 0 0 var(--cor-conta, transparent); }
 
 .chapeu-ponto { width: 6px; height: 6px; border-radius: 50%; flex: 0 0 auto; }
 .chapeu-conta {
@@ -1088,8 +1062,10 @@ body.puxando-largura .tela { pointer-events: none; }
   color: var(--apagado);
 }
 .chapeu-conta + .chapeu-nome::before { content: "· "; color: #33383f; }
-.palco.grade .chapeu { container-type: inline-size; }
-.palco.grade .tela.ativa .chapeu-nome { color: var(--texto); }
+.palco.grade .chapeu,
+.palco.dividido .tela.lado .chapeu { container-type: inline-size; }
+.palco.grade .tela.ativa .chapeu-nome,
+.palco.dividido .tela.lado.ativa .chapeu-nome { color: var(--texto); }
 
 .chapeu-estado { flex: 0 0 auto; }
 .chapeu-estado.pensando { color: #b088f0; }
@@ -1141,15 +1117,13 @@ body.puxando-largura .tela { pointer-events: none; }
 /* ---------------------------------------------------------------- icones */
 
 svg { display: block; }
-.icone svg, .seletor-layout button svg, .lateral-atualiza svg, .nova-aba .mais svg {
+.icone svg, .seletor-layout button svg, .nova-aba .mais svg {
   width: 15px; height: 15px;
 }
 .seletor-layout button svg { width: 13px; height: 13px; }
-.lateral-atualiza svg { width: 13px; height: 13px; }
 .nova-aba .mais { display: grid; place-items: center; }
 .nova-aba .mais svg { width: 14px; height: 14px; }
 .icone { display: grid; place-items: center; }
-.lateral-atualiza { display: grid; place-items: center; width: 20px; height: 20px; }
 
 .modelo {
   display: flex; align-items: center; gap: 7px;
@@ -1261,89 +1235,6 @@ svg { display: block; }
 
 
 
-/* ---------------------------------------------------------------- uso */
-
-.filtro-contas { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 20px; }
-.chip {
-  display: flex; align-items: center; gap: 7px;
-  padding: 6px 12px;
-  border: 1px solid var(--linha);
-  border-radius: 8px;
-  background: transparent;
-  color: var(--apagado);
-  font: 12px inherit;
-  cursor: default;
-  transition: background .12s ease, color .12s ease, border-color .12s ease;
-}
-.chip:hover { background: #1b1e24; color: var(--texto); }
-.chip.ativo { background: #1f232b; color: var(--texto); border-color: var(--linha-forte); }
-
-.numeros { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 22px; }
-.numero {
-  padding: 13px 15px;
-  border: 1px solid var(--linha);
-  border-radius: 10px;
-  background: #14161b;
-}
-.numero-rotulo {
-  display: block;
-  font: 500 10px/1 var(--mono);
-  letter-spacing: .08em; text-transform: uppercase;
-  color: var(--apagado-2);
-}
-.numero-valor {
-  display: block;
-  margin: 8px 0 3px;
-  font: 600 24px/1 var(--mono);
-  letter-spacing: -.02em;
-  color: var(--texto);
-}
-.numero-apoio { display: block; font-size: 11px; color: var(--apagado); }
-
-.bloco-limite { margin-bottom: 22px; }
-.bloco-limite h3 {
-  margin: 0 0 10px;
-  font: 500 10px/1 var(--mono);
-  letter-spacing: .08em; text-transform: uppercase;
-  color: var(--apagado-3);
-}
-/* em Todas, uma conta por linha, com o 5h e o 7d dela */
-.limite-conta + .limite-conta { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--linha); }
-.limite-conta-nome { display: flex; align-items: center; gap: 7px; margin-bottom: 2px; font-size: 12px; color: var(--texto); }
-.limite-conta-nome .bolinha { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; }
-.regua-linha { display: flex; align-items: center; gap: 12px; padding: 5px 0; }
-.regua-rotulo { width: 26px; font: 600 11px/1 var(--mono); color: var(--apagado-3); }
-.regua-zera { font: 10.5px var(--mono); color: var(--apagado-2); white-space: nowrap; }
-.regua { display: flex; align-items: center; gap: 10px; flex: 1; }
-.regua .trilho { flex: 1; max-width: 320px; height: 7px; border-radius: 4px; background: #16181e; overflow: hidden; }
-.regua .trilho i { display: block; height: 100%; border-radius: 4px; background: #4d9e6a; }
-.regua b { font: 600 11.5px/1 var(--mono); color: var(--apagado); min-width: 34px; }
-.regua.atencao .trilho i { background: #c99a4a; }
-.regua.atencao b { color: #d5b06b; }
-.regua.critico .trilho i { background: #cc5560; }
-.regua.critico b { color: #f0808a; }
-.regua-vazia { font: 11px var(--mono); color: var(--apagado-2); }
-
-#area-grafico svg { width: 100%; height: 110px; display: block; }
-#area-grafico .fito { fill: #3f7fd0; transition: fill .1s ease; }
-#area-grafico .alvo { fill: transparent; }
-/* a barra empilhada pinta cada fatia no estilo, entao o realce do hover vai por opacidade */
-#area-grafico .barra:hover .fito { fill: #7fb8ff; opacity: .78; }
-#area-grafico .rotulo-dia { fill: var(--apagado); font: 10px var(--mono); }
-.grafico-teto { margin-top: 6px; font: 10.5px var(--mono); color: var(--apagado); }
-
-.modelos-uso { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
-/* estas pilulas sao a legenda do grafico, entao carregam a cor da familia do modelo */
-.pilula-modelo {
-  display: flex; align-items: center; gap: 7px;
-  padding: 5px 10px;
-  border: 1px solid var(--linha);
-  border-radius: 7px;
-  font: 11px var(--mono);
-  color: var(--apagado-3);
-}
-.pilula-modelo b { color: var(--texto); font-weight: 600; }
-.pilula-modelo .bolinha { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; }
 
 /* ------------------------------------------------- so o thinking chama */
 
@@ -1354,8 +1245,10 @@ svg { display: block; }
 .sessao.parada .sessao-pulso { background: #3a3f49; }
 .sessao.parada .sessao-linha { color: var(--apagado); }
 
-.palco.grade .tela.aguardando, .palco.grade .tela.parada { animation: none; }
-.palco.grade .tela.aguardando .chapeu, .palco.grade .tela.parada .chapeu { animation: none; }
+.palco.grade .tela.aguardando, .palco.grade .tela.parada,
+.palco.dividido .tela.lado.aguardando, .palco.dividido .tela.lado.parada { animation: none; }
+.palco.grade .tela.aguardando .chapeu, .palco.grade .tela.parada .chapeu,
+.palco.dividido .tela.lado.aguardando .chapeu, .palco.dividido .tela.lado.parada .chapeu { animation: none; }
 
 .divisor-olho {
   flex: 0 0 auto;
@@ -1449,7 +1342,6 @@ svg { display: block; }
   white-space: nowrap;
 }
 .vazio-atalhos dd { margin: 0; color: var(--apagado); }
-.atalhos-sobre { justify-content: start; margin-top: 18px; }
 
 /* ---------------------------------------------------------- renomear aba */
 
@@ -1477,16 +1369,307 @@ input:focus-visible {
 }
 .chave span { background: var(--linha); }
 
-/* bolinha da cor da conta na tela de Uso; sem tamanho, um span vazio nao pinta nada */
-.chip .bolinha {
-  width: 7px; height: 7px;
-  border-radius: 50%;
-  flex: 0 0 auto;
-  margin: 0;
+
+/* ---------------------------------------------------------------- refino */
+
+/* Esta parte vem depois de tudo de proposito: e a camada que deixou a tela mais calma, com
+   separacao por tom e espaco em vez de borda em volta de cada coisa. */
+
+/* cromo: os icones sem moldura, so o fundo no hover; a pilula do uso e a unica com borda,
+   porque e um botao de estado e o ligado precisa se ver de longe */
+.icone { border-color: transparent; transition: background .14s ease, color .14s ease; }
+.icone:hover { background: #22262e; }
+.pilula { border-color: var(--linha); }
+.pilula[aria-pressed="true"] { background: #1b2433; border-color: #2c4566; color: #dfe9f7; }
+.pilula[aria-pressed="true"]:hover { background: #20304a; }
+.pilula-ponto.sem-dado { background: #3a3f49; }
+
+/* ------------------------------------------------------------ cartoes */
+
+/* O cartao era tres linhas com caixa em volta: titulo, SHELL em caixa alta e o selo da conta.
+   Agora e titulo em cima e, embaixo, o estado a esquerda e a conta a direita, na mesma linha. */
+.sessao {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 10px;
+  padding: 8px 10px 8px 10px;
+  margin-bottom: 3px;
+  border: 1px solid transparent;
+  border-left: 3px solid #2a2f38;
+  border-radius: 8px;
+  background: transparent;
+  transition: background .14s ease, border-color .14s ease;
+}
+.sessao-topo, .sessao-origem { grid-column: 1 / -1; }
+.sessao-topo { margin-bottom: 2px; gap: 7px; }
+.sessao-origem { margin: 0 0 2px 14px; }
+.sessao-linha {
+  grid-column: 1;
+  padding-left: 14px;
+  margin-top: 0;
+  font: 500 11px/1.45 var(--mono);
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--apagado-3);
+}
+.sessao-rodape {
+  grid-column: 2;
+  margin-top: 0;
+  justify-content: flex-end;
+  flex-wrap: nowrap;
+  gap: 8px;
+  font: 500 11px/1.45 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+}
+.sessao-rodape > span:not(.sessao-conta):not(.sessao-ctx) { max-width: 90px; color: var(--fraco); }
+/* a conta e so o nome na cor dela: o selo com fundo era uma terceira caixa dentro do cartao */
+.sessao-conta { padding: 0; background: none; border-radius: 0; max-width: 110px; }
+.sessao:hover { background: #181b21; }
+.sessao.externa { border-color: #262a31; border-left-color: #2a2f38; }
+
+/* a aba em que voce esta: o fundo mais claro e a marca solida na direita bastam, sem o anel
+   azul em volta, que somado a marca gritava mais que um terminal pensando */
+.sessao.aba.ativa {
+  background: #1d222c;
+  border-color: #2a313d;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, .35);
+}
+.sessao.aba.ativa:hover { background: #212734; }
+.sessao.aba.ativa .sessao-linha { color: var(--apagado-2); }
+.sessao.aba.ativa .sessao-pasta { font-weight: 600; }
+
+[data-densidade="compacta"] .sessao { padding: 5px 9px; margin-bottom: 2px; }
+
+.lateral-topo { padding: 12px 12px 8px 14px; color: var(--apagado-3); }
+.seletor-layout { margin-right: 0; }
+.lateral-lista { padding: 0 8px 8px; }
+.nova-aba { background: #16191e; }
+
+/* --------------------------------------------------------------- menu */
+
+.menu { padding: 5px; background: #17191f; border-color: #2e333c; box-shadow: 0 16px 44px rgba(0, 0, 0, .62); }
+.menu-titulo {
+  padding: 7px 9px 5px;
+  font: 600 10.5px/1 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  letter-spacing: .03em;
+  text-transform: none;
+  color: var(--apagado-3);
+}
+.menu-item { padding: 6px 9px; border-radius: 6px; transition: background .12s ease, color .12s ease; }
+.menu-item:hover { background: #22262e; }
+.menu-icone { width: 14px; height: 14px; flex: 0 0 auto; color: var(--apagado-3); transition: color .12s ease; }
+.menu-item:hover .menu-icone { color: var(--texto); }
+.menu-item .nome { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.menu-item .selo { font: 500 10.5px/1 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; }
+.menu-acao { color: var(--apagado-2); font-size: 12.5px; }
+.menu-acao:hover { color: var(--texto); }
+#usar-logada .menu-icone { color: #6ea8ec; }
+
+/* o Adm mora em cada shell, mas so aparece com o mouse na linha ou com o foco do teclado nele */
+.menu-escudo {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 7px;
+  font: 500 10.5px/1 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  letter-spacing: 0;
+  text-transform: none;
+  opacity: 0;
+  transition: opacity .14s ease, background .12s ease, color .12s ease;
+}
+.menu-escudo.indisponivel { opacity: 0; }
+.menu-escudo svg { width: 12px; height: 12px; }
+.menu-item:hover .menu-escudo, .menu-escudo:focus-visible { opacity: 1; }
+.menu-item:hover .menu-escudo.indisponivel { opacity: .45; }
+
+/* -------------------------------------------------------------- caixas */
+
+.veu { background: rgba(6, 7, 9, .62); animation: aparece .14s ease; }
+@keyframes aparece { from { opacity: 0; } }
+.caixa, .painel { animation: surge-caixa .16s ease; }
+@keyframes surge-caixa { from { opacity: 0; transform: translateY(6px) scale(.985); } }
+.caixa {
+  width: 400px;
+  padding: 20px 22px 18px;
+  border-color: #2e333c;
+  border-radius: 12px;
+  background: #17191f;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, .6);
+}
+.caixa-titulo { font-size: 14px; font-weight: 600; margin-bottom: 8px; color: #eef2f8; }
+.caixa-texto { color: var(--apagado-2); font-size: 12.5px; line-height: 1.6; }
+.caixa-botoes { margin-top: 18px; }
+
+.campo {
+  padding: 8px 11px;
+  border-color: #30353e;
+  border-radius: 7px;
+  background: #121418;
+  font: 13px "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  transition: border-color .14s ease, background .14s ease;
+}
+.campo:hover { border-color: #3a404b; }
+.campo:focus { border-color: var(--acento); background: #101216; }
+/* o que e codigo continua em fonte de codigo: comando, variavel, numero e o editor */
+.ferramenta-linha .campo, #cfg-editor, #cfg-historico { font-family: var(--mono); }
+.campo-rot { color: var(--apagado-2); font-size: 12px; }
+.campo-dica { font: 11.5px/1.55 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; }
+
+.botao {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 14px;
+  border-color: #30353e;
+  border-radius: 7px;
+  color: var(--texto);
+  font: 12.5px "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  transition: background .14s ease, color .14s ease, border-color .14s ease;
+}
+.botao svg { width: 13px; height: 13px; flex: 0 0 auto; }
+.botao:hover { background: #22262e; border-color: #3a404b; }
+.botao-forte { border-color: #2b5f9e; background: #1f4f8a; color: #eaf3ff; }
+.botao-forte:hover { background: #2660a6; border-color: #3570b8; color: #fff; }
+.botao-perigo { border-color: #5a262c; background: #3a1a1f; color: #ffd0d4; }
+.botao-perigo:hover { background: #4a1f25; color: #fff; }
+
+/* ------------------------------------------------------- configuracoes */
+
+.painel {
+  grid-template-columns: 210px 1fr;
+  width: min(940px, 94vw);
+  height: min(660px, 90vh);
+  border-color: #2e333c;
+  background: #15171c;
+  box-shadow: 0 28px 80px rgba(0, 0, 0, .65);
+}
+.painel:focus { outline: none; }
+.painel-nav { gap: 1px; padding: 18px 10px; background: #111318; border-right-color: #23272e; }
+.painel-marca {
+  padding: 2px 10px 16px;
+  font: 600 13px/1 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--texto);
+}
+.nav-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  color: var(--apagado-2);
+  font-size: 12.5px;
+}
+.nav-item svg { width: 15px; height: 15px; flex: 0 0 auto; }
+.nav-item:hover { background: #1b1e24; color: var(--texto); }
+.nav-item.ativa { background: #1f242d; color: #eef2f8; }
+.nav-item.ativa svg { color: var(--acento); }
+/* o anel so pra quem chega pelo teclado; o clique nao deixa marca */
+.nav-item:focus { outline: none; }
+.nav-item:focus-visible { outline: 2px solid var(--acento); outline-offset: -2px; }
+
+.painel-corpo { padding: 26px 32px 36px; }
+.painel-fechar { display: grid; place-items: center; top: 16px; right: 18px; transition: background .14s ease, color .14s ease; }
+.painel-fechar svg { width: 14px; height: 14px; }
+.secao h2 { margin: 0 0 4px; font-size: 17px; font-weight: 600; color: #eef2f8; }
+
+.grupo-titulo {
+  margin: 22px 0 8px 2px;
+  font: 600 11.5px/1 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  letter-spacing: .01em;
+  color: var(--apagado-2);
+}
+.secao h2 + .grupo-titulo { margin-top: 18px; }
+.grupo {
+  padding: 0 16px;
+  border: 1px solid #262a31;
+  border-radius: 10px;
+  background: #191c22;
+}
+.grupo .linha { padding: 12px 0; border-bottom: 1px solid #23272e; }
+/* a ultima linha a vista nao leva traco, mesmo com a de aviso escondida depois dela */
+.grupo .linha:not(:has(~ .linha:not([hidden]))) { border-bottom: 0; }
+.rot { gap: 2px; min-width: 0; }
+.rot span { font-size: 12.5px; color: var(--texto); }
+.rot small { font-size: 11.5px; line-height: 1.45; color: var(--apagado-3); max-width: 470px; }
+.ctrl input[type="range"] { width: 150px; }
+.campo-curto { width: 216px; padding: 6px 10px; font-size: 12.5px; }
+/* com fonte de codigo e 240px de teto, "Principal, o login do ~/.claude" saia cortado */
+select.campo-curto { width: 216px; min-width: 0; max-width: none; padding-right: 6px; }
+#cfg-historico { width: 120px; }
+.linha.desligada { opacity: .45; }
+.linha.desligada .chave { pointer-events: none; }
+
+.chave { width: 34px; height: 20px; }
+.chave span { background: #2c313a; transition: background .16s ease; }
+.chave span::after { top: 3px; left: 3px; width: 14px; height: 14px; background: #9aa3b1; transition: transform .16s ease, background .16s ease; }
+.chave input:checked + span { background: #2f6fc0; }
+.chave input:checked + span::after { transform: translateX(14px); background: #fff; }
+.chave:hover span { background: #353b45; }
+.chave:hover input:checked + span { background: #387ad0; }
+
+.amostra { margin: 4px 0 14px; padding: 12px 14px; border-color: #23272e; border-radius: 8px; background: #0f1114; }
+.ajuda { margin: 6px 0 16px; max-width: 620px; font-size: 12px; line-height: 1.6; color: var(--apagado-3); }
+
+.conta-linha { padding: 10px 14px; margin-bottom: 6px; border-color: #262a31; border-radius: 10px; background: #191c22; }
+.conta-acao { border-color: #30353e; border-radius: 6px; color: var(--texto); padding: 5px 10px; transition: background .14s ease, color .14s ease, border-color .14s ease; }
+.conta-acao:hover { background: #22262e; }
+.conta-acao.entrar { border-color: #2b5f9e; background: #1f4f8a; color: #eaf3ff; }
+.conta-acao.entrar:hover { background: #2660a6; color: #fff; }
+.botoes-contas { justify-content: flex-start; margin: 10px 0 0; }
+
+.ferramenta-linha { padding: 12px 14px; border-color: #262a31; border-radius: 10px; background: #191c22; }
+.ferramenta-linha .titulo { font-weight: 600; }
+.ferramenta-linha label {
+  font: 500 11px/1 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--apagado-2);
 }
 
-/* historico grande ainda entrando: o numero da tela e menor que o real ate terminar */
-.ajuda.ajuda-lendo { color: #d9b25f; }
+/* atalhos: cada tecla num desenho de tecla, a lista inteira num cartao so */
+.grupo-atalhos { margin-top: 18px; padding: 4px 16px; }
+.atalhos { display: grid; grid-template-columns: max-content 1fr; margin: 0; }
+.atalhos dt, .atalhos dd {
+  display: flex; align-items: center;
+  margin: 0;
+  padding: 9px 0;
+  border-bottom: 1px solid #23272e;
+}
+.atalhos dt { gap: 4px; padding-right: 28px; }
+.atalhos dd { color: var(--apagado-2); font-size: 12.5px; }
+.atalhos dt:last-of-type, .atalhos dd:last-of-type { border-bottom: 0; }
+kbd {
+  display: inline-block;
+  min-width: 22px;
+  padding: 2px 6px;
+  border: 1px solid #343a45;
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  background: #20242c;
+  color: var(--texto);
+  font: 500 11px/1.35 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  text-align: center;
+  white-space: nowrap;
+}
+
+/* --------------------------------------------------------- barra de baixo */
+
+/* Cada medidor era uma caixa com borda, e a barra virava uma fileira de botoes. Agora sao
+   itens soltos que so ganham fundo no hover, o nome da conta abre e o modelo vai pra direita. */
+.rodape { height: 34px; padding: 0 8px; gap: 2px; }
+.barra-conta {
+  height: 26px;
+  padding: 0 10px 0 8px;
+  margin-right: 4px;
+  border-radius: 6px;
+  background: transparent;
+  cursor: default;
+  transition: background .14s ease;
+}
+.barra-conta:hover { background: #22262e; }
+.barra-conta b { font-size: 12px; }
+.medidor { height: 26px; padding: 0 9px; border-color: transparent; border-radius: 6px; gap: 7px; }
+.medidor:hover { background: #22262e; border-color: transparent; }
+.medidor .trilho { height: 5px; width: 56px; background: #272b33; }
+.medidor em { font-size: 12px; }
+.modelo { margin-left: auto; height: 26px; border-color: transparent; background: transparent; }
+.modelo b { font-size: 12px; }
 
 /* ------------------------------------------------------ barra estreita */
 
@@ -1500,9 +1683,171 @@ input:focus-visible {
 }
 @container (max-width: 720px) {
   .medidor .trilho { width: 36px; }
-  .uso-conta b { max-width: 110px; }
+  .barra-conta b { max-width: 110px; }
 }
 @container (max-width: 560px) {
   .medidor .trilho { display: none; }
   .modelo b { display: none; }
 }
+
+/* --------------------------------------------------------- tela dividida */
+
+/* Dois terminais e a divisoria no meio. O palco vira uma grade de tres colunas, com as larguras
+   postas pelo script; as abas que nao estao em nenhum lado seguem escondidas por cima, fora dela.
+   O desenho de cada lado e o mesmo do painel da grade, la em cima. */
+.palco.dividido {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) 8px minmax(0, 1fr);
+  padding: 8px;
+}
+.palco.dividido .tela.lado { grid-row: 1; transition: opacity .14s ease, border-color .14s ease; }
+.palco.dividido .tela.lado-esq { grid-column: 1; }
+.palco.dividido .tela.lado-dir { grid-column: 3; }
+
+.divisoria {
+  grid-column: 2;
+  grid-row: 1;
+  position: relative;
+  cursor: col-resize;
+}
+/* a pega so aparece como um traco curto no meio; no hover e arrastando ela cresce e acende */
+.divisoria::after {
+  content: "";
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 3px; height: 34px;
+  transform: translate(-50%, -50%);
+  border-radius: 2px;
+  background: #363c47;
+  transition: background .14s ease, height .16s ease;
+}
+.divisoria:hover::after, .divisoria.ativo::after { height: 64px; background: #3d6ea8; }
+/* o cartao do lado que nao esta em foco leva a mesma marca da direita, em cinza */
+.sessao.aba.na-divisao:not(.ativa)::after {
+  content: "";
+  position: absolute;
+  top: 8px; bottom: 8px; right: 0;
+  width: 3px;
+  border-radius: 3px 0 0 3px;
+  background: #4a5262;
+}
+body.puxando-divisao { cursor: col-resize; }
+/* sem isto o xterm de baixo do mouse seleciona texto enquanto a divisoria anda */
+body.puxando-divisao .tela { pointer-events: none; }
+
+/* ------------------------------------------------------------- paleta */
+
+/* Caixa no topo, como a do VS Code: o campo, a lista e as teclas que valem. O veu e leve, so pra
+   separar do terminal; a caixa fica na mesma linguagem dos menus. */
+.paleta-veu {
+  position: absolute; inset: 0;
+  z-index: 55;
+  display: flex; justify-content: center; align-items: flex-start;
+  padding: 64px 16px 16px;
+  background: rgba(6, 7, 9, .38);
+  animation: aparece .12s ease;
+}
+.paleta {
+  width: min(640px, 100%);
+  max-height: min(540px, calc(100vh - 96px));
+  display: flex; flex-direction: column;
+  border: 1px solid #2e333c;
+  border-radius: 12px;
+  background: #17191f;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, .6);
+  overflow: hidden;
+  animation: surge-caixa .16s ease;
+}
+.paleta-busca {
+  display: flex; align-items: center; gap: 10px;
+  flex: 0 0 auto;
+  height: 46px;
+  padding: 0 16px;
+  border-bottom: 1px solid #23272e;
+}
+.paleta-lupa { width: 15px; height: 15px; flex: 0 0 auto; color: var(--apagado-3); }
+.paleta-busca input {
+  flex: 1; min-width: 0;
+  border: 0; background: transparent;
+  color: var(--texto);
+  font: 14px "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  outline: none;
+  user-select: text;
+}
+.paleta-busca input::placeholder { color: var(--fraco); }
+.paleta-busca input:focus-visible { outline: none; }
+
+.paleta-lista {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 4px 6px 6px;
+}
+.paleta-lista::-webkit-scrollbar { width: 10px; }
+.paleta-lista::-webkit-scrollbar-track { background: transparent; }
+.paleta-lista::-webkit-scrollbar-thumb { background: #3a404b; border-radius: 6px; border: 2px solid #17191f; }
+.paleta-lista::-webkit-scrollbar-thumb:hover { background: #5a6474; }
+
+.paleta-grupo {
+  padding: 10px 10px 5px;
+  font: 600 10.5px/1 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  letter-spacing: .03em;
+  color: var(--apagado-3);
+}
+.paleta-item {
+  display: flex; align-items: center; gap: 11px;
+  min-height: 34px;
+  padding: 6px 10px;
+  border-radius: 7px;
+  color: var(--texto);
+  cursor: default;
+  transition: background .12s ease;
+}
+.paleta-item.escolhido { background: #232a36; }
+.paleta-icone { display: grid; place-items: center; width: 16px; height: 16px; flex: 0 0 auto; color: var(--apagado-3); transition: color .12s ease; }
+.paleta-icone svg { width: 15px; height: 15px; }
+.paleta-item.escolhido .paleta-icone { color: #7fb8ff; }
+.paleta-textos { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.paleta-rotulo {
+  font-size: 13px; line-height: 1.35;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* as letras que casaram com o que voce digitou */
+.paleta-rotulo b { font-weight: 600; color: #7fb8ff; }
+.paleta-detalhe {
+  display: flex; align-items: center; gap: 6px;
+  min-width: 0;
+  font-size: 11.5px; line-height: 1.35;
+  color: var(--apagado-3);
+}
+.paleta-detalhe:empty { display: none; }
+.paleta-detalhe i { width: 6px; height: 6px; border-radius: 50%; flex: 0 0 auto; }
+.paleta-detalhe span { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.paleta-item.escolhido .paleta-detalhe { color: var(--apagado-2); }
+.paleta-fim { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; }
+.paleta-fim kbd { min-width: 20px; padding: 1px 5px; font-size: 10.5px; }
+.paleta-marca {
+  margin-right: 4px;
+  padding: 1px 7px;
+  border-radius: 9px;
+  background: #1f2733;
+  color: #8fb6e6;
+  font-size: 10.5px;
+}
+.paleta-tag { font-size: 11px; color: var(--fraco); }
+.paleta-vazio { padding: 26px 12px; text-align: center; color: var(--apagado-2); font-size: 12.5px; }
+
+.paleta-rodape {
+  display: flex; align-items: center; gap: 16px;
+  flex: 0 0 auto;
+  padding: 7px 16px;
+  border-top: 1px solid #23272e;
+  font-size: 11px;
+  color: var(--apagado-3);
+}
+.paleta-rodape span { display: inline-flex; align-items: center; gap: 4px; }
+.paleta-rodape span kbd:last-of-type { margin-right: 3px; }
+.paleta-rodape kbd { min-width: 18px; padding: 0 5px; font-size: 10px; line-height: 1.5; }
+.paleta-rodape kbd svg { display: inline-block; width: 9px; height: 9px; vertical-align: -1px; }

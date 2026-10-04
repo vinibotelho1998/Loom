@@ -88,6 +88,23 @@ def passos_para_entrar(ferramenta: Ferramenta) -> list[tuple[int, str]]:
     return passos
 
 
+# Como cada CLI retoma uma conversa pelo id. O do Codex e subcomando; os outros, opcao.
+RETOMAR_COMO_SUBCOMANDO = {"codex": "resume"}
+
+
+def comando_de_retomar(ferramenta: Ferramenta, conversa: str) -> str:
+    """A linha que retoma aquela conversa no CLI da ferramenta, ou vazio se ela nao tem comando.
+
+    O --resume ia pra todas, e o Codex nao conhece a opcao: a aba abria com erro em vez da conversa.
+    O id ja chega conferido por quem chama, porque vira argumento de comando.
+    """
+    if not ferramenta.comando or not conversa:
+        return ""
+    if ferramenta.id in RETOMAR_COMO_SUBCOMANDO:
+        return f"{ferramenta.comando} {RETOMAR_COMO_SUBCOMANDO[ferramenta.id]} {conversa}"
+    return f"{ferramenta.comando} --resume {conversa}"
+
+
 def gravar(ferramentas: list[Ferramenta]) -> None:
     gravar_texto(ARQUIVO, json.dumps([f.como_dict() for f in ferramentas], indent=2, ensure_ascii=False))
 

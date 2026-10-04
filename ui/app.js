@@ -21,7 +21,9 @@ const TEMA = {
    caractere pro shell e a janela executa o atalho, os dois ao mesmo tempo. */
 // A busca e Ctrl+Shift+F, como no Windows Terminal: com Ctrl+F ela tomava a tecla do programa da
 // aba, e no less, no vim e no Git Bash o Ctrl+F nunca chegava
-const ATALHOS_DA_JANELA = new Set(["KeyT", "KeyW", "KeyG", "KeyF", "KeyU"]);
+// O P da paleta e o D da divisao seguem a mesma regra: com Shift o xterm mandaria Ctrl+P, que volta
+// o historico do shell, e Ctrl+D, que fecha o shell no Git Bash e no WSL
+const ATALHOS_DA_JANELA = new Set(["KeyT", "KeyW", "KeyG", "KeyF", "KeyU", "KeyP", "KeyD"]);
 const ATALHOS_DE_CONTROLE = new Set([
   "Comma", "Tab", "PageUp", "PageDown",
   "Equal", "Minus", "Digit0", "NumpadAdd", "NumpadSubtract", "Numpad0",
@@ -30,6 +32,44 @@ const ATALHOS_DE_CONTROLE = new Set([
 function pilhaDeFonte(nome) {
   const escolhida = nome || "Hack";
   return '"' + escolhida + '", Hack, "JetBrains Mono", Consolas, monospace';
+}
+
+function escapar(texto) {
+  /* O apelido da conta e digitado por voce e vai pro innerHTML: com < ou & ele quebrava o
+     botao, e com uma tag inteira virava HTML dentro de uma pagina que fala com os shells.
+     Mora aqui desde que a tela de Uso antiga saiu; o painel de uso usa a mesma. */
+  return String(texto).replace(/[&<>"']/g, (c) => "&#" + c.charCodeAt(0) + ";");
+}
+
+function maiusculaInicial(parte) {
+  return parte ? parte.charAt(0).toUpperCase() + parte.slice(1) : parte;
+}
+
+function nomeDaFerramenta(s, dona) {
+  /* Quem gerou a conversa. A sessao do Codex sem conta cadastrada caia na conta de sempre, que e
+     do Claude, e o cartao dizia Claude Code numa conversa do Codex. */
+  if (s && s.cli === "codex") return dona && dona.ferramenta === "codex" ? dona.ferramentaNome : "Codex";
+  return dona ? dona.ferramentaNome : "Claude Code";
+}
+
+function nomeDeModelo(bruto) {
+  /* O id do transcript vira nome de gente na barra: saia sonnet-4-5, ou Sonnet 4 5 com espaco
+     no lugar do ponto. O que ja vem bonito da status line passa direto. */
+  if (!bruto) return "";
+  const texto = String(bruto);
+  // o Codex grava gpt-6.1-sol e codex-auto-review, que saiam crus na barra e no painel
+  const gpt = /^gpt-(\d+(?:\.\d+)?)((?:-[a-z0-9]+)*)$/i.exec(texto);
+  if (gpt) return "GPT-" + gpt[1] + gpt[2].split("-").filter(Boolean).map(maiusculaInicial).map((p) => " " + p).join("");
+  if (/^codex-[a-z-]+$/i.test(texto)) return texto.split("-").map(maiusculaInicial).join(" ");
+  if (!texto.startsWith("claude-")) return texto;
+  return texto
+    .replace(/^claude-/, "")
+    .replace(/-\d{8}$/, "")
+    .replace(/-latest$/, "")
+    .replace(/(\d+)-(\d+)/g, "$1.$2")
+    .split("-")
+    .map((parte) => (/^\d/.test(parte) ? parte : parte.charAt(0).toUpperCase() + parte.slice(1)))
+    .join(" ");
 }
 
 /* Caminho de arquivo com numero de linha, que e o formato que o Claude Code imprime o dia
@@ -151,6 +191,10 @@ const pendentes = new Map();
 const ordem = [];
 let abaAtiva = null;
 let removendo = null;
+// a tela dividida em dois, { esq, dir }, ou null; a aba em foco e sempre um dos lados
+let divisao = null;
+// a aba em que voce estava antes da atual: o atalho de dividir poe ela do outro lado
+let abaAnterior = null;
 
 /* ------------------------------------------------------------- aba base */
 
@@ -337,6 +381,14 @@ class Aba extends AbaBase {
     this.term = new Terminal(opcoesTerminal());
     this.fit = new FitAddon.FitAddon();
     this.term.loadAddon(this.fit);
+    // Enquanto o historico guardado e redesenhado, o terminal fica no tamanho em que ele foi
+    // escrito. O ativar, a grade e a janela remedem sozinhos, e um fit no meio da escrita fazia o
+    // desenho do CLI antigo cair torto na medida nova.
+    this.restaurando = false;
+    const medir = this.fit.fit.bind(this.fit);
+    this.fit.fit = () => {
+      if (!this.restaurando) medir();
+    };
     this.busca = new SearchAddon.SearchAddon();
     this.term.loadAddon(this.busca);
     // quantas ocorrencias e em qual voce esta; sem isso a busca so dizia "nada"
@@ -381,11 +433,12 @@ class Aba extends AbaBase {
       if (texto) entregarColagem(this, texto);
       else colarAqui(this);
     }, true);
+    // na grade e na tela dividida o clique num painel da o foco a ele
     this.rolagem = montarRolagemTerminal(this.term, this.tela, () => {
-      if (emGrade && abaAtiva !== this) ativar(this);
+      if ((emGrade || naDivisao(this)) && abaAtiva !== this) ativar(this);
     });
     this.tela.addEventListener("mousedown", () => {
-      if (emGrade && abaAtiva !== this) ativar(this);
+      if ((emGrade || naDivisao(this)) && abaAtiva !== this) ativar(this);
     });
     /* O botao direito abre o nosso menu, sempre. Deixando passar, quem respondia era o
        menu do Chromium, com Recarregar dentro: recarregar a pagina largaria todos os
@@ -426,7 +479,7 @@ class Aba extends AbaBase {
       if (this.sessao) return;
       this.pintar();
       // na grade o topo do painel e o que diz qual e qual, e ficava com o nome velho
-      if (emGrade) pintarChapeu(this);
+      if (emGrade || naDivisao(this)) pintarChapeu(this);
     });
     this.term.onResize((dim) => {
       if (bridge && this.sessionId) bridge.resize(this.sessionId, dim.cols, dim.rows);
@@ -528,7 +581,7 @@ class Aba extends AbaBase {
     if (vivo) return vivo;
     if (this.sessao) {
       const dona = this.perfil || contaPadraoCadastrada();
-      return tituloDaConversa(this.sessao, dona ? dona.ferramentaNome : "Claude Code");
+      return tituloDaConversa(this.sessao, nomeDaFerramenta(this.sessao, dona));
     }
     if (this.tituloOsc) return this.tituloOsc;
     return this.shell.nome + (this.elevado ? " (adm)" : "");
@@ -622,7 +675,7 @@ class Aba extends AbaBase {
     this.tela.classList.add(s.estado);
 
     const dona = this.perfil || contaPadraoCadastrada();
-    const ferramenta = dona ? dona.ferramentaNome : "Claude Code";
+    const ferramenta = nomeDaFerramenta(s, dona);
     const nome = this.nomeDoCartao();
     const titulo = cartao.querySelector(".rotulo");
     titulo.textContent = nome;
@@ -639,43 +692,73 @@ class Aba extends AbaBase {
   }
 
   abrir(pedido) {
-    this.pedidoInicial = pedido || null;
+    /* A aba reaberta com historico guardado redesenha o que mostrava antes de o shell subir, e
+       so depois mede e abre, pra saida nova nao se misturar com a antiga. O texto fica so aqui:
+       pro app vai o id antigo, e ele junta o arquivo guardado a memoria do shell novo. */
+    const restauro = pedido && pedido.restauro;
+    if (pedido) {
+      pedido = Object.assign({}, pedido);
+      delete pedido.restauro;
+    }
+    // o Enter na aba encerrada reabre a partir daqui, e o id antigo era so desta abertura
+    this.pedidoInicial = pedido ? Object.assign({}, pedido) : null;
+    if (this.pedidoInicial) delete this.pedidoInicial.anterior;
+    this.sessaoAnterior = (pedido && pedido.anterior) || "";
     ativar(this);
-    // a tela acabou de nascer: medir agora daria tamanho errado e o CLI desenharia torto
-    setTimeout(() => {
-      if (this.destruida) return;
-      this.fit.fit();
-      const perfilId = this.perfil ? this.perfil.id : "";
-      bridge.openSessionWith(
-        this.shell.id,
-        perfilId,
-        this.term.cols,
-        this.term.rows,
-        JSON.stringify(Object.assign({}, pedido, { elevar: this.elevado })),
-        (id) => {
-          if (this.destruida) {
-            // a aba fechou antes de o id voltar: o shell ja tinha subido e ficava vivo sem
-            // tela ate o app fechar, com o CLI da conta digitado dentro dele logo depois
-            bridge.closeSession(id);
+    const subir = (emenda) => {
+      // a tela acabou de nascer: medir agora daria tamanho errado e o CLI desenharia torto
+      setTimeout(() => {
+        if (this.destruida) return;
+        this.fit.fit();
+        const perfilId = this.perfil ? this.perfil.id : "";
+        bridge.openSessionWith(
+          this.shell.id,
+          perfilId,
+          this.term.cols,
+          this.term.rows,
+          JSON.stringify(Object.assign({}, pedido, { elevar: this.elevado }, emenda ? { emenda } : {})),
+          (id) => {
+            if (this.destruida) {
+              // a aba fechou antes de o id voltar: o shell ja tinha subido e ficava vivo sem
+              // tela ate o app fechar, com o CLI da conta digitado dentro dele logo depois
+              bridge.closeSession(id);
+              pendentes.delete(id);
+              return;
+            }
+            if (!id) {
+              // o app nao abriu o shell e nem deu id: a aba ficava viva sem shell, engolindo cada
+              // tecla. Encerrada, o Enter tenta de novo
+              this.encerrada(-1);
+              return;
+            }
+            this.sessionId = id;
+            porSessao.set(id, this);
+            for (const data of pendentes.get(id) || []) this.term.write(data);
             pendentes.delete(id);
-            return;
+            if (abaAtiva === this) this.term.focus();
+            // o CLI leva um instante pra desenhar; remedir aqui evita quebra de layout
+            setTimeout(() => this.ajustar(), 400);
           }
-          if (!id) {
-            // o app nao abriu o shell e nem deu id: a aba ficava viva sem shell, engolindo cada
-            // tecla. Encerrada, o Enter tenta de novo
-            this.encerrada(-1);
-            return;
-          }
-          this.sessionId = id;
-          porSessao.set(id, this);
-          for (const data of pendentes.get(id) || []) this.term.write(data);
-          pendentes.delete(id);
-          if (abaAtiva === this) this.term.focus();
-          // o CLI leva um instante pra desenhar; remedir aqui evita quebra de layout
-          setTimeout(() => this.ajustar(), 400);
-        }
-      );
-    }, 0);
+        );
+      }, 0);
+    };
+    if (!restauro || !restauro.texto) {
+      subir("");
+      return;
+    }
+    this.restaurando = true;
+    if (restauro.cols > 0 && restauro.rows > 0) this.term.resize(restauro.cols, restauro.rows);
+    this.term.write(restauro.texto);
+    // a posicao da linha de Restaurado so se mede depois de o estado do programa antigo zerado:
+    // sair da tela alternativa troca o que aparece
+    this.term.write(ZERAR_DEPOIS_DO_RESTAURO, () => {
+      if (this.destruida) return;
+      const emenda = emendaDoRestauro(linhasDaTela(this.term), restauro.em);
+      this.term.write(emenda, () => {
+        this.restaurando = false;
+        subir(ZERAR_DEPOIS_DO_RESTAURO + emenda);
+      });
+    });
   }
 
   ligar(viva) {
@@ -827,8 +910,9 @@ function webglPermitido() {
 
 function sincronizarWebgl() {
   /* Liga o WebGL nas abas que aparecem, a ativa e, na grade, os paineis, e larga nas outras.
-     Larga antes de ligar, pra conta de contextos nunca passar do teto nem por um instante. */
-  const aVista = ordem.filter((a) => !a.ehPainel && (a === abaAtiva || emGrade));
+     Larga antes de ligar, pra conta de contextos nunca passar do teto nem por um instante. Na tela
+     dividida os dois lados aparecem. */
+  const aVista = ordem.filter((a) => !a.ehPainel && (a === abaAtiva || emGrade || naDivisao(a)));
   // com mais paineis que o teto, a ativa e a que nao pode ficar sem
   aVista.sort((a, b) => (b === abaAtiva) - (a === abaAtiva));
   const comWebgl = new Set(aVista.slice(0, TETO_DE_WEBGL));
@@ -855,7 +939,10 @@ function perdeuContexto(agora) {
 function ativar(aba) {
   if (abaAtiva === aba) return;
   if (emGrade && aba.ehPainel) alternarGrade(false);
+  // na tela dividida a aba escolhida entra no lado em foco; a que ja esta do outro lado so ganha o foco
+  if (divisao) trocarNaDivisao(aba);
   const saindo = abaAtiva;
+  if (saindo) abaAnterior = saindo;
   if (abaAtiva) {
     abaAtiva.tela.classList.remove("ativa");
     abaAtiva.botao.classList.remove("ativa");
@@ -894,11 +981,15 @@ function mostrarNaLateral(aba) {
 function fechar(aba) {
   const i = ordem.indexOf(aba);
   const eraAtiva = abaAtiva === aba;
+  // fechar um dos lados desfaz a divisao, e o foco vai pro lado que ficou
+  const lado = naDivisao(aba) ? outroLado(aba) : null;
+  if (lado) desfazerDivisao();
+  if (abaAnterior === aba) abaAnterior = null;
   aba.destruir();
   atualizarVazio();
   if (eraAtiva) {
     abaAtiva = null;
-    const alvo = ordem[Math.min(i, ordem.length - 1)];
+    const alvo = lado && ordem.indexOf(lado) >= 0 ? lado : ordem[Math.min(i, ordem.length - 1)];
     if (alvo) ativar(alvo);
   }
   montarSessoes();
@@ -963,6 +1054,18 @@ function reconectarAbas(depois) {
     ativar(ativa);
     montarSessoes();
     setTimeout(atualizarSessoes, 300);
+    // a divisao volta junto, pela anotacao das abas que o app guardou em memoria
+    bridge.ladosDaDivisao((json) => {
+      let lados = {};
+      try {
+        lados = JSON.parse(json) || {};
+      } catch (e) {
+        lados = {};
+      }
+      const esq = porSessao.get(lados.esq);
+      const dir = porSessao.get(lados.dir);
+      if (esq && dir) dividir(esq, dir, abaAtiva === dir ? dir : esq);
+    });
     depois(true);
   });
 }
@@ -971,11 +1074,13 @@ function abaPadrao() {
   novaAba(cfg.shellPadrao || (shells.length ? shells[0].id : ""), cfg.perfilPadrao || "");
 }
 
-function abrirStats(conta) {
-  // aberto pelo medidor, vem na conta da aba: em Todas o bloco do limite nem aparecia, e quem
-  // clicava no 5h da conta Trabalho caia numa tela sem 5h
-  if (conta) escolherConta(conta);
-  abrirConfig("uso");
+function contaDoPainel() {
+  /* O id que o painel de uso da a conta da aba ativa: provedor e perfil, ou "padrao" pra conta
+     sem perfil. Quem clicava no 5h da conta Trabalho caia no painel mostrando outra conta. */
+  const chave = chaveDaAba();
+  const perfil = perfis.find((p) => p.id === chave);
+  if (!perfil) return "claude:padrao";
+  return (perfil.ferramenta || "claude") + ":" + perfil.id;
 }
 
 function faixaComTexto(term) {
@@ -1043,24 +1148,22 @@ function limparTela(aba) {
   alvo.foco();
 }
 
-// com uma aba de terminal na frente, abre na conta dela, que e onde o limite aparece
-el("abrir-stats").addEventListener("click", () => abrirStats(abaAtiva && !abaAtiva.ehPainel ? chaveDaAba() : ""));
-// clicar em 5h, 7d ou no nome da conta abre a tela de Uso na conta da aba. O contexto e da
-// conversa e a tela de Uso nao fala dele, entao o clique nele so mostra o detalhe
+// clicar em 5h, 7d ou no nome da conta abre o painel de uso na conta da aba. O contexto e da
+// conversa e o painel nao fala dele, entao o clique nele so mostra o detalhe
 el("uso-barra").addEventListener("click", (ev) => {
   const ctx = ev.target.closest("#medidor-ctx");
   if (ctx) {
     if (ctx.title) piscarAviso(ctx.title);
     return;
   }
-  if (!ev.target.closest(".medidor, .uso-conta, .modelo")) return;
+  if (!ev.target.closest(".medidor, .barra-conta, .modelo")) return;
   const chave = chaveDaAba();
   // a Principal sem leitura leva a onde ela se liga, e nao a uma tela sem limite
   if (ev.target.closest(".medidor") && principalSemLeitura(perfis.find((p) => p.id === chave))) {
     abrirConfig("contas");
     return;
   }
-  abrirStats(chave);
+  PainelUso.mostrarConta(contaDoPainel());
 });
 
 /* ------------------------------------------------------------------ veu */
@@ -1069,7 +1172,9 @@ el("uso-barra").addEventListener("click", (ev) => {
 const FOCO_DO_VEU = {
   "veu-fechar": "#confirmar-fechamento",
   "veu-remover": '[data-fecha="veu-remover"]',
-  "veu-config": ".nav-item.ativa",
+  // o painel inteiro e nao o item do menu: focado por codigo, o item ativo ficava com o anel de
+  // foco azul pra sempre, como se o teclado estivesse nele
+  "veu-config": ".painel",
 };
 
 function abrirVeu(id) {
@@ -1083,16 +1188,13 @@ function abrirVeu(id) {
 
 function fecharVeu(id) {
   el(id).hidden = true;
-  if (id === "veu-config") {
-    medirFps(!!cfg.mostrarFps);
-    clearTimeout(relogioUso);
-  }
   // a caixa de nova conta fecha por cima das configuracoes, que continuam abertas
   if (!veuAberto() && abaAtiva) abaAtiva.foco();
 }
 
 function veuAberto() {
-  return ["veu-escolha", "veu-conta", "veu-remover", "veu-config", "veu-fechar"].find((id) => !el(id).hidden);
+  // a paleta conta como caixa: com ela aberta nenhuma tecla vai pro shell e o Esc so fecha ela
+  return ["veu-escolha", "veu-conta", "veu-remover", "veu-config", "veu-fechar", "paleta"].find((id) => !el(id).hidden);
 }
 
 document.querySelectorAll("[data-fecha]").forEach((b) => {
@@ -1150,15 +1252,18 @@ function montarMenu() {
   for (const s of shells) {
     const b = document.createElement("button");
     b.className = "menu-item";
-    b.innerHTML = '<span class="ponto" style="background:#2f3540"></span><span></span>';
-    b.querySelectorAll("span")[1].textContent = s.nome;
+    // o shell ganha o desenho de um prompt: a bolinha cinza era igual a de conta sem cor
+    b.innerHTML =
+      '<svg class="menu-icone" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">' +
+      '<path d="M3.2 4.6 6.4 8l-3.2 3.4M8.4 11.6h4.4"/></svg><span class="nome"></span>';
+    b.querySelector(".nome").textContent = s.nome;
     if (padrao) {
       // o selo diz em qual conta a aba vai abrir, pra ninguem gastar o plano errado sem ver
       const selo = document.createElement("span");
       selo.className = "selo";
       selo.textContent = padrao.nome;
       selo.style.color = padrao.cor;
-      selo.title = "Conta padrão, em Configurações, Terminal";
+      selo.title = "Conta padrão, em Configurações, Geral";
       b.appendChild(selo);
     }
     b.addEventListener("click", () => {
@@ -1168,7 +1273,10 @@ function montarMenu() {
 
     const escudo = document.createElement("button");
     escudo.className = "menu-escudo";
-    escudo.textContent = "adm";
+    // um escudo em cada linha do menu era ruido: ele mora la, mas so aparece com o mouse em cima
+    escudo.innerHTML =
+      '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round">' +
+      '<path d="M8 1.8 13 3.6v4c0 3.1-2.1 5.4-5 6.6-2.9-1.2-5-3.5-5-6.6v-4z"/></svg><span>Adm</span>';
     escudo.title = elevacao.disponivel
       ? "Abrir este shell com privilégio de administrador, sem conta"
       : TEXTO_DA_ELEVACAO[elevacao.motivo] ||
@@ -1463,6 +1571,7 @@ function contaMudou() {
   }
   pintarUsoDaBarra();
   if (emGrade) pintarGrade();
+  else if (divisao) pintarDivisao();
 }
 
 let leituraPrincipal = null;
@@ -1535,7 +1644,7 @@ function montarContas() {
     const cor = document.createElement("button");
     cor.className = "conta-cor";
     cor.style.background = p.cor;
-    cor.title = "trocar a cor";
+    cor.title = "Trocar a cor";
     cor.addEventListener("click", () => {
       const paleta = ["#4f9cf9", "#63c98a", "#d9b25f", "#b088f0", "#5fc2c9", "#f08189"];
       const proxima = paleta[(paleta.indexOf(p.cor) + 1) % paleta.length];
@@ -1618,7 +1727,7 @@ function montarContas() {
     esquecer.className = "conta-acao";
     esquecer.textContent = "Deslogar";
     esquecer.style.opacity = p.logado && !p.emprestada ? "1" : ".4";
-    esquecer.title = "apaga só a credencial, mantendo histórico e ajustes";
+    esquecer.title = "Apaga só a credencial, mantendo histórico e ajustes";
     let confirmando = null;
     esquecer.addEventListener("click", () => {
       if (!p.logado || p.emprestada) {
@@ -1639,7 +1748,7 @@ function montarContas() {
           confirmando = null;
           esquecer.textContent = "Deslogar";
           esquecer.classList.remove("armado");
-          esquecer.title = "apaga só a credencial, mantendo histórico e ajustes";
+          esquecer.title = "Apaga só a credencial, mantendo histórico e ajustes";
         }, 3000);
         return;
       }
@@ -1697,7 +1806,7 @@ function montarFerramentas() {
     titulo.appendChild(achado);
     linha.appendChild(titulo);
 
-    for (const [chave, rotulo] of [["comando", "comando"], ["env", "variável de ambiente"], ["login", "arquivo de login"]]) {
+    for (const [chave, rotulo] of [["comando", "Comando"], ["env", "Variável de ambiente"], ["login", "Arquivo de login"]]) {
       const bloco = document.createElement("div");
       const rot = document.createElement("label");
       rot.textContent = rotulo;
@@ -1734,9 +1843,6 @@ const CAMPOS = [
   ["cursor", "select"],
   ["cursorPisca", "check"],
   ["densidade", "select"],
-  ["painelUso", "check"],
-  ["larguraPainelUso", "range"],
-  ["mostrarFps", "check"],
   ["desenho", "select"],
   ["shellPadrao", "select"],
   ["perfilPadrao", "select"],
@@ -1746,12 +1852,15 @@ const CAMPOS = [
   ["mostrarUsoNaBarra", "check"],
   ["confiarPastas", "check"],
   ["restaurarAbas", "check"],
+  ["guardarHistorico", "check"],
+  ["retomarConversas", "check"],
   ["esconderStatusLine", "check"],
   ["avisarQuandoPronta", "check"],
   ["avisoDeLimite", "check"],
   ["fecharAoSair", "check"],
   ["editor", "text"],
 ];
+const PADRAO_LIGADO = new Set(["guardarHistorico", "retomarConversas"]);
 
 function montarSelecaoPerfis() {
   const sel = el("cfg-perfilPadrao");
@@ -1760,7 +1869,7 @@ function montarSelecaoPerfis() {
   sel.innerHTML = "";
   const nenhuma = document.createElement("option");
   nenhuma.value = "";
-  nenhuma.textContent = deSempre ? "Sem conta, abre na " + deSempre.nome : "Principal, o login do ~/.claude";
+  nenhuma.textContent = deSempre ? "Sem conta, abre na " + deSempre.nome : "Principal, do ~/.claude";
   sel.appendChild(nenhuma);
   for (const p of perfis) {
     const o = document.createElement("option");
@@ -1787,7 +1896,8 @@ function preencherCampos() {
   for (const [chave, tipo] of CAMPOS) {
     const campo = el("cfg-" + chave);
     if (!campo) continue;
-    if (tipo === "check") campo.checked = !!cfg[chave];
+    // chave nova que o config de antes nao tem nasce ligada, como o padrao do app
+    if (tipo === "check") campo.checked = PADRAO_LIGADO.has(chave) && cfg[chave] === undefined ? true : !!cfg[chave];
     else campo.value = cfg[chave];
     // valor que nao e opcao nenhuma, tipo o shell padrao vazio de fabrica ou uma conta removida,
     // deixava o campo em branco; o primeiro e o que o app usa nesse caso
@@ -1801,8 +1911,13 @@ function preencherCampos() {
   amostra.style.fontSize = cfg.tamanhoFonte + "px";
   amostra.style.lineHeight = cfg.entrelinha;
   amostra.style.letterSpacing = cfg.espacoLetra + "px";
-  el("fps").hidden = !cfg.mostrarFps;
-  medirFps(!!cfg.mostrarFps || !el("veu-config").hidden);
+  // guardar a tela e retomar a conversa so existem com as abas voltando: sem elas, apagam
+  document.querySelectorAll("[data-depende]").forEach((linha) => {
+    const desligada = cfg[linha.dataset.depende] === false;
+    linha.classList.toggle("desligada", desligada);
+    const entrada = linha.querySelector("input, select");
+    if (entrada) entrada.disabled = desligada;
+  });
 }
 
 function aplicarTudo() {
@@ -1858,46 +1973,17 @@ function ligarCampos() {
 }
 
 document.querySelectorAll(".nav-item").forEach((b) => {
-  b.addEventListener("click", () => {
-    mostrarSecao(b.dataset.alvo);
-    if (b.dataset.alvo === "uso") pintarUso();
-  });
+  b.addEventListener("click", () => mostrarSecao(b.dataset.alvo));
 });
 
 function mostrarSecao(alvo) {
-  document.querySelectorAll(".nav-item").forEach((o) => o.classList.toggle("ativa", o.dataset.alvo === alvo));
-  document.querySelectorAll(".secao").forEach((s) => s.classList.toggle("ativa", s.id === "sec-" + alvo));
-}
-
-let relogioUso = null;
-
-function usoAVista() {
-  return !el("veu-config").hidden && el("sec-uso").classList.contains("ativa");
-}
-
-function pintarUso() {
-  const alvo = el("corpo-uso");
-  if (!alvo) return;
-  clearTimeout(relogioUso);
-  bridge.getUsage((json) => {
-    let dados = {};
-    try {
-      dados = JSON.parse(json);
-    } catch (e) {
-      dados = {};
-    }
-    const porConta = dados && dados.porConta ? dados.porConta : {};
-    const parcial = !!(dados && dados.parcial);
-    renderStats(porConta, perfis, limitesPorPerfil, parcial);
-    // Com a tela aberta os numeros andam. Historico grande entra aos poucos, uma passada por
-    // vez, entao o resto e pedido logo em vez de esperar a pessoa fechar e abrir de novo.
-    clearTimeout(relogioUso);
-    if (usoAVista()) {
-      relogioUso = setTimeout(() => {
-        if (usoAVista()) pintarUso();
-      }, parcial ? 1500 : 30000);
-    }
-  });
+  // secao que nao existe mais, como a Terminal e a Uso de antes, cai na Geral
+  const existe = !!el("sec-" + alvo);
+  const escolhida = existe ? alvo : "geral";
+  document.querySelectorAll(".nav-item").forEach((o) => o.classList.toggle("ativa", o.dataset.alvo === escolhida));
+  document.querySelectorAll(".secao").forEach((s) => s.classList.toggle("ativa", s.id === "sec-" + escolhida));
+  const corpo = document.querySelector(".painel-corpo");
+  if (corpo) corpo.scrollTop = 0;
 }
 
 function abrirConfig(secao) {
@@ -1913,10 +1999,6 @@ function abrirConfig(secao) {
       bridge.desenho(receberDesenho);
       if (secao) mostrarSecao(secao);
       abrirVeu("veu-config");
-      medirFps(true);
-      // a varredura do historico so com a tela de Uso a vista: o Ctrl+virgula pra mexer na
-      // fonte disparava a leitura de todas as contas e segurava os terminais enquanto rodava
-      if (usoAVista()) pintarUso();
     });
   });
 }
@@ -2084,6 +2166,8 @@ function contaDaSessao(s) {
   /* A pasta onde o transcript esta e a verdade sobre de quem e a sessao. A marca gravada
      na hora pode ser antiga, de antes de a conta ser renomeada ou cadastrada. */
   if (s.perfil && s.perfil !== "__padrao__") return s.perfil;
+  // o Codex da pasta padrao nao e da conta de sempre do Claude
+  if (s.cli === "codex") return "";
   const cadastrada = contaPadraoCadastrada();
   if (cadastrada) return cadastrada.id;
   return s.conta || s.perfil;
@@ -2102,7 +2186,8 @@ function nomeDaPasta(caminho) {
 function tituloDaConversa(s, ferramenta) {
   /* Conversa ainda sem titulo lia "Claude Code" em cima e "Claude Code · pasta" embaixo, e tres
      delas viravam tres cartoes iguais. Sem titulo, o nome da pasta diz qual e qual. */
-  return s.titulo || nomeDaPasta(s.pasta) || ferramenta;
+  // o projeto vem pronto do Codex Desktop, que roda cada chat numa pasta de rascunho com data
+  return s.titulo || s.projeto || nomeDaPasta(s.pasta) || ferramenta;
 }
 
 function pintarOrigem(cartao, ferramenta, s, titulo) {
@@ -2112,7 +2197,7 @@ function pintarOrigem(cartao, ferramenta, s, titulo) {
   if (!alvo) return;
   alvo.innerHTML = "<b></b><i></i>";
   alvo.querySelector("b").textContent = ferramenta;
-  const pasta = nomeDaPasta(s.pasta);
+  const pasta = s.projeto || nomeDaPasta(s.pasta);
   alvo.querySelector("i").textContent = pasta && pasta !== titulo ? " · " + pasta : "";
   alvo.title = s.pasta || "";
 }
@@ -2181,6 +2266,7 @@ function montarSessoes() {
   anotarAbas();
 
   if (emGrade) pintarGrade();
+  else if (divisao) pintarDivisao();
 
   // A conversa que nasceu aqui e cuja aba nao existe mais sumia da lista e virava so um numero
   // no rotulo. Ela entra com as de fora, depois delas, marcada como encerrada, e o botao
@@ -2240,7 +2326,7 @@ function montarCartao(s) {
     pulso.className = "sessao-pulso";
     // o ponto e do estado, como no cartao da aba; a conta ja esta no rodape
     if (perfil) pulso.style.setProperty("--cor-conta", perfil.cor);
-    const ferramenta = perfil ? perfil.ferramentaNome : "Claude Code";
+    const ferramenta = nomeDaFerramenta(s, perfil);
     const nome = document.createElement("span");
     nome.className = "sessao-pasta";
     nome.textContent = tituloDaConversa(s, ferramenta);
@@ -2263,6 +2349,9 @@ function montarCartao(s) {
     if (perfil) {
       conta.textContent = perfil.nome;
       conta.style.color = perfil.cor;
+    } else if (s.cli === "codex") {
+      conta.textContent = "Codex";
+      conta.title = "Codex, o login do ~/.codex";
     } else {
       conta.textContent = "Principal";
       conta.title = "Principal, o login do ~/.claude";
@@ -2367,8 +2456,12 @@ function abrirMenuAba(aba, x, y) {
   abaDoMenu = aba;
   const soEsta = elMenuAba.querySelector('[data-aba="so-esta"]');
   const grade = elMenuAba.querySelector('[data-aba="grade"]');
-  soEsta.hidden = !emGrade;
+  soEsta.hidden = !emGrade && !divisao;
   grade.hidden = emGrade || ordem.filter((a) => !a.ehPainel).length < 2;
+  // dividir leva a aba clicada pro lado da que esta em foco; a propria em foco nao tem com quem
+  elMenuAba.querySelector('[data-aba="dividir"]').hidden =
+    emGrade || aba.ehPainel || aba === abaAtiva || naDivisao(aba) || !abaAtiva || abaAtiva.ehPainel;
+  elMenuAba.querySelector('[data-aba="desfazer-divisao"]').hidden = !divisao;
   const pasta = pastaDaAba(aba);
   const copiar = elMenuAba.querySelector('[data-aba="copiar"]');
   copiar.disabled = !pasta;
@@ -2426,7 +2519,10 @@ elMenuAba.querySelectorAll("[data-aba]").forEach((b) => {
     } else if (acao === "so-esta") {
       ativar(aba);
       alternarGrade(false);
-    } else if (acao === "grade") {
+      desfazerDivisao();
+    } else if (acao === "dividir") dividirCom(aba);
+    else if (acao === "desfazer-divisao") desfazerDivisao();
+    else if (acao === "grade") {
       ativar(aba);
       alternarGrade(true);
     }
@@ -2517,7 +2613,7 @@ function renomearAba(aba) {
     if (aba.sessao) aba.refletir(aba.sessao);
     else aba.pintar();
     // o topo do painel e o que diz na grade qual painel e qual
-    if (emGrade) pintarChapeu(aba);
+    if (emGrade || naDivisao(aba)) pintarChapeu(aba);
     anotarAbas();
     aba.foco();
   };
@@ -2589,6 +2685,12 @@ function retomarSessao(s, mesmoTrabalhando) {
         { rotulo: "Retomar mesmo assim", classe: "botao-perigo", acao: () => retomarSessao(s, true) },
       ]
     );
+    return;
+  }
+  if (!perfil && s.cli === "codex") {
+    // a aba sem conta usa o ~/.codex de sempre; o pedido diz que e o Codex quem retoma, senao
+    // subia o Claude com um id que ele nao conhece
+    novaAba("", "", { pasta: s.pasta, conversa: s.sessao, cli: "codex" });
     return;
   }
   if (!perfil && (conta === "__padrao__" || s.perfil === "__padrao__")) {
@@ -2668,6 +2770,11 @@ window.addEventListener("blur", () => {
 
 let varrendo = false;
 let relogioSessoes = null;
+// quando a varredura em andamento comecou. Resposta que nunca chega, de uma chamada que falhou do
+// lado do app, deixava varrendo ligado pra sempre: a lista e o relogio paravam, e os estados dos
+// cartoes so voltavam fechando e abrindo o Loom
+let varrendoDesde = 0;
+const VARREDURA_PRESA_MS = 15000;
 
 let assinaturaSessoes = "";
 
@@ -2678,13 +2785,18 @@ let abasComPrograma = null;
 
 function atualizarSessoes() {
   if (!bridge) return;
-  if (varrendo) {
+  if (varrendo && Date.now() - varrendoDesde < VARREDURA_PRESA_MS) {
     // aviso que chega no meio de uma varredura nao pode sumir, senao a mudanca de estado
     // so aparece no proximo relogio, ate 2,5 s depois
     pedidoPendente = true;
     return;
   }
   varrendo = true;
+  varrendoDesde = Date.now();
+  // rede de seguranca: o relogio normal so e refeito quando a lista chega, entao sem isto uma
+  // resposta perdida parava tudo. Chegando, o receberSessoes troca este pelo ritmo de sempre
+  clearTimeout(relogioSessoes);
+  relogioSessoes = setTimeout(atualizarSessoes, VARREDURA_PRESA_MS + 500);
   bridge.abasComPrograma((ids) => {
     try {
       abasComPrograma = new Set(JSON.parse(ids));
@@ -2718,11 +2830,17 @@ function receberSessoes(json) {
       .join(",") +
     "|" +
     (abasComPrograma ? [...abasComPrograma].sort().join(",") : "?");
-  if (chave !== assinaturaSessoes) {
-    assinaturaSessoes = chave;
-    montarSessoes();
-  } else {
-    envelhecer();
+  try {
+    if (chave !== assinaturaSessoes) {
+      assinaturaSessoes = chave;
+      montarSessoes();
+    } else {
+      envelhecer();
+    }
+  } catch (e) {
+    // um cartao que quebra ao pintar nao pode levar junto o relogio da lista inteira
+    console.error("a lista de sessoes nao pintou", e);
+    assinaturaSessoes = "";
   }
   reagendarSessoes();
   if (pedidoPendente) {
@@ -3036,7 +3154,8 @@ function anotarAbas() {
     const lista = ordem
       .filter((a) => !a.ehPainel && a.viva)
       .map((a) => ({
-        sessao: a.sessionId || "",
+        // a reaberta que ainda espera o shell novo aponta pro historico guardado da de antes
+        sessao: a.sessionId || a.sessaoAnterior || "",
         shell: a.shell.id,
         perfil: a.perfil ? a.perfil.id : "",
         // a pasta da conversa, a que o shell anunciou ou a de onde nasceu: so a de nascimento
@@ -3052,6 +3171,8 @@ function anotarAbas() {
           : "",
         apelido: a.apelido || "",
         ativa: a === abaAtiva,
+        // o lado da tela dividida, pra tela refeita reencontrar a divisao
+        lado: divisao && divisao.esq === a ? "esq" : divisao && divisao.dir === a ? "dir" : "",
       }));
     // sem comparar, abas.json era reescrito em disco a cada ciclo de sessoes, o dia inteiro
     const texto = JSON.stringify(lista);
@@ -3059,6 +3180,64 @@ function anotarAbas() {
     ultimaAnotacao = texto;
     bridge.saveTabs(texto);
   }, 600);
+}
+
+/* O programa que rodava na aba deixou o terminal num estado que o shell novo nao espera: tela
+   alternativa, mouse ligado, colagem marcada, foco avisado, cursor escondido, cor, margem de
+   rolagem, setas no modo de aplicacao. Sem zerar, o pwsh recebia o clique como lixo no prompt. */
+const ZERAR_DEPOIS_DO_RESTAURO =
+  "\x1b[?1049l\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?1004l\x1b[?2004l" +
+  "\x1b[?1l\x1b>\x1b[r\x1b[?25h\x1b[0m";
+
+function quandoDoRestauro(em) {
+  // em vem em segundos, da hora em que o historico foi gravado; sem ela, vale agora
+  const d = new Date(em > 0 ? em * 1000 : Date.now());
+  const dois = (n) => ("0" + n).slice(-2);
+  return dois(d.getDate()) + "/" + dois(d.getMonth() + 1) + " " + dois(d.getHours()) + ":" + dois(d.getMinutes());
+}
+
+function linhasDaTela(term) {
+  const buffer = term.buffer.active;
+  const linhas = [];
+  for (let i = 0; i < term.rows; i++) {
+    const linha = buffer.getLine(buffer.baseY + i);
+    linhas.push(linha ? linha.translateToString(true) : "");
+  }
+  return linhas;
+}
+
+function emendaDoRestauro(linhas, em) {
+  /* Poe o cursor logo abaixo da ultima linha com texto da tela e escreve a linha de Restaurado.
+     Onde o programa antigo deixou o cursor nao serve: o Claude para no meio da tela, e o prompt
+     novo nascia por cima da conversa redesenhada. */
+  let ultima = -1;
+  for (let i = linhas.length - 1; i >= 0; i--) {
+    if (String(linhas[i] || "").trim()) {
+      ultima = i;
+      break;
+    }
+  }
+  let posicao;
+  if (ultima < 0) posicao = "\x1b[1;1H";
+  else if (ultima + 1 < linhas.length) posicao = "\x1b[" + (ultima + 2) + ";1H";
+  // texto ate a ultima linha: desce rolando, senao a linha de Restaurado apagaria a ultima
+  else posicao = "\x1b[" + linhas.length + ";1H\r\n";
+  return posicao + "\x1b[38;5;240m── Restaurado · " + quandoDoRestauro(em) + " ──\x1b[0m\r\n";
+}
+
+function pedidoDaAbaSalva(s, retomar) {
+  /* Volta a aba, a conta e a pasta. Com retomarConversas ligado, a que rodava uma conversa ja
+     volta dentro dela, pelo comando na subida do shell, que nao depende do tempo de subida do
+     CLI. Desligado, a aba volta parada no prompt e o Retomar fica no botao direito: com o CLI
+     aberto sozinho nascia um Claude em branco em cada uma. */
+  const pedido = { pasta: s.pasta || "" };
+  if (s.conversa && retomar) pedido.conversa = s.conversa;
+  else pedido.semCli = !!s.conversa;
+  if (s.historico) {
+    pedido.restauro = { texto: s.historico, cols: s.cols || 0, rows: s.rows || 0, em: s.historicoEm || 0 };
+    pedido.anterior = s.sessao || "";
+  }
+  return pedido;
 }
 
 function restaurarAbas(depois) {
@@ -3075,12 +3254,7 @@ function restaurarAbas(depois) {
     }
     let ativa = null;
     for (const s of salvas) {
-      // volta a aba, a conta e a pasta. A conversa NAO e retomada sozinha: isso dependia
-      // de acertar o tempo de subida do CLI e falhava calado. Retomar e escolha sua, pelo
-      // botao direito na aba, que guarda qual conversa rodava nela. E a aba que tinha conversa
-      // volta parada no prompt: com o CLI digitado sozinho nascia um Claude em branco em cada
-      // uma, e a conversa de antes so voltava abrindo outra aba.
-      const aba = novaAba(s.shell, s.perfil, { pasta: s.pasta, semCli: !!s.conversa });
+      const aba = novaAba(s.shell, s.perfil, pedidoDaAbaSalva(s, !!cfg.retomarConversas));
       if (aba && s.conversa) {
         aba.conversaAnterior = s.conversa;
         aba.tituloAnterior = s.titulo || "";
@@ -3190,6 +3364,8 @@ function ajustarTodas() {
 
 function alternarGrade(ligar) {
   emGrade = typeof ligar === "boolean" ? ligar : !emGrade;
+  // grade e divisao se excluem: a grade ja mostra todos, os dois lados inclusive
+  if (emGrade && divisao) desfazerDivisao();
   elPalco.classList.toggle("grade", emGrade);
   sincronizarWebgl();
   document.querySelectorAll("#seletor-layout button").forEach((b) => {
@@ -3211,6 +3387,217 @@ function alternarGrade(ligar) {
 document.querySelectorAll("#seletor-layout button").forEach((b) => {
   b.addEventListener("click", () => alternarGrade(b.dataset.layout === "grade"));
 });
+
+/* ------------------------------------------------------------- divisao */
+
+/* Dois terminais lado a lado sem ir pra grade inteira: o da esquerda, o da direita e a divisoria
+   arrastavel no meio. O palco vira uma grade de tres colunas so com os dois lados; as outras abas
+   continuam escondidas por cima, como sempre. */
+
+const elDivisoria = el("divisoria");
+let arrastandoDivisoria = false;
+let relogioDosLados = null;
+let ladosObservados = "";
+
+function naDivisao(aba) {
+  return !!divisao && !!aba && (divisao.esq === aba || divisao.dir === aba);
+}
+
+function outroLado(aba) {
+  if (!naDivisao(aba)) return null;
+  return divisao.esq === aba ? divisao.dir : divisao.esq;
+}
+
+function fracaoDaDivisao() {
+  const valor = Number(cfg.fracaoDivisao);
+  return Math.min(Math.max(Number.isFinite(valor) ? valor : 0.5, 0.2), 0.8);
+}
+
+function colunasDaDivisao(fracao) {
+  // em fr e nao em porcentagem: o vao da divisoria sai do total, e os dois lados nunca vazam
+  return "minmax(0, " + fracao + "fr) 8px minmax(0, " + (1 - fracao) + "fr)";
+}
+
+function aplicarFracao() {
+  elPalco.style.gridTemplateColumns = divisao ? colunasDaDivisao(fracaoDaDivisao()) : "";
+}
+
+const observadorDosLados =
+  typeof ResizeObserver === "function"
+    ? new ResizeObserver(() => {
+        // cada lado remede quando o tamanho dele assenta: a lateral, o painel de uso e a janela
+        // mudam a largura sem passar por aqui. Arrastando a divisoria, espera a mao parar, senao o
+        // CLI redesenharia a tela inteira a cada pixel
+        clearTimeout(relogioDosLados);
+        relogioDosLados = setTimeout(ajustarLados, arrastandoDivisoria ? 300 : 90);
+      })
+    : null;
+
+function observarLados() {
+  const chave = divisao ? ordem.indexOf(divisao.esq) + ":" + ordem.indexOf(divisao.dir) : "";
+  if (!observadorDosLados || chave === ladosObservados) return;
+  ladosObservados = chave;
+  observadorDosLados.disconnect();
+  if (!divisao) return;
+  observadorDosLados.observe(divisao.esq.tela);
+  observadorDosLados.observe(divisao.dir.tela);
+}
+
+function ajustarLados() {
+  clearTimeout(relogioDosLados);
+  relogioDosLados = null;
+  if (!divisao) return;
+  requestAnimationFrame(() => {
+    if (!divisao) return;
+    divisao.esq.ajustar();
+    divisao.dir.ajustar();
+  });
+}
+
+function pintarDivisao() {
+  for (const aba of ordem) {
+    if (aba.ehPainel) continue;
+    aba.tela.classList.toggle("lado", naDivisao(aba));
+    aba.tela.classList.toggle("lado-esq", !!divisao && divisao.esq === aba);
+    aba.tela.classList.toggle("lado-dir", !!divisao && divisao.dir === aba);
+    // o cartao do outro lado tambem se marca na lateral, mais fraco que o da aba em foco
+    aba.botao.classList.toggle("na-divisao", naDivisao(aba));
+  }
+  elPalco.classList.toggle("dividido", !!divisao);
+  elDivisoria.hidden = !divisao;
+  aplicarFracao();
+  if (divisao) {
+    pintarChapeu(divisao.esq);
+    pintarChapeu(divisao.dir);
+  }
+  observarLados();
+}
+
+function dividir(esq, dir, foco) {
+  /* Poe esq e dir lado a lado e da o foco a um deles. Sai da grade, que ja mostrava todos. */
+  if (!esq || !dir || esq === dir || esq.ehPainel || dir.ehPainel) return false;
+  if (ordem.indexOf(esq) < 0 || ordem.indexOf(dir) < 0) return false;
+  if (emGrade) alternarGrade(false);
+  divisao = { esq, dir };
+  pintarDivisao();
+  const alvo = foco === dir ? dir : esq;
+  if (abaAtiva !== alvo) ativar(alvo);
+  else sincronizarWebgl();
+  ajustarLados();
+  anotarAbas();
+  return true;
+}
+
+function dividirCom(aba) {
+  // a aba em foco fica a esquerda, onde voce estava digitando, e a escolhida vai pra direita
+  if (!abaAtiva || abaAtiva.ehPainel || !aba || aba === abaAtiva) return false;
+  return dividir(abaAtiva, aba, abaAtiva);
+}
+
+function trocarNaDivisao(aba) {
+  /* A aba escolhida pela lateral, pelo atalho ou pela paleta entra no lado que estava em foco. */
+  if (naDivisao(aba)) return;
+  if (aba.ehPainel || !naDivisao(abaAtiva)) {
+    desfazerDivisao();
+    return;
+  }
+  if (divisao.esq === abaAtiva) divisao.esq = aba;
+  else divisao.dir = aba;
+  pintarDivisao();
+  anotarAbas();
+}
+
+function desfazerDivisao() {
+  if (!divisao) return;
+  divisao = null;
+  pintarDivisao();
+  sincronizarWebgl();
+  // o lado que ficou volta pra largura inteira
+  requestAnimationFrame(() => {
+    if (!abaAtiva) return;
+    abaAtiva.ajustar();
+    if (!veuAberto()) abaAtiva.foco();
+  });
+  anotarAbas();
+}
+
+function parceiraDaDivisao() {
+  /* Com quem o atalho divide: a aba de antes, e senao a seguinte na lista. */
+  const terminais = ordem.filter((a) => !a.ehPainel && a !== abaAtiva);
+  if (abaAnterior && terminais.indexOf(abaAnterior) >= 0) return abaAnterior;
+  const i = ordem.indexOf(abaAtiva);
+  return ordem.slice(i + 1).concat(ordem.slice(0, i)).find((a) => terminais.indexOf(a) >= 0) || null;
+}
+
+function alternarDivisao() {
+  /* Ctrl+Shift+D: divide com a aba de antes, e com uma aba so abre outra igual a ela do lado.
+     Com a tela ja dividida, desfaz. */
+  if (divisao) {
+    desfazerDivisao();
+    return;
+  }
+  if (!abaAtiva || abaAtiva.ehPainel) {
+    piscarAviso("Abra uma aba de terminal pra dividir a tela");
+    return;
+  }
+  const parceira = parceiraDaDivisao();
+  if (parceira) {
+    dividirCom(parceira);
+    return;
+  }
+  const esquerda = abaAtiva;
+  const perfil = esquerda.perfil && !contaRemovida(esquerda) ? esquerda.perfil.id : "";
+  const pasta = pastaDaAba(esquerda);
+  const nova = novaAba(esquerda.shell.id, perfil, pasta ? { pasta } : undefined);
+  if (nova) dividir(esquerda, nova, nova);
+}
+
+(function ligarDivisoria() {
+  let gravar = null;
+
+  const guardar = () => {
+    clearTimeout(gravar);
+    gravar = setTimeout(() => {
+      if (bridge) bridge.saveConfig(JSON.stringify({ fracaoDivisao: cfg.fracaoDivisao }), () => {});
+    }, 400);
+  };
+
+  elDivisoria.addEventListener("mousedown", (ev) => {
+    if (ev.button !== 0) return;
+    ev.preventDefault();
+    arrastandoDivisoria = true;
+    elDivisoria.classList.add("ativo");
+    document.body.classList.add("puxando-divisao");
+  });
+
+  window.addEventListener("mousemove", (ev) => {
+    if (!arrastandoDivisoria || !divisao) return;
+    // a conta desconta o respiro do palco e o vao da divisoria, que nao sao de nenhum dos lados
+    const caixa = elPalco.getBoundingClientRect();
+    const util = caixa.width - 16 - 8;
+    if (util <= 0) return;
+    const fracao = (ev.clientX - caixa.left - 8 - 4) / util;
+    cfg.fracaoDivisao = Math.round(Math.min(Math.max(fracao, 0.2), 0.8) * 1000) / 1000;
+    aplicarFracao();
+    guardar();
+  });
+
+  window.addEventListener("mouseup", () => {
+    if (!arrastandoDivisoria) return;
+    arrastandoDivisoria = false;
+    elDivisoria.classList.remove("ativo");
+    document.body.classList.remove("puxando-divisao");
+    ajustarLados();
+    if (abaAtiva && !veuAberto()) abaAtiva.foco();
+  });
+
+  // duplo clique volta ao meio, como no VS Code
+  elDivisoria.addEventListener("dblclick", () => {
+    cfg.fracaoDivisao = 0.5;
+    aplicarFracao();
+    guardar();
+  });
+})();
 
 /* --------------------------------------------- largura da lateral */
 
@@ -3309,7 +3696,6 @@ el("esconder-fora").addEventListener("click", (ev) => {
 });
 el("mostrar-fora").addEventListener("click", () => alternarSessoesDeFora(true));
 
-el("atualizar-sessoes").addEventListener("click", atualizarSessoes);
 function alternarLateral() {
   elLateral.classList.toggle("fechada");
   setTimeout(() => {
@@ -3476,7 +3862,7 @@ function principalSemLeitura(perfil) {
 
 function pintarPontoDoUso(faixas) {
   /* O ponto do botao Uso era azul fixo, com cara de tudo certo mesmo com a conta em 90%. */
-  const ponto = document.querySelector("#abrir-stats .pilula-ponto");
+  const ponto = document.querySelector("#alternar-uso .pilula-ponto");
   if (!ponto) return;
   const usados = [faixas.five_hour, faixas.seven_day]
     .map((f) => (f && typeof f.usado === "number" ? f.usado : null))
@@ -3593,6 +3979,561 @@ setInterval(() => {
   if (janelaAtiva) pintarUsoDaBarra();
 }, 30000);
 
+/* -------------------------------------------------------------- paleta */
+
+/* Ctrl+Shift+P, como no VS Code e no Warp: um campo so que acha qualquer comando, aba, conta ou
+   conversa pelo nome escrito pela metade. A lista e montada na hora em que abre, com o que existe
+   agora, e as conversas de ate 30 dias chegam do app logo depois. */
+
+const elPaleta = el("paleta");
+const elPaletaTermo = el("paleta-termo");
+const elPaletaLista = el("paleta-lista");
+// as conversas dos ultimos 30 dias de cada conta; a lista de sessoes so traz as de 24 horas
+let conversasRecentes = [];
+let itensDaPaleta = [];
+let achadosDaPaleta = [];
+let escolhidoNaPaleta = 0;
+let relogioDaPaleta = null;
+// com a busca vazia a lista mostra so as conversas mais novas; o resto aparece digitando
+const CONVERSAS_SEM_BUSCA = 8;
+// a lista desenhada tem teto: com trezentas conversas, desenhar todas a cada letra pesava
+const TETO_DA_PALETA = 120;
+
+const ICONES_DA_PALETA = {
+  mais: '<path d="M8 3.4v9.2M3.4 8h9.2"/>',
+  terminal: '<rect x="1.8" y="2.8" width="12.4" height="10.4" rx="1.8"/><path d="M4.6 6.2 6.8 8 4.6 9.8M8.6 10h2.8"/>',
+  fechar: '<path d="M4.2 4.2l7.6 7.6M11.8 4.2l-7.6 7.6"/>',
+  grade:
+    '<rect x="2.2" y="2.2" width="5" height="5" rx="1.1"/><rect x="8.8" y="2.2" width="5" height="5" rx="1.1"/>' +
+    '<rect x="2.2" y="8.8" width="5" height="5" rx="1.1"/><rect x="8.8" y="8.8" width="5" height="5" rx="1.1"/>',
+  dividir: '<rect x="2" y="3" width="12" height="10" rx="1.6"/><path d="M8 3v10"/>',
+  uma: '<rect x="2.2" y="3.2" width="11.6" height="9.6" rx="1.6"/>',
+  uso: '<path d="M3 13V8.6M6.3 13V5.2M9.7 13V7.4M13 13V3"/>',
+  lupa: '<circle cx="7" cy="7" r="4.2"/><path d="m10.2 10.2 3.3 3.3"/>',
+  conversa:
+    '<path d="M2.6 4.2c0-.9.7-1.6 1.6-1.6h7.6c.9 0 1.6.7 1.6 1.6v5.2c0 .9-.7 1.6-1.6 1.6H7.2L4.4 13.2V11c-1-.1-1.8-.8-1.8-1.6z"/>',
+  lateral: '<rect x="2" y="3" width="12" height="10" rx="1.6"/><path d="M6.4 3v10"/>',
+  renomear: '<path d="M10.6 2.8l2.6 2.6-7.4 7.4-3.2.6.6-3.2z"/>',
+};
+
+function iconeDaPaleta(nome) {
+  return (
+    '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">' +
+    (ICONES_DA_PALETA[nome] || ICONES_DA_PALETA.terminal) +
+    "</svg>"
+  );
+}
+
+function semAcento(texto) {
+  const minusculo = String(texto || "").toLowerCase();
+  // sem acento dos dois lados: quem digita "configuracoes" acha Configuracoes com cedilha e til
+  return typeof minusculo.normalize === "function" ? minusculo.normalize("NFD").replace(/[̀-ͯ]/g, "") : minusculo;
+}
+
+const COMECO_DE_PALAVRA = /[\s\-_/\\.:,·]/;
+
+function comecaPalavra(texto, i) {
+  return i === 0 || COMECO_DE_PALAVRA.test(texto[i - 1]);
+}
+
+function casarAproximado(termo, texto) {
+  /* Cada letra do termo aparece no texto, nessa ordem, como no VS Code: "nvtr" acha Nova aba em
+     Trabalho. Vale mais o trecho seguido, o comeco de palavra e o comeco do texto. Devolve os
+     pontos e as posicoes casadas, pro realce, ou null quando falta letra. */
+  const q = semAcento(termo);
+  const t = semAcento(texto);
+  if (!q) return { pontos: 0, posicoes: [] };
+  const direto = t.indexOf(q);
+  if (direto >= 0) {
+    const posicoes = [];
+    for (let i = 0; i < q.length; i++) posicoes.push(direto + i);
+    const pontos = 1000 + (direto === 0 ? 400 : comecaPalavra(t, direto) ? 250 : 0) - direto - t.length * 0.1;
+    return { pontos, posicoes };
+  }
+  const posicoes = [];
+  let pontos = 0;
+  let de = 0;
+  for (const letra of q) {
+    let achou = -1;
+    for (let i = de; i < t.length; i++) {
+      if (t[i] !== letra) continue;
+      if (achou < 0) achou = i;
+      // seguida da anterior e o melhor; senao, a primeira que comeca uma palavra
+      if (i === de && posicoes.length) break;
+      if (comecaPalavra(t, i)) {
+        achou = i;
+        break;
+      }
+    }
+    if (achou < 0) return null;
+    const anterior = posicoes.length ? posicoes[posicoes.length - 1] : -1;
+    pontos += 10 + (achou === anterior + 1 ? 15 : 0) + (comecaPalavra(t, achou) ? 20 : 0) - Math.min(achou - anterior - 1, 10);
+    posicoes.push(achou);
+    de = achou + 1;
+  }
+  return { pontos, posicoes };
+}
+
+function filtrarPaleta(itens, termo) {
+  /* Cada palavra do termo precisa casar no rotulo ou no detalhe, em qualquer ordem. O rotulo
+     vale mais, e so ele ganha realce. Sem termo, a lista vai na ordem montada, sem o que so
+     aparece buscando. */
+  const palavras = String(termo || "").trim().split(/\s+/).filter(Boolean);
+  if (!palavras.length) {
+    let conversas = 0;
+    return itens
+      .filter((item) => {
+        if (item.soBuscando) return false;
+        if (item.grupo !== "Conversas recentes") return true;
+        conversas += 1;
+        return conversas <= CONVERSAS_SEM_BUSCA;
+      })
+      .map((item) => ({ item, pontos: 0, posicoes: [] }));
+  }
+  const achados = [];
+  itens.forEach((item, ordemDoItem) => {
+    let pontos = 0;
+    const posicoes = new Set();
+    for (const palavra of palavras) {
+      const noRotulo = casarAproximado(palavra, item.rotulo);
+      const extra = casarAproximado(palavra, [item.detalhe, item.grupo, item.busca].filter(Boolean).join(" "));
+      if (!noRotulo && !extra) return;
+      if (noRotulo && (!extra || noRotulo.pontos >= extra.pontos * 0.6)) {
+        pontos += noRotulo.pontos;
+        noRotulo.posicoes.forEach((p) => posicoes.add(p));
+      } else {
+        pontos += extra.pontos * 0.6;
+      }
+    }
+    achados.push({ item, pontos, posicoes: [...posicoes].sort((a, b) => a - b), ordemDoItem });
+  });
+  achados.sort((a, b) => b.pontos - a.pontos || a.ordemDoItem - b.ordemDoItem);
+  return achados;
+}
+
+function haQuantoTempo(segundos) {
+  const s = Math.max(0, Math.round(Number(segundos) || 0));
+  if (s < 60) return "agora";
+  if (s < 3600) return "há " + Math.round(s / 60) + " min";
+  if (s < 86400) return "há " + Math.round(s / 3600) + " h";
+  const dias = Math.round(s / 86400);
+  return dias === 1 ? "há 1 dia" : "há " + dias + " dias";
+}
+
+function ehDoCodex(s) {
+  const perfil = perfis.find((p) => p.id === s.perfil);
+  return s.cli === "codex" || (!!perfil && perfil.ferramenta === "codex");
+}
+
+function conversasDaPaleta() {
+  /* As da lateral, que trazem o estado de agora, por cima das de 30 dias que o app leu. Uma
+     conversa so aparece uma vez por conta, a mais nova primeiro. */
+  const juntas = new Map();
+  for (const c of conversasRecentes) {
+    if (c && c.sessao) juntas.set((c.perfil || "") + "|" + c.sessao, Object.assign({ estado: "parada" }, c));
+  }
+  for (const s of sessoes) {
+    if (!s || !s.sessao) continue;
+    const chave = (s.perfil || "") + "|" + s.sessao;
+    juntas.set(chave, Object.assign({}, juntas.get(chave) || {}, s));
+  }
+  return [...juntas.values()].sort((a, b) => (a.idade || 0) - (b.idade || 0));
+}
+
+function irParaConversa(s) {
+  /* Aberta numa aba, vai pra ela. A aba reaberta parada no prompt com essa conversa retoma ali
+     mesmo. Fora isso, abre uma aba na conta certa ja dentro da conversa. */
+  const aba = abaDaSessao(s);
+  if (aba) {
+    ativar(aba);
+    return;
+  }
+  const parada = ordem.find((a) => !a.ehPainel && a.viva && a.conversaAnterior === s.sessao && !a.sessao);
+  if (parada) {
+    retomarAntes(parada);
+    return;
+  }
+  retomarSessao(s);
+}
+
+const TEXTO_DO_ESTADO_NA_PALETA = { pensando: "pensando", rodando: "trabalhando", aguardando: "esperando você" };
+
+function itensDaPaletaAgora() {
+  const itens = [];
+  const terminais = ordem.filter((a) => !a.ehPainel);
+  const temTerminal = !!abaAtiva && !abaAtiva.ehPainel;
+  const contaDe = (p) => (p ? p.nome : "Principal");
+
+  terminais.forEach((aba, i) => {
+    const dona = aba.perfil || contaPadraoCadastrada();
+    const s = aba.sessao;
+    const estado = s ? TEXTO_DO_ESTADO_NA_PALETA[s.estado] || "" : aba.viva ? "" : "encerrada";
+    itens.push({
+      id: "aba:" + (aba.sessionId || i),
+      grupo: "Abas abertas",
+      icone: "terminal",
+      rotulo: aba.nomeDoCartao(),
+      detalhe: [contaDe(dona), nomeDaPasta(pastaDaAba(aba)), estado].filter(Boolean).join(" · "),
+      cor: dona ? dona.cor : "",
+      marca: aba === abaAtiva ? "Atual" : naDivisao(aba) ? "Ao lado" : "",
+      atalho: i < 8 ? ["Alt", String(i + 1)] : i === terminais.length - 1 ? ["Alt", "9"] : null,
+      busca: "ir para aba",
+      acao: () => ativar(aba),
+    });
+  });
+
+  const acao = (id, rotulo, icone, atalho, executar, extra) =>
+    itens.push(Object.assign({ id, grupo: "Ações", rotulo, icone, atalho, acao: executar }, extra || {}));
+  const shellPadrao = shells.find((s) => s.id === cfg.shellPadrao) || shells[0];
+  const contaPadrao = contaPadraoDoMenu();
+  acao("nova", "Nova aba", "mais", ["Ctrl", "Shift", "T"], abaPadrao, {
+    detalhe: [shellPadrao ? shellPadrao.nome : "", contaPadrao ? contaPadrao.nome : ""].filter(Boolean).join(" · "),
+  });
+  if (divisao) {
+    acao("desfazer", "Desfazer a divisão", "uma", ["Ctrl", "Shift", "D"], desfazerDivisao, { busca: "dividir tela" });
+  } else if (temTerminal) {
+    const parceira = parceiraDaDivisao();
+    acao("dividir", "Dividir a tela em dois", "dividir", ["Ctrl", "Shift", "D"], alternarDivisao, {
+      detalhe: parceira ? "Com " + parceira.nomeDoCartao() : "Com uma aba nova igual a esta",
+      busca: "lado a lado",
+    });
+  }
+  if (emGrade || terminais.length > 1) {
+    acao("grade", emGrade ? "Ver uma aba por vez" : "Ver todos lado a lado", emGrade ? "uma" : "grade", ["Ctrl", "Shift", "G"], () => alternarGrade(), {
+      busca: "grade",
+    });
+  }
+  if (temTerminal) {
+    acao("buscar", "Buscar na saída", "lupa", ["Ctrl", "Shift", "F"], abrirBusca, { busca: "procurar texto" });
+    acao("renomear", "Renomear a aba", "renomear", null, () => renomearAba(abaAtiva), { detalhe: abaAtiva.nomeDoCartao() });
+    acao("fechar", "Fechar a aba", "fechar", ["Ctrl", "Shift", "W"], () => fecharComCuidado(abaAtiva), {
+      detalhe: abaAtiva.nomeDoCartao(),
+    });
+  }
+  acao("uso", "Mostrar ou esconder o painel de uso", "uso", ["Ctrl", "Shift", "U"], () => PainelUso.alternar(), {
+    busca: "limite plano",
+  });
+  acao("lateral", "Mostrar ou esconder a lista de abas", "lateral", null, alternarLateral, { busca: "lateral" });
+  if (!divisao && temTerminal) {
+    for (const aba of terminais) {
+      if (aba === abaAtiva) continue;
+      acao("dividir:" + (aba.sessionId || aba.nomeDoCartao()), "Dividir com " + aba.nomeDoCartao(), "dividir", null, () => dividirCom(aba), {
+        soBuscando: true,
+        busca: "lado a lado tela",
+      });
+    }
+  }
+
+  // as conversas vem logo depois das acoes: e o que mais se procura depois das abas abertas
+  for (const s of conversasDaPaleta()) {
+    const perfil = perfis.find((p) => p.id === contaDaSessao(s));
+    const codex = ehDoCodex(s);
+    const ferramenta = perfil ? perfil.ferramentaNome : codex ? "Codex" : "Claude Code";
+    const aberta = abaDaSessao(s);
+    itens.push({
+      id: "conversa:" + (s.perfil || "") + ":" + s.sessao,
+      grupo: "Conversas recentes",
+      icone: "conversa",
+      rotulo: tituloDaConversa(s, ferramenta),
+      detalhe: [contaDe(perfil), nomeDaPasta(s.pasta), haQuantoTempo(s.idade), TEXTO_DO_ESTADO_NA_PALETA[s.estado] || ""]
+        .filter(Boolean)
+        .join(" · "),
+      cor: perfil ? perfil.cor : "",
+      marca: aberta ? "Aberta" : codex ? "Codex" : "",
+      busca: ferramenta + " conversa " + (s.pasta || ""),
+      acao: () => irParaConversa(s),
+    });
+  }
+
+  // nova aba em cada conta e em cada shell; a combinacao das duas so aparece buscando
+  const contas = perfis.map((p) => ({ id: p.id, nome: p.nome, cor: p.cor, ferramenta: p.ferramentaNome, logado: p.logado }));
+  if (!contaPadraoCadastrada()) contas.unshift({ id: "", nome: "Principal", cor: "", ferramenta: "Login do ~/.claude", logado: true });
+  for (const c of contas) {
+    itens.push({
+      id: "nova-conta:" + c.id,
+      grupo: "Nova aba",
+      icone: "mais",
+      rotulo: "Nova aba em " + c.nome,
+      detalhe: [c.ferramenta, c.logado ? "" : "Sem login"].filter(Boolean).join(" · "),
+      cor: c.cor,
+      acao: () => novaAba("", c.id),
+    });
+  }
+  for (const s of shells) {
+    itens.push({
+      id: "nova-shell:" + s.id,
+      grupo: "Nova aba",
+      icone: "terminal",
+      rotulo: "Nova aba no " + s.nome,
+      detalhe: contaPadrao ? contaPadrao.nome : "",
+      acao: () => novaAba(s.id, contaPadrao ? contaPadrao.id : ""),
+    });
+    if (shells.length < 2) continue;
+    for (const c of contas) {
+      itens.push({
+        id: "nova:" + c.id + ":" + s.id,
+        grupo: "Nova aba",
+        icone: "mais",
+        rotulo: "Nova aba em " + c.nome + " no " + s.nome,
+        detalhe: c.ferramenta,
+        cor: c.cor,
+        soBuscando: true,
+        acao: () => novaAba(s.id, c.id),
+      });
+    }
+  }
+
+  const contasDoUso = perfis.map((p) => ({ nome: p.nome, cor: p.cor, id: (p.ferramenta || "claude") + ":" + p.id }));
+  if (!contaPadraoCadastrada()) contasDoUso.unshift({ nome: "Principal", cor: "", id: "claude:padrao" });
+  for (const c of contasDoUso) {
+    itens.push({
+      id: "uso:" + c.id,
+      grupo: "Painel de uso",
+      icone: "uso",
+      rotulo: "Uso da conta " + c.nome,
+      cor: c.cor,
+      busca: "limite plano painel",
+      acao: () => PainelUso.mostrarConta(c.id),
+    });
+  }
+
+  // as secoes saem do proprio menu das configuracoes, pra paleta nunca oferecer uma que sumiu
+  Array.from(document.querySelectorAll(".nav-item")).forEach((b, i) => {
+    const icone = b.querySelector("svg");
+    itens.push({
+      id: "config:" + b.dataset.alvo,
+      grupo: "Configurações",
+      rotulo: "Configurações, " + b.textContent.trim(),
+      svg: icone ? icone.outerHTML : "",
+      atalho: i === 0 ? ["Ctrl", ","] : null,
+      busca: "ajustes preferencias",
+      acao: () => abrirConfig(b.dataset.alvo),
+    });
+  });
+  return itens;
+}
+
+function rotuloComRealce(alvo, texto, posicoes) {
+  /* O texto vai como texto, nunca como HTML: o titulo da conversa vem do transcript. */
+  alvo.textContent = "";
+  const marcadas = new Set(posicoes);
+  let trecho = "";
+  let realce = false;
+  const fechar = () => {
+    if (!trecho) return;
+    if (realce) {
+      const b = document.createElement("b");
+      b.textContent = trecho;
+      alvo.appendChild(b);
+    } else alvo.appendChild(document.createTextNode(trecho));
+    trecho = "";
+  };
+  // a posicao conta em unidades do texto sem acento, que tem o mesmo tamanho do original
+  for (let i = 0; i < texto.length; i++) {
+    const marcada = marcadas.has(i);
+    if (marcada !== realce) {
+      fechar();
+      realce = marcada;
+    }
+    trecho += texto[i];
+  }
+  fechar();
+}
+
+function teclas(atalho) {
+  return atalho.map((t) => "<kbd>" + escapar(t) + "</kbd>").join("");
+}
+
+function pintarPaleta(manterId) {
+  const termo = elPaletaTermo.value;
+  achadosDaPaleta = filtrarPaleta(itensDaPaleta, termo);
+  if (manterId) {
+    const i = achadosDaPaleta.findIndex((a) => a.item.id === manterId);
+    escolhidoNaPaleta = i >= 0 ? i : 0;
+  }
+  escolhidoNaPaleta = Math.min(Math.max(escolhidoNaPaleta, 0), Math.max(achadosDaPaleta.length - 1, 0));
+  elPaletaLista.innerHTML = "";
+  if (!achadosDaPaleta.length) {
+    const vazio = document.createElement("div");
+    vazio.className = "paleta-vazio";
+    vazio.textContent = "Nada encontrado";
+    elPaletaLista.appendChild(vazio);
+    elPaletaTermo.removeAttribute("aria-activedescendant");
+    return;
+  }
+  const buscando = !!termo.trim();
+  let grupoAnterior = "";
+  achadosDaPaleta.slice(0, TETO_DA_PALETA).forEach((achado, i) => {
+    const item = achado.item;
+    if (!buscando && item.grupo !== grupoAnterior) {
+      const titulo = document.createElement("div");
+      titulo.className = "paleta-grupo";
+      titulo.textContent = item.grupo;
+      elPaletaLista.appendChild(titulo);
+    }
+    grupoAnterior = item.grupo;
+    const linha = document.createElement("div");
+    linha.className = "paleta-item";
+    linha.id = "paleta-opcao-" + i;
+    linha.dataset.indice = String(i);
+    linha.setAttribute("role", "option");
+    linha.innerHTML =
+      '<span class="paleta-icone">' + (item.svg || iconeDaPaleta(item.icone)) + "</span>" +
+      '<span class="paleta-textos"><span class="paleta-rotulo"></span><span class="paleta-detalhe"></span></span>' +
+      '<span class="paleta-fim"></span>';
+    rotuloComRealce(linha.querySelector(".paleta-rotulo"), item.rotulo, achado.posicoes);
+    const detalhe = linha.querySelector(".paleta-detalhe");
+    // o ponto da conta so vai junto de um texto: sozinho embaixo do rotulo parecia sobra
+    if (item.detalhe) {
+      if (item.cor) {
+        const ponto = document.createElement("i");
+        ponto.style.background = item.cor;
+        detalhe.appendChild(ponto);
+      }
+      const texto = document.createElement("span");
+      texto.textContent = item.detalhe;
+      detalhe.appendChild(texto);
+    }
+    const fim = linha.querySelector(".paleta-fim");
+    if (item.marca) {
+      const marca = document.createElement("span");
+      marca.className = "paleta-marca";
+      marca.textContent = item.marca;
+      fim.appendChild(marca);
+    }
+    if (item.atalho) fim.insertAdjacentHTML("beforeend", teclas(item.atalho));
+    else if (buscando) {
+      // buscando a lista perde os titulos dos grupos, entao cada item diz de onde vem
+      const grupo = document.createElement("span");
+      grupo.className = "paleta-tag";
+      grupo.textContent = item.grupo;
+      fim.appendChild(grupo);
+    }
+    // o foco fica no campo: clicar na lista nao pode tirar ele de la
+    linha.addEventListener("mousedown", (ev) => ev.preventDefault());
+    linha.addEventListener("mousemove", () => {
+      if (escolhidoNaPaleta !== i) escolherNaPaleta(i, false);
+    });
+    linha.addEventListener("click", () => executarDaPaleta(i));
+    elPaletaLista.appendChild(linha);
+  });
+  escolherNaPaleta(escolhidoNaPaleta, true);
+}
+
+function escolherNaPaleta(indice, rolar) {
+  const total = Math.min(achadosDaPaleta.length, TETO_DA_PALETA);
+  if (!total) return;
+  escolhidoNaPaleta = ((indice % total) + total) % total;
+  let alvo = null;
+  for (const linha of elPaletaLista.querySelectorAll(".paleta-item")) {
+    const escolhida = Number(linha.dataset.indice) === escolhidoNaPaleta;
+    linha.classList.toggle("escolhido", escolhida);
+    linha.setAttribute("aria-selected", escolhida ? "true" : "false");
+    if (escolhida) alvo = linha;
+  }
+  if (!alvo) return;
+  elPaletaTermo.setAttribute("aria-activedescendant", alvo.id);
+  if (!rolar) return;
+  // rola so a lista, na mao, como na lateral: o scrollIntoView mexeria na pagina inteira
+  const lista = elPaletaLista.getBoundingClientRect();
+  const caixa = alvo.getBoundingClientRect();
+  // o primeiro da lista leva junto o titulo do grupo de cima
+  if (escolhidoNaPaleta === 0) elPaletaLista.scrollTop = 0;
+  else if (caixa.top < lista.top) elPaletaLista.scrollTop -= lista.top - caixa.top + 4;
+  else if (caixa.bottom > lista.bottom) elPaletaLista.scrollTop += caixa.bottom - lista.bottom + 4;
+}
+
+function abrirPaleta() {
+  if (!elPaleta.hidden) {
+    elPaletaTermo.select();
+    return;
+  }
+  fecharMenus();
+  elPaleta.hidden = false;
+  elPaletaTermo.value = "";
+  escolhidoNaPaleta = 0;
+  itensDaPaleta = itensDaPaletaAgora();
+  pintarPaleta();
+  elPaletaTermo.focus();
+  pedirConversas(0);
+}
+
+function remontarPaleta() {
+  const atual = achadosDaPaleta[escolhidoNaPaleta];
+  itensDaPaleta = itensDaPaletaAgora();
+  pintarPaleta(atual ? atual.item.id : "");
+}
+
+function pedirConversas(tentativa) {
+  clearTimeout(relogioDaPaleta);
+  if (!bridge || !bridge.listarConversas || elPaleta.hidden) return;
+  bridge.listarConversas((json) => {
+    let lido = null;
+    try {
+      lido = JSON.parse(json);
+    } catch (e) {
+      lido = null;
+    }
+    if (!lido || elPaleta.hidden) return;
+    conversasRecentes = Array.isArray(lido.conversas) ? lido.conversas : [];
+    remontarPaleta();
+    // a leitura nova ainda anda: pergunta de novo, com teto, pra nunca virar relogio sem fim
+    if (lido.coletando && tentativa < 20) relogioDaPaleta = setTimeout(() => pedirConversas(tentativa + 1), 500);
+  });
+}
+
+function fecharPaleta() {
+  if (elPaleta.hidden) return;
+  elPaleta.hidden = true;
+  clearTimeout(relogioDaPaleta);
+  if (!veuAberto() && abaAtiva) abaAtiva.foco();
+}
+
+function executarDaPaleta(indice) {
+  const achado = achadosDaPaleta[indice];
+  if (!achado) return;
+  fecharPaleta();
+  try {
+    achado.item.acao();
+  } catch (e) {
+    console.error("o comando da paleta falhou", e);
+  }
+}
+
+elPaletaTermo.addEventListener("input", () => {
+  escolhidoNaPaleta = 0;
+  pintarPaleta();
+});
+
+elPaletaTermo.addEventListener("keydown", (ev) => {
+  // nada daqui sobe pra janela: o Esc nao pode interromper o Claude nem o Ctrl+Shift+W fechar a aba
+  ev.stopPropagation();
+  const passo = { ArrowDown: 1, ArrowUp: -1, PageDown: 8, PageUp: -8 }[ev.key];
+  if (passo) {
+    ev.preventDefault();
+    const total = Math.min(achadosDaPaleta.length, TETO_DA_PALETA);
+    // a pagina para na ponta; a seta da a volta, como no VS Code
+    const destino = Math.abs(passo) > 1 ? Math.min(Math.max(escolhidoNaPaleta + passo, 0), total - 1) : escolhidoNaPaleta + passo;
+    escolherNaPaleta(destino, true);
+  } else if (ev.key === "Enter") {
+    ev.preventDefault();
+    executarDaPaleta(escolhidoNaPaleta);
+  } else if (ev.key === "Escape" || (ev.ctrlKey && ev.shiftKey && ev.code === "KeyP")) {
+    ev.preventDefault();
+    fecharPaleta();
+  } else if (ev.key === "Tab") {
+    ev.preventDefault();
+  }
+});
+
+// clicar fora da caixa fecha, como o menu
+elPaleta.addEventListener("mousedown", (ev) => {
+  if (ev.target === elPaleta) {
+    ev.preventDefault();
+    fecharPaleta();
+  }
+});
+
 /* ------------------------------------------------------------- atalhos */
 
 window.addEventListener("keydown", (ev) => {
@@ -3645,6 +4586,12 @@ window.addEventListener("keydown", (ev) => {
   } else if (ev.ctrlKey && ev.shiftKey && ev.code === "KeyU") {
     ev.preventDefault();
     PainelUso.alternar();
+  } else if (ev.ctrlKey && ev.shiftKey && ev.code === "KeyP") {
+    ev.preventDefault();
+    abrirPaleta();
+  } else if (ev.ctrlKey && ev.shiftKey && ev.code === "KeyD") {
+    ev.preventDefault();
+    alternarDivisao();
   } else if (ev.ctrlKey && !ev.shiftKey && ev.code === "Comma") {
     ev.preventDefault();
     abrirConfig();
@@ -3713,40 +4660,6 @@ window.addEventListener("resize", () => {
     else if (abaAtiva) abaAtiva.ajustar();
   }, 50);
 });
-
-/* ----------------------------------------------------------------- fps */
-
-let quadros = 0;
-let marco = performance.now();
-let medindo = false;
-
-function contar(agora) {
-  if (!medindo) return;
-  quadros++;
-  if (agora - marco >= 1000) {
-    const v = Math.round((quadros * 1000) / (agora - marco));
-    el("fps").textContent = v + " fps";
-    const alvo = el("sobre-fps");
-    if (alvo) alvo.textContent = v + " por segundo";
-    quadros = 0;
-    marco = agora;
-  }
-  requestAnimationFrame(contar);
-}
-
-function medirFps(ligar) {
-  // o proprio medidor mantinha o app desenhando sem parar. Desligado, ele nao custa nada.
-  if (ligar === medindo) return;
-  medindo = ligar;
-  if (ligar) {
-    quadros = 0;
-    marco = performance.now();
-    requestAnimationFrame(contar);
-  } else {
-    const alvo = el("sobre-fps");
-    if (alvo) alvo.textContent = "Desligado";
-  }
-}
 
 /* ---------------------------------------------------------------- sobre */
 

@@ -486,7 +486,8 @@ class PonteComNucleo(ComPastaPropria):
         self.assertEqual(len(abrir), 1)
         self.assertEqual(abrir[0][1], sid)
         self.assertEqual(abrir[0][4]["LOOM_ABA"], sid)
-        self.assertEqual(set(abrir[0][5]), {"shell", "perfil", "pasta", "elevado"})
+        # a hora de abertura vai junto pro nucleo: e por ela que a conversa do Codex acha a aba
+        self.assertEqual(set(abrir[0][5]), {"shell", "perfil", "pasta", "elevado", "aberta"})
         ponte.write(sid, "ls\r")
         ponte.resize(sid, 90, 20)
         ponte.saveTabs(json.dumps([{"sessao": sid, "apelido": "x"}]))

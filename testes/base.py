@@ -23,6 +23,7 @@ from loom import (  # noqa: E402
     perfis,
     sessao_salva,
     sessoes,
+    sessoes_codex,
     uso,
 )
 
@@ -52,6 +53,7 @@ class ComPastaPropria(unittest.TestCase):
             (uso, "RAIZ"): uso.RAIZ,
             (sessao_salva, "ARQUIVO"): sessao_salva.ARQUIVO,
             (sessao_salva, "RAIZ"): sessao_salva.RAIZ,
+            (sessoes_codex, "CASA_PADRAO"): sessoes_codex.CASA_PADRAO,
         }
 
         dados = self.raiz / "dados"
@@ -71,12 +73,17 @@ class ComPastaPropria(unittest.TestCase):
         uso.CACHE = dados / "uso-cache.json"
         sessao_salva.RAIZ = dados
         sessao_salva.ARQUIVO = dados / "abas.json"
+        # a lista de sessoes le o ~/.codex de verdade quando ele existe
+        sessoes_codex.CASA_PADRAO = self.casa / ".codex"
 
         # todo cache de modulo tem que comecar vazio, senao um teste enxerga o dado do outro
         perfis._IDENTIDADE.clear()
         perfis._TAMANHO.clear()
         coletor._LIDAS.clear()
         sessoes._LEMBRADO.clear()
+        sessoes_codex._LEMBRADO.clear()
+        sessoes_codex._CABECAS.clear()
+        sessoes_codex._INDICES.clear()
         sessao_salva._ULTIMO = None
 
     def tearDown(self) -> None:

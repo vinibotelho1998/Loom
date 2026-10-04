@@ -12,10 +12,9 @@
     <span class="marca">Loom</span>
     <span class="versao" id="versao-topo" title="Versão do Loom"></span>
     <span class="folga"></span>
-    <span class="fps" id="fps" hidden></span>
-    <button class="pilula" id="abrir-stats" title="Consumo e limite de cada conta"><span class="pilula-ponto"></span>Uso</button>
-    <button class="icone" id="alternar-lateral" title="Mostrar ou esconder a barra lateral"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2" y="3" width="12" height="10" rx="1.6"/><path d="M6.4 3v10"/></svg></button>
-    <button class="icone" id="alternar-uso" title="Mostrar ou esconder o painel de uso, Ctrl+Shift+U" aria-pressed="false"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2" y="3" width="12" height="10" rx="1.6"/><path d="M9.6 3v10"/></svg></button>
+    <!-- um botao so pro uso: a pilula com o ponto de nivel abre e fecha o painel da direita -->
+    <button class="pilula" id="alternar-uso" title="Painel de uso, Ctrl+Shift+U" aria-pressed="false"><span class="pilula-ponto"></span>Uso</button>
+    <button class="icone" id="alternar-lateral" title="Mostrar ou esconder a lista de abas"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2" y="3" width="12" height="10" rx="1.6"/><path d="M6.4 3v10"/></svg></button>
     <button class="icone" id="abrir-config" title="Configurações, Ctrl+vírgula"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
   </header>
 
@@ -38,7 +37,6 @@
           <button data-layout="uma" class="ativo" title="Uma aba por vez"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2.2" y="3.2" width="11.6" height="9.6" rx="1.6"/></svg></button>
           <button data-layout="grade" id="alternar-grade" title="Todos lado a lado, Ctrl+Shift+G"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2.2" y="2.2" width="5" height="5" rx="1.1"/><rect x="8.8" y="2.2" width="5" height="5" rx="1.1"/><rect x="2.2" y="8.8" width="5" height="5" rx="1.1"/><rect x="8.8" y="8.8" width="5" height="5" rx="1.1"/></svg></button>
         </div>
-        <button class="lateral-atualiza" id="atualizar-sessoes" title="Atualizar agora"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M13 8a5 5 0 1 1-1.5-3.5"/><path d="M13 2.6V5h-2.4"/></svg></button>
       </div>
       <div class="lateral-lista" id="abas"></div>
       <div class="divisor" id="divisor-fora" hidden title="Arraste pra cima ou pra baixo pra mudar o tamanho">
@@ -68,15 +66,19 @@
             <dt>Ctrl+Shift+W</dt><dd>Fechar a aba</dd>
             <dt>Ctrl+Tab</dt><dd>Próxima aba, com Shift volta</dd>
             <dt>Alt+1 a 9</dt><dd>Pular direto pra aba</dd>
+            <dt>Ctrl+Shift+P</dt><dd>Paleta de comandos</dd>
+            <dt>Ctrl+Shift+D</dt><dd>Dividir a tela em dois</dd>
             <dt>Ctrl+Shift+G</dt><dd>Todos lado a lado</dd>
             <dt>Ctrl+Shift+U</dt><dd>Painel de uso</dd>
             <dt>Ctrl+Shift+F</dt><dd>Buscar na saída</dd>
             <dt>Ctrl+vírgula</dt><dd>Configurações</dd>
           </dl>
         </div>
+        <!-- a divisoria da tela dividida em dois: so existe na coluna do meio, entre os dois lados -->
+        <div class="divisoria" id="divisoria" role="separator" aria-orientation="vertical" title="Arraste pra mudar a divisão, duplo clique volta ao meio" hidden></div>
       </main>
       <footer class="rodape uso-barra" id="uso-barra" hidden>
-        <span class="uso-conta" id="uso-conta"><i></i><b></b></span>
+        <span class="barra-conta" id="uso-conta"><i></i><b></b></span>
         <button class="medidor" id="medidor-5h" title="Limite das últimas 5 horas">
           <i>5h</i><span class="trilho"><b></b></span><em>--</em><u></u>
         </button>
@@ -101,8 +103,8 @@
     <div class="menu-grupo">
       <div class="menu-titulo">Conta</div>
       <div id="menu-perfis"></div>
-      <button class="menu-item menu-acao" id="usar-logada" title="Cadastra a conta que já estava logada no ~/.claude, sem pedir login de novo">↳ Cadastrar a Principal, a conta já logada</button>
-      <button class="menu-item menu-acao" id="nova-conta">+ Nova conta</button>
+      <button class="menu-item menu-acao" id="usar-logada" title="Cadastra a conta que já estava logada no ~/.claude, sem pedir login de novo"><svg class="menu-icone" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="6.5" cy="5.5" r="2.6"/><path d="M1.8 13.4c.6-2.4 2.5-3.8 4.7-3.8 1 0 1.9.3 2.7.8"/><path d="M10.4 11.6l1.6 1.6 2.6-3"/></svg><span>Cadastrar a Principal, já logada</span></button>
+      <button class="menu-item menu-acao" id="nova-conta"><svg class="menu-icone" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M8 3.4v9.2M3.4 8h9.2"/></svg><span>Nova conta</span></button>
     </div>
   </div>
 
@@ -164,239 +166,253 @@
 
   <!-- configuracoes -->
   <div class="veu" id="veu-config" hidden>
-    <div class="painel">
+    <div class="painel" tabindex="-1" role="dialog" aria-label="Configurações">
       <aside class="painel-nav">
         <div class="painel-marca">Configurações</div>
-        <button class="nav-item ativa" data-alvo="aparencia">Aparência</button>
-        <button class="nav-item" data-alvo="terminal">Terminal</button>
-        <button class="nav-item" data-alvo="uso">Uso</button>
-        <button class="nav-item" data-alvo="contas">Contas</button>
-        <button class="nav-item" data-alvo="ferramentas">Ferramentas</button>
-        <button class="nav-item" data-alvo="sobre">Sobre</button>
+        <button class="nav-item ativa" data-alvo="geral"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M2.5 4.5h6.2M12.3 4.5h1.2M2.5 11.5h1.2M7.3 11.5h6.2"/><circle cx="10.5" cy="4.5" r="1.7"/><circle cx="5.5" cy="11.5" r="1.7"/></svg><span>Geral</span></button>
+        <button class="nav-item" data-alvo="aparencia"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3.4 13 7.2 3.2h1.6L12.6 13"/><path d="M5 9.4h6"/></svg><span>Aparência</span></button>
+        <button class="nav-item" data-alvo="claude"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="1.8" y="2.8" width="12.4" height="10.4" rx="1.8"/><path d="M4.6 6.2 6.8 8 4.6 9.8M8.6 10h2.8"/></svg><span>Claude e Codex</span></button>
+        <button class="nav-item" data-alvo="contas"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="8" cy="5.6" r="2.7"/><path d="M2.8 13.6c.7-2.6 2.8-4.1 5.2-4.1s4.5 1.5 5.2 4.1"/></svg><span>Contas</span></button>
+        <button class="nav-item" data-alvo="ferramentas"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M10.2 2.4a3.2 3.2 0 0 0-3.9 4.1l-3.7 3.7a1.4 1.4 0 0 0 2 2l3.7-3.7a3.2 3.2 0 0 0 4.1-3.9l-1.9 1.9-1.7-.4-.4-1.7z"/></svg><span>Ferramentas</span></button>
+        <button class="nav-item" data-alvo="atalhos"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><rect x="1.6" y="4" width="12.8" height="8" rx="1.6"/><path d="M4.3 6.7h.01M6.8 6.7h.01M9.3 6.7h.01M11.8 6.7h.01M5.2 9.4h5.6"/></svg><span>Atalhos</span></button>
+        <button class="nav-item" data-alvo="sobre"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="8" cy="8" r="6"/><path d="M8 7.3v3.6M8 5.1h.01"/></svg><span>Sobre</span></button>
       </aside>
 
       <section class="painel-corpo">
-        <button class="painel-fechar" data-fecha="veu-config" title="Fechar, Esc">×</button>
+        <button class="painel-fechar" data-fecha="veu-config" title="Fechar, Esc"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M4.2 4.2l7.6 7.6M11.8 4.2l-7.6 7.6"/></svg></button>
 
-        <div class="secao ativa" id="sec-aparencia">
+        <div class="secao ativa" id="sec-geral">
+          <h2>Geral</h2>
+
+          <h3 class="grupo-titulo">Aba nova</h3>
+          <div class="grupo">
+            <div class="linha">
+              <div class="rot"><span>Shell padrão</span><small>O que abre no Ctrl+Shift+T</small></div>
+              <div class="ctrl"><select id="cfg-shellPadrao" class="campo campo-curto"></select></div>
+            </div>
+            <div class="linha">
+              <div class="rot"><span>Conta padrão</span><small>Onde a aba nova abre, pelo atalho e pelo menu</small></div>
+              <div class="ctrl"><select id="cfg-perfilPadrao" class="campo campo-curto"></select></div>
+            </div>
+            <div class="linha">
+              <div class="rot"><span>Abrir o CLI junto com a conta</span><small>Já digita o comando da conta na aba nova</small></div>
+              <div class="ctrl"><label class="chave"><input type="checkbox" id="cfg-abrirCliDaConta"><span></span></label></div>
+            </div>
+          </div>
+
+          <h3 class="grupo-titulo">Abas e sessão</h3>
+          <div class="grupo">
+            <div class="linha">
+              <div class="rot"><span>Reabrir as abas de antes</span><small>As mesmas abas, contas e pastas quando o Loom abre</small></div>
+              <div class="ctrl"><label class="chave"><input type="checkbox" id="cfg-restaurarAbas"><span></span></label></div>
+            </div>
+            <!-- as duas de baixo so valem com as abas voltando: desligada a de cima, elas apagam -->
+            <div class="linha" data-depende="restaurarAbas">
+              <div class="rot"><span>Guardar o que cada aba mostrou</span><small>O conteúdo do terminal volta quando o Loom abre de novo</small></div>
+              <div class="ctrl"><label class="chave"><input type="checkbox" id="cfg-guardarHistorico"><span></span></label></div>
+            </div>
+            <div class="linha" data-depende="restaurarAbas">
+              <div class="rot"><span>Retomar as conversas ao reabrir</span><small>A aba que tinha conversa do Claude volta já dentro dela</small></div>
+              <div class="ctrl"><label class="chave"><input type="checkbox" id="cfg-retomarConversas"><span></span></label></div>
+            </div>
+            <div class="linha">
+              <div class="rot"><span>Confirmar ao fechar</span><small>Pergunta antes de fechar uma aba ou a janela com algo rodando</small></div>
+              <div class="ctrl"><label class="chave"><input type="checkbox" id="cfg-confirmarFechar"><span></span></label></div>
+            </div>
+            <div class="linha">
+              <div class="rot"><span>Fechar a aba quando o shell sai bem</span><small>Só com código 0; com erro, a aba fica pra você ler</small></div>
+              <div class="ctrl"><label class="chave"><input type="checkbox" id="cfg-fecharAoSair"><span></span></label></div>
+            </div>
+          </div>
+
+          <h3 class="grupo-titulo">Terminal</h3>
+          <div class="grupo">
+            <div class="linha">
+              <div class="rot"><span>Editor dos links</span><small>Abre o arquivo clicado com Ctrl. VS Code, Cursor, Sublime, Zed e Notepad++ já vão na linha certa. Vazio usa o programa padrão, e script nunca é executado</small></div>
+              <div class="ctrl"><input type="text" id="cfg-editor" class="campo campo-curto" spellcheck="false" placeholder="code"></div>
+            </div>
+            <div class="linha">
+              <div class="rot"><span>Histórico em linhas</span><small>Quanto dá pra rolar pra trás em cada aba</small></div>
+              <div class="ctrl"><input type="number" id="cfg-historico" class="campo campo-curto" min="1000" max="200000" step="1000"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="secao" id="sec-aparencia">
           <h2>Aparência</h2>
 
-          <div class="linha">
-            <div class="rot"><span>Fonte</span><small>A do terminal e a dos números da interface</small></div>
-            <div class="ctrl">
-              <select id="cfg-fonte" class="campo campo-curto">
-                <option value="Hack">Hack</option>
-                <option value="JetBrains Mono">JetBrains Mono</option>
-                <option value="Consolas">Consolas</option>
-              </select>
+          <h3 class="grupo-titulo">Texto do terminal</h3>
+          <div class="grupo">
+            <div class="linha">
+              <div class="rot"><span>Fonte</span><small>Do terminal e dos números da interface</small></div>
+              <div class="ctrl">
+                <select id="cfg-fonte" class="campo campo-curto">
+                  <option value="Hack">Hack</option>
+                  <option value="JetBrains Mono">JetBrains Mono</option>
+                  <option value="Consolas">Consolas</option>
+                </select>
+              </div>
+            </div>
+            <div class="linha">
+              <div class="rot"><span>Tamanho da fonte</span><small>Em pixel</small></div>
+              <div class="ctrl"><input type="range" id="cfg-tamanhoFonte" min="9" max="22" step="1"><output id="out-tamanhoFonte"></output></div>
+            </div>
+            <div class="linha">
+              <div class="rot"><span>Entrelinha</span><small>Respiro entre as linhas</small></div>
+              <div class="ctrl"><input type="range" id="cfg-entrelinha" min="1" max="2" step="0.05"><output id="out-entrelinha"></output></div>
+            </div>
+            <div class="linha">
+              <div class="rot"><span>Espaço entre letras</span><small>Em pixel, 0 é o natural da fonte</small></div>
+              <div class="ctrl"><input type="range" id="cfg-espacoLetra" min="0" max="3" step="1"><output id="out-espacoLetra"></output></div>
+            </div>
+            <div class="amostra" id="amostra">PS C:\Users\voce&gt; claude --version  #  0123456789  ilI1 oO0</div>
+          </div>
+
+          <h3 class="grupo-titulo">Cursor</h3>
+          <div class="grupo">
+            <div class="linha">
+              <div class="rot"><span>Formato</span></div>
+              <div class="ctrl">
+                <select id="cfg-cursor" class="campo campo-curto">
+                  <option value="bar">Barra</option>
+                  <option value="block">Bloco</option>
+                  <option value="underline">Sublinhado</option>
+                </select>
+              </div>
+            </div>
+            <div class="linha">
+              <div class="rot"><span>Cursor piscando</span></div>
+              <div class="ctrl"><label class="chave"><input type="checkbox" id="cfg-cursorPisca"><span></span></label></div>
             </div>
           </div>
 
-          <div class="linha">
-            <div class="rot"><span>Tamanho da fonte</span><small>O texto do terminal</small></div>
-            <div class="ctrl"><input type="range" id="cfg-tamanhoFonte" min="9" max="22" step="1"><output id="out-tamanhoFonte"></output></div>
-          </div>
-
-          <div class="linha">
-            <div class="rot"><span>Entrelinha</span><small>Respiro entre as linhas</small></div>
-            <div class="ctrl"><input type="range" id="cfg-entrelinha" min="1" max="2" step="0.05"><output id="out-entrelinha"></output></div>
-          </div>
-
-          <div class="linha">
-            <div class="rot"><span>Espaço entre letras</span><small>Em pixel, 0 é o natural da fonte</small></div>
-            <div class="ctrl"><input type="range" id="cfg-espacoLetra" min="0" max="3" step="1"><output id="out-espacoLetra"></output></div>
-          </div>
-
-          <div class="amostra" id="amostra">PS C:\Users\voce&gt; claude --version  #  0123456789  ilI1 oO0</div>
-
-          <div class="linha">
-            <div class="rot"><span>Cursor</span><small>Formato do cursor</small></div>
-            <div class="ctrl">
-              <select id="cfg-cursor" class="campo campo-curto">
-                <option value="bar">Barra</option>
-                <option value="block">Bloco</option>
-                <option value="underline">Sublinhado</option>
-              </select>
+          <h3 class="grupo-titulo">Janela</h3>
+          <div class="grupo">
+            <div class="linha">
+              <div class="rot"><span>Densidade da lateral</span><small>Compacta cabe mais abas na lista</small></div>
+              <div class="ctrl">
+                <select id="cfg-densidade" class="campo campo-curto">
+                  <option value="confortavel">Confortável</option>
+                  <option value="compacta">Compacta</option>
+                </select>
+              </div>
             </div>
-          </div>
-
-          <div class="linha">
-            <div class="rot"><span>Cursor piscando</span></div>
-            <div class="ctrl"><label class="chave"><input type="checkbox" id="cfg-cursorPisca"><span></span></label></div>
-          </div>
-
-          <div class="linha">
-            <div class="rot"><span>Densidade da lateral</span><small>Compacta encolhe o cartão, pra caber mais sessão na tela</small></div>
-            <div class="ctrl">
-              <select id="cfg-densidade" class="campo campo-curto">
-                <option value="confortavel">Confortável</option>
-                <option value="compacta">Compacta</option>
-              </select>
+            <div class="linha">
+              <div class="rot">
+                <span>Desenho</span>
+                <small>Automático usa a placa de vídeo e, se a tela cair, passa 7 dias sem ela. A troca vale na próxima vez que o Loom abrir</small>
+                <small id="desenho-agora"></small>
+              </div>
+              <div class="ctrl">
+                <select id="cfg-desenho" class="campo campo-curto">
+                  <option value="auto">Automático</option>
+                  <option value="gpu">GPU</option>
+                  <option value="software">Software</option>
+                </select>
+              </div>
             </div>
-          </div>
-
-          <div class="linha">
-            <div class="rot"><span>Painel de uso</span><small>O limite e o custo de cada conta à direita dos terminais. Ctrl+Shift+U mostra e esconde</small></div>
-            <div class="ctrl"><label class="chave"><input type="checkbox" id="cfg-painelUso"><span></span></label></div>
-          </div>
-
-          <div class="linha">
-            <div class="rot"><span>Largura do painel de uso</span><small>Em pixel. Dá pra arrastar a borda dele também</small></div>
-            <div class="ctrl"><input type="range" id="cfg-larguraPainelUso" min="280" max="480" step="1"><output id="out-larguraPainelUso"></output></div>
-          </div>
-
-
-
-          <div class="linha">
-            <div class="rot"><span>Mostrar quadros por segundo</span><small>Útil só pra medir, deixe desligado no dia a dia</small></div>
-            <div class="ctrl"><label class="chave"><input type="checkbox" id="cfg-mostrarFps"><span></span></label></div>
-          </div>
-
-          <div class="linha">
-            <div class="rot">
-              <span>Desenho</span>
-              <small>Automático usa a placa de vídeo e, se a tela cair, passa 7 dias desenhando sem ela. A troca vale na próxima vez que o Loom abrir</small>
-              <small id="desenho-agora"></small>
+            <div class="linha" id="aviso-desenho" hidden>
+              <div class="rot"><small id="desenho-aviso"></small></div>
+              <div class="ctrl"><button class="botao" id="voltar-gpu">Voltar à placa de vídeo</button></div>
             </div>
-            <div class="ctrl">
-              <select id="cfg-desenho" class="campo campo-curto">
-                <option value="auto">Automático</option>
-                <option value="gpu">GPU</option>
-                <option value="software">Software</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="linha" id="aviso-desenho" hidden>
-            <div class="rot"><small id="desenho-aviso"></small></div>
-            <div class="ctrl"><button class="botao" id="voltar-gpu">Voltar à placa de vídeo</button></div>
           </div>
         </div>
 
-        <div class="secao" id="sec-terminal">
-          <h2>Terminal</h2>
+        <div class="secao" id="sec-claude">
+          <h2>Claude e Codex</h2>
 
-          <div class="linha">
-            <div class="rot"><span>Shell padrão</span><small>O que abre no Ctrl+Shift+T</small></div>
-            <div class="ctrl"><select id="cfg-shellPadrao" class="campo campo-curto"></select></div>
+          <h3 class="grupo-titulo">Barra de baixo</h3>
+          <div class="grupo">
+            <div class="linha">
+              <div class="rot"><span>Barra de baixo</span><small>Limite do plano, contexto e modelo da aba atual</small></div>
+              <div class="ctrl"><label class="chave"><input type="checkbox" id="cfg-mostrarUsoNaBarra"><span></span></label></div>
+            </div>
+            <div class="linha">
+              <div class="rot"><span>Esconder a status line do Claude</span><small>Com a barra ligada, a sua status line some dentro do Loom. O que só ela mostrava deixa de aparecer</small></div>
+              <div class="ctrl"><label class="chave"><input type="checkbox" id="cfg-esconderStatusLine"><span></span></label></div>
+            </div>
           </div>
 
-          <div class="linha">
-            <div class="rot"><span>Conta padrão</span><small>Em qual conta a aba nova abre, pelo Ctrl+Shift+T e pelo shell escolhido no menu</small></div>
-            <div class="ctrl"><select id="cfg-perfilPadrao" class="campo campo-curto"></select></div>
+          <h3 class="grupo-titulo">Pastas</h3>
+          <div class="grupo">
+            <div class="linha">
+              <div class="rot"><span>Confiar nas pastas que eu abrir</span><small>Responde sozinho o "Trust this folder" na pasta da aba, nas contas do Loom. Nunca na pasta pessoal inteira</small></div>
+              <div class="ctrl"><label class="chave"><input type="checkbox" id="cfg-confiarPastas"><span></span></label></div>
+            </div>
           </div>
 
-          <div class="linha">
-            <div class="rot"><span>Histórico</span><small>Linhas guardadas pra rolar pra trás</small></div>
-            <div class="ctrl"><input type="number" id="cfg-historico" class="campo campo-curto" min="1000" max="200000" step="1000"></div>
+          <h3 class="grupo-titulo">Avisos</h3>
+          <div class="grupo">
+            <div class="linha">
+              <div class="rot"><span>Avisar quando uma sessão terminar</span><small>Notificação do Windows com a janela atrás; com ela na frente, o cartão da aba acende</small></div>
+              <div class="ctrl"><label class="chave"><input type="checkbox" id="cfg-avisarQuandoPronta"><span></span></label></div>
+            </div>
+            <div class="linha">
+              <div class="rot"><span>Avisar quando o limite apertar</span><small>Aos 85% e aos 95% da sessão de 5 horas ou da semana</small></div>
+              <div class="ctrl"><label class="chave"><input type="checkbox" id="cfg-avisoDeLimite"><span></span></label></div>
+            </div>
           </div>
-
-          <div class="linha">
-            <div class="rot"><span>Reabrir as abas de antes</span><small>Ao abrir o app, volta as mesmas abas, na mesma conta e na mesma pasta</small></div>
-            <div class="ctrl"><label class="chave"><input type="checkbox" id="cfg-restaurarAbas"><span></span></label></div>
-          </div>
-
-          <div class="linha">
-            <div class="rot"><span>Confirmar ao fechar</span><small>Avisa antes de fechar uma aba ou a janela com algo rodando dentro</small></div>
-            <div class="ctrl"><label class="chave"><input type="checkbox" id="cfg-confirmarFechar"><span></span></label></div>
-          </div>
-
-          <div class="linha">
-            <div class="rot"><span>Abrir o CLI junto com a conta</span><small>Ao escolher uma conta, já digita o comando dela na aba nova</small></div>
-            <div class="ctrl"><label class="chave"><input type="checkbox" id="cfg-abrirCliDaConta"><span></span></label></div>
-          </div>
-
-          <div class="linha">
-            <div class="rot"><span>Confiar nas pastas que eu abrir</span><small>Responde sozinho o "Trust this folder" na pasta em que a aba abre, nas contas deste app. A pasta pessoal inteira nunca</small></div>
-            <div class="ctrl"><label class="chave"><input type="checkbox" id="cfg-confiarPastas"><span></span></label></div>
-          </div>
-
-          <div class="linha">
-            <div class="rot"><span>Esconder a status line do Claude</span><small>Esconde a sua status line dentro do Loom, com a barra de baixo ligada. A barra mostra limite, contexto e modelo, mas não o resto que a sua status line mostrar</small></div>
-            <div class="ctrl"><label class="chave"><input type="checkbox" id="cfg-esconderStatusLine"><span></span></label></div>
-          </div>
-
-          <div class="linha">
-            <div class="rot"><span>Barra de baixo</span><small>Limite do plano, contexto e modelo da conta da aba atual</small></div>
-            <div class="ctrl"><label class="chave"><input type="checkbox" id="cfg-mostrarUsoNaBarra"><span></span></label></div>
-          </div>
-
-          <div class="linha">
-            <div class="rot"><span>Avisar quando uma sessão terminar</span><small>Notificação do Windows quando ela passa a esperar você e a janela está atrás. Com a janela na frente, o cartão da aba acende</small></div>
-            <div class="ctrl"><label class="chave"><input type="checkbox" id="cfg-avisarQuandoPronta"><span></span></label></div>
-          </div>
-
-          <div class="linha">
-            <div class="rot"><span>Avisar quando o limite apertar</span><small>O Windows avisa quando uma conta passa de 85% e de 95% na sessão de 5 horas ou na semana</small></div>
-            <div class="ctrl"><label class="chave"><input type="checkbox" id="cfg-avisoDeLimite"><span></span></label></div>
-          </div>
-
-          <div class="linha">
-            <div class="rot"><span>Fechar a aba quando o shell sair bem</span><small>Só quando ele sai com código 0; com erro a aba fica pra você ler</small></div>
-            <div class="ctrl"><label class="chave"><input type="checkbox" id="cfg-fecharAoSair"><span></span></label></div>
-          </div>
-
-          <div class="linha">
-            <div class="rot"><span>Editor dos links</span><small>Quem abre o caminho de arquivo clicado. VS Code, Cursor, Sublime, Zed e Notepad++ já abrem na linha certa. Vazio, ou não encontrado, usa o programa padrão do sistema, menos em script, que ele executaria</small></div>
-            <div class="ctrl"><input type="text" id="cfg-editor" class="campo campo-curto" spellcheck="false" placeholder="code"></div>
-          </div>
-        </div>
-
-        <div class="secao" id="sec-uso">
-          <h2>Uso</h2>
-          <div id="corpo-uso"></div>
         </div>
 
         <div class="secao" id="sec-contas">
           <h2>Contas</h2>
           <p class="ajuda">
-            Cada conta tem a própria pasta de login, então várias ficam logadas ao mesmo tempo e você
-            troca sem deslogar. Remover a conta daqui não mexe na conta lá no provedor,
-            só tira o login desta máquina.
+            Cada conta tem a própria pasta de login, então várias ficam logadas ao mesmo tempo.
+            Remover daqui só tira o login desta máquina, a conta no provedor continua.
           </p>
           <div id="lista-contas"></div>
-          <div class="caixa-botoes" style="justify-content:flex-start">
-            <button class="botao" id="nova-conta-config">+ Nova conta</button>
-            <button class="botao" id="adotar-principal" title="Cadastra a conta que já estava logada no ~/.claude, sem pedir login de novo">Cadastrar a Principal, a conta já logada</button>
+          <div class="caixa-botoes botoes-contas">
+            <button class="botao" id="nova-conta-config"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M8 3.4v9.2M3.4 8h9.2"/></svg>Nova conta</button>
+            <button class="botao" id="adotar-principal" title="Cadastra a conta que já estava logada no ~/.claude, sem pedir login de novo">Cadastrar a Principal, já logada</button>
           </div>
-          <div class="linha linha-principal">
-            <div class="rot"><span>Acompanhar a Principal no Loom</span><small id="leitura-principal-texto"></small></div>
-            <div class="ctrl"><button class="botao" id="leitura-principal">Ligar</button></div>
+          <h3 class="grupo-titulo">Principal</h3>
+          <div class="grupo">
+            <div class="linha linha-principal">
+              <div class="rot"><span>Acompanhar a Principal no Loom</span><small id="leitura-principal-texto"></small></div>
+              <div class="ctrl"><button class="botao" id="leitura-principal">Ligar</button></div>
+            </div>
           </div>
         </div>
 
         <div class="secao" id="sec-ferramentas">
           <h2>Ferramentas</h2>
           <p class="ajuda">
-            Cada CLI guarda o login numa pasta apontada por uma variável de ambiente.
-            O Loom só precisa saber o nome dessa variável e o arquivo que indica login feito.
-            Cada linha diz se o comando foi encontrado nesta máquina. Os valores vêm do que
-            cada projeto documenta e podem ser corrigidos aqui se mudarem.
+            Cada CLI guarda o login numa pasta apontada por uma variável de ambiente. O Loom só
+            precisa do nome dela e do arquivo que indica login feito. Dá pra corrigir aqui se mudar.
           </p>
           <div id="lista-ferramentas"></div>
         </div>
 
+        <div class="secao" id="sec-atalhos">
+          <h2>Atalhos</h2>
+          <div class="grupo grupo-atalhos">
+            <dl class="atalhos">
+              <dt><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>T</kbd></dt><dd>Nova aba</dd>
+              <dt><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>W</kbd></dt><dd>Fechar a aba</dd>
+              <dt><kbd>Ctrl</kbd><kbd>Tab</kbd></dt><dd>Próxima aba, com Shift volta</dd>
+              <dt><kbd>Ctrl</kbd><kbd>PageUp</kbd><kbd>PageDown</kbd></dt><dd>Aba anterior e próxima</dd>
+              <dt><kbd>Alt</kbd><kbd>1 a 9</kbd></dt><dd>Pular direto pra aba, 9 é a última</dd>
+              <dt><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>P</kbd></dt><dd>Paleta de comandos: abas, contas, conversas e ajustes pelo nome</dd>
+              <dt><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>D</kbd></dt><dd>Dividir a tela em dois, de novo desfaz</dd>
+              <dt><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>G</kbd></dt><dd>Todos os terminais lado a lado</dd>
+              <dt><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>U</kbd></dt><dd>Mostrar ou esconder o painel de uso</dd>
+              <dt><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>F</kbd><kbd>F3</kbd></dt><dd>Buscar na saída e ir pra próxima</dd>
+              <dt><kbd>Ctrl</kbd><kbd>+</kbd><kbd>-</kbd><kbd>0</kbd></dt><dd>Tamanho da fonte, e Ctrl com a roda</dd>
+              <dt><kbd>Shift</kbd><kbd>Enter</kbd></dt><dd>Quebra linha sem enviar</dd>
+              <dt><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>C</kbd><kbd>V</kbd></dt><dd>Copiar e colar</dd>
+              <dt><kbd>Ctrl</kbd><kbd>Clique</kbd></dt><dd>Abre link e arquivo:linha</dd>
+              <dt><kbd>Botão do meio</kbd></dt><dd>Fecha a aba; duplo clique no nome renomeia</dd>
+              <dt><kbd>Ctrl</kbd><kbd>,</kbd></dt><dd>Estas configurações</dd>
+            </dl>
+          </div>
+        </div>
+
         <div class="secao" id="sec-sobre">
           <h2>Sobre</h2>
-          <div class="linha"><div class="rot"><span>Versão</span></div><div class="ctrl"><code id="sobre-versao"></code></div></div>
-          <div class="linha"><div class="rot"><span>Pasta de dados</span></div><div class="ctrl"><code id="sobre-raiz"></code></div></div>
-          <div class="linha"><div class="rot"><span>Quadros por segundo</span></div><div class="ctrl"><code id="sobre-fps">Medindo</code></div></div>
-          <dl class="vazio-atalhos atalhos-sobre">
-            <dt>Ctrl+Shift+T</dt><dd>Nova aba</dd>
-            <dt>Ctrl+Shift+W</dt><dd>Fechar a aba</dd>
-            <dt>Ctrl+Tab</dt><dd>Próxima aba, com Shift volta</dd>
-            <dt>Ctrl+PageUp e PageDown</dt><dd>Aba anterior e próxima</dd>
-            <dt>Alt+1 a 9</dt><dd>Pular direto pra aba, 9 é a última</dd>
-            <dt>Ctrl+Shift+G</dt><dd>Todos os terminais lado a lado</dd>
-            <dt>Ctrl+Shift+U</dt><dd>Mostrar ou esconder o painel de uso</dd>
-            <dt>Ctrl+Shift+F e F3</dt><dd>Buscar na saída e ir pra próxima</dd>
-            <dt>Ctrl+mais, menos e zero</dt><dd>Tamanho da fonte, e Ctrl com a roda</dd>
-            <dt>Shift+Enter</dt><dd>Quebra linha sem enviar</dd>
-            <dt>Ctrl+Shift+C e V</dt><dd>Copiar e colar</dd>
-            <dt>Ctrl+clique</dt><dd>Abre link e arquivo:linha</dd>
-            <dt>Botão do meio</dt><dd>Fecha a aba; duplo clique no nome renomeia</dd>
-            <dt>Ctrl+vírgula</dt><dd>Estas configurações</dd>
-          </dl>
+          <div class="grupo">
+            <div class="linha"><div class="rot"><span>Versão</span></div><div class="ctrl"><code id="sobre-versao"></code></div></div>
+            <div class="linha"><div class="rot"><span>Pasta de dados</span></div><div class="ctrl"><code id="sobre-raiz"></code></div></div>
+          </div>
         </div>
       </section>
     </div>
@@ -419,6 +435,8 @@
       <button class="menu-item" data-aba="copiar">Copiar o caminho da pasta</button>
     </div>
     <div class="menu-grupo">
+      <button class="menu-item" data-aba="dividir">Dividir com esta aba</button>
+      <button class="menu-item" data-aba="desfazer-divisao">Desfazer a divisão</button>
       <button class="menu-item" data-aba="so-esta">Ver só este terminal</button>
       <button class="menu-item" data-aba="grade">Ver todos lado a lado</button>
     </div>
@@ -435,13 +453,28 @@
     <button class="menu-item menu-perigo" data-acao="encerrar">Fechar a aba</button>
   </div>
 
+  <!-- paleta de comandos: depois de todas as caixas, pra abrir por cima de qualquer uma -->
+  <div class="paleta-veu" id="paleta" hidden>
+    <div class="paleta" role="dialog" aria-label="Paleta de comandos">
+      <div class="paleta-busca">
+        <svg class="paleta-lupa" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="7" cy="7" r="4.2"/><path d="m10.2 10.2 3.3 3.3"/></svg>
+        <input type="text" id="paleta-termo" placeholder="Comando, aba, conta ou conversa" autocomplete="off" spellcheck="false" role="combobox" aria-expanded="true" aria-controls="paleta-lista" aria-autocomplete="list">
+      </div>
+      <div class="paleta-lista" id="paleta-lista" role="listbox" aria-label="Resultados"></div>
+      <div class="paleta-rodape">
+        <span><kbd><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12.5v-9M4.5 7 8 3.5 11.5 7"/></svg></kbd><kbd><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3.5v9M4.5 9 8 12.5 11.5 9"/></svg></kbd>Navegar</span>
+        <span><kbd>Enter</kbd>Abrir</span>
+        <span><kbd>Esc</kbd>Fechar</span>
+      </div>
+    </div>
+  </div>
+
   <script src="vendor/qwebchannel.js"></script>
   <script src="vendor/xterm.js"></script>
   <script src="vendor/addon-fit.js"></script>
   <script src="vendor/addon-webgl.js"></script>
   <script src="vendor/addon-search.js"></script>
   <script src="vendor/addon-weblinks.js"></script>
-  <script src="stats.js"></script>
   <script src="painel-uso.js"></script>
   <script src="app.js"></script>
 </body>

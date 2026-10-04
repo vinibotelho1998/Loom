@@ -285,7 +285,7 @@ class TelaLisa(unittest.TestCase):
         from pathlib import Path
 
         ui = Path(__file__).resolve().parent.parent / "ui"
-        for nome in ("style.css", "app.js", "stats.js", "index.html"):
+        for nome in ("style.css", "app.js", "index.html"):
             texto = (ui / nome).read_text(encoding="utf-8").lower()
             self.assertNotIn(vigia.COR_SENTINELA, texto, nome)
 

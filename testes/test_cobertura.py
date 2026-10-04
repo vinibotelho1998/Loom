@@ -646,9 +646,10 @@ class RetomarNaPropriaAba(ComPonte):
         self.assertEqual(self.digitado, [("a1", "claude --resume 3f2a-9c1e", 0)])
 
     def test_conta_de_outra_ferramenta_usa_o_comando_dela(self):
+        # o Codex retoma por subcomando; o --resume de antes abria a aba com erro
         conta = perfis.criar("Uma", "codex")
         self.assertTrue(self.retomar(perfil=conta.id))
-        self.assertEqual(self.digitado, [("a1", "codex --resume 3f2a-9c1e", 0)])
+        self.assertEqual(self.digitado, [("a1", "codex resume 3f2a-9c1e", 0)])
 
     def test_programa_rodando_ou_sem_saber_fica_pra_outra_aba(self):
         """Digitar por cima de um Claude rodando mandaria o comando pra dentro da conversa dele."""
@@ -717,7 +718,7 @@ class AbaReabertaSemCli(ComPonte):
     def test_aba_reaberta_nao_sobe_um_claude_em_branco(self):
         durante = []
 
-        def abrir(*args):
+        def abrir(*args, **_comando):
             durante.append(self.ponte._sem_autoabrir)
             return "s1"
 
@@ -843,25 +844,6 @@ class NomeDoModelo(ComPaginaInteira):
         self.assertEqual(self.rodar('nomeCurtoDoModelo("Sonnet 4.5 (1M context)")'), "Sonnet 4.5 · 1M")
         self.assertEqual(self.rodar('nomeCurtoDoModelo("Opus 5 (200k Context)")'), "Opus 5 · 200k")
         self.assertEqual(self.rodar('nomeCurtoDoModelo("Opus 5")'), "Opus 5")
-
-
-class ContasDoGrafico(ComPaginaInteira):
-    def test_dia_curto_e_dia_local(self):
-        self.assertEqual(self.rodar('diaCurto("2026-09-03")'), "03/09")
-        self.assertEqual(self.rodar("diaLocal(new Date(2026, 0, 5, 23, 59))"), "2026-01-05")
-
-    def test_somar_aceita_parcela_ausente_ou_incompleta(self):
-        self.assertEqual(
-            self.rodar("somar(somar({entrada: 1}, {saida: 2}), null)"),
-            {"entrada": 1, "saida": 2, "raciocinio": 0, "cacheEscrito": 0, "cacheLido": 0, "mensagens": 0},
-        )
-
-    def test_juntar_modelos_soma_por_nome(self):
-        self.assertEqual(
-            self.rodar("juntarModelos(juntarModelos({}, {porModelo: {a: 1, b: 2}}), {porModelo: {a: 3}})"),
-            {"porModelo": {"a": 4, "b": 2}},
-        )
-        self.assertEqual(self.rodar("juntarModelos({}, {})"), {"porModelo": {}})
 
 
 class GradeDasAbas(ComPaginaInteira):

@@ -160,6 +160,27 @@ def elevado(shell: Shell, sudo: str) -> list[str]:
     return [sudo, shell.caminho, *shell.args]
 
 
+def com_comando(shell: Shell, comando: str) -> list[str] | None:
+    """A linha que sobe o shell ja rodando o comando e continua aberto quando ele acaba.
+
+    Digitar o comando 700 ms depois de a aba nascer dependia de o shell ter subido nesse tempo:
+    com o perfil do PowerShell lento, o texto caia no meio do prompt sendo desenhado e o CLI nao
+    abria, calado. Pelo argv o shell so roda o comando quando esta pronto. WSL e shell que nao
+    conhecemos devolvem None, e quem chama volta a digitar.
+    """
+    comando = (comando or "").strip()
+    if not comando:
+        return None
+    if shell.id in ("pwsh", "powershell"):
+        return [shell.caminho, *shell.args, "-NoExit", "-Command", comando]
+    if shell.id == "cmd":
+        return [shell.caminho, *shell.args, "/K", comando]
+    if shell.id == "bash":
+        # o -c sozinho sairia no fim do comando; o exec deixa no lugar um bash de login comum
+        return [shell.caminho, "--login", "-i", "-c", f"{comando}; exec bash --login -i"]
+    return None
+
+
 def padrao(shells: list[Shell]) -> Shell:
     por_id = {s.id: s for s in shells}
     for preferido in ("pwsh", "powershell", "cmd"):

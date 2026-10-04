@@ -246,22 +246,34 @@ class EditorDosLinks(ComPonte):
 
 
 class RetomarEEntrar(ComPonte):
+    # O comando de retomar e o primeiro passo de entrar agora vao pro _abrir, que sobe o shell ja
+    # rodando ele pelo argv; so o /login, de dentro do CLI, continua digitado depois.
     def abrir(self, perfil_id: str, pedido: dict) -> str:
-        with unittest.mock.patch.object(self.ponte, "_abrir", return_value="s1"):
+        self.comando = None
+
+        def abrir(*_args, comando=""):
+            self.comando = comando
+            self.ponte._sessions["s1"] = unittest.mock.MagicMock(alive=True)
+            return "s1"
+
+        with unittest.mock.patch.object(self.ponte, "_abrir", side_effect=abrir):
             return self.ponte.openSessionWith("pwsh", perfil_id, 80, 24, json.dumps(pedido))
 
     def test_conversa_da_conta_de_sempre_retoma_sem_conta_cadastrada(self):
         """A aba sem conta abria na pasta e nao retomava nada."""
         self.abrir("", {"conversa": "3f2a9c1e-7b4d", "pasta": ""})
-        self.assertEqual(self.digitado, [("s1", "claude --resume 3f2a9c1e-7b4d", 700)])
+        self.assertEqual(self.comando, "claude --resume 3f2a9c1e-7b4d")
+        self.assertEqual(self.digitado, [])
 
     def test_conversa_com_cara_de_comando_nao_e_digitada(self):
         self.abrir("", {"conversa": "x; del *"})
+        self.assertEqual(self.comando, "")
         self.assertEqual(self.digitado, [])
 
     def test_conversa_com_quebra_de_linha_no_fim_nao_e_digitada(self):
         """O $ da regra aceitava a quebra no fim, e ela ia pro shell como mais um Enter."""
         self.abrir("", {"conversa": "3f2a9c1e\n"})
+        self.assertEqual(self.comando, "")
         self.assertEqual(self.digitado, [])
 
     def test_entrar_sobe_o_cli_mesmo_com_a_abertura_automatica_desligada(self):
@@ -269,12 +281,14 @@ class RetomarEEntrar(ComPonte):
         config.salvar({"abrirCliDaConta": False})
         conta = perfis.criar("Nova")
         self.abrir(conta.id, {"entrar": True})
-        self.assertEqual([t for _, t, _ in self.digitado], ["claude", "/login"])
+        self.assertEqual(self.comando, "claude")
+        self.assertEqual(self.digitado, [("s1", "/login", 4000)])
 
     def test_entrar_no_codex_usa_o_login_dele(self):
         conta = perfis.criar("Codex", "codex")
         self.abrir(conta.id, {"entrar": True})
-        self.assertEqual([t for _, t, _ in self.digitado], ["codex login"])
+        self.assertEqual(self.comando, "codex login")
+        self.assertEqual(self.digitado, [])
 
     def test_passos_de_cada_ferramenta(self):
         por_id = ferramentas.por_id
@@ -417,9 +431,10 @@ class VersaoNoTopo(ComPonte):
             self.assertNotIn(loom.__version__, (UI / nome).read_text(encoding="utf-8"), nome)
 
     def test_rotulo_some_inteiro_antes_de_empurrar_a_engrenagem(self):
-        """Com o fps ligado, o cromo com a versao precisa de 303px, medido na tela renderizada.
+        """O cromo com a versao precisava de 303px, medido na tela renderizada.
 
-        Mais estreito que isso a engrenagem saia pela direita e o fps quebrava em duas linhas.
+        Mais estreito que isso a engrenagem saia pela direita. Sem o contador de quadros ele
+        cabe em menos, entao o piso antigo continua valendo com folga.
         """
         css = (UI / "style.css").read_text(encoding="utf-8")
         regra = re.search(r"@media \(max-width: (\d+)px\) \{ \.versao \{ display: none; \} \}", css)
@@ -444,41 +459,6 @@ class VersaoNoTopo(ComPonte):
         for chamada in aplicacao.return_value.setApplicationDisplayName.call_args_list:
             for titulo in titulos:
                 self.assertTrue(titulo.endswith(chamada.args[0]), f"{titulo!r} ganharia {chamada.args[0]!r} no fim")
-
-
-class GraficoDeTrintaDias(ComPastaPropria):
-    """A tela de Uso roda no QJSEngine, sem pagina: stats.js nao toca no documento ao carregar."""
-
-    def setUp(self) -> None:
-        super().setUp()
-        garantir_app()
-        from PySide6.QtQml import QJSEngine
-
-        self.motor = QJSEngine()
-        resultado = self.motor.evaluate((UI / "stats.js").read_text(encoding="utf-8"), "stats.js")
-        self.assertFalse(resultado.isError(), resultado.toString())
-
-    def rodar(self, expressao: str):
-        resultado = self.motor.evaluate(expressao)
-        self.assertFalse(resultado.isError(), resultado.toString())
-        return json.loads(resultado.toString())
-
-    def test_dia_sem_uso_ganha_a_propria_barra(self):
-        """Dez dias espalhados viravam dez barras coladas, lidas como dez dias seguidos."""
-        serie = self.rodar(
-            'JSON.stringify(comDiasVazios([{dia: "2026-09-20", saida: 5, porModelo: {}}], new Date(2026, 8, 22)))'
-        )
-        self.assertEqual(len(serie), 30)
-        self.assertEqual((serie[0]["dia"], serie[-1]["dia"]), ("2026-08-24", "2026-09-22"))
-        self.assertEqual([p["saida"] for p in serie if p["saida"]], [5])
-        self.assertEqual(serie[-3]["dia"], "2026-09-20")
-
-    def test_grafico_desenha_os_trinta_dias(self):
-        barras = self.rodar(
-            'JSON.stringify(grafico(comDiasVazios([{dia: "2026-09-01", saida: 9, porModelo: {}}], '
-            "new Date(2026, 8, 22))).split('class=\"barra\"').length - 1)"
-        )
-        self.assertEqual(barras, 30)
 
 
 class TestForaDasAbasOcultoPorPadrao(ComPastaPropria):

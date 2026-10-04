@@ -25,6 +25,10 @@ PADRAO = {
     "confiarPastas": True,
     "esconderStatusLine": True,
     "restaurarAbas": True,
+    # o que cada aba mostrava volta com ela no proximo start, gravado em ~/.loom/historico
+    "guardarHistorico": True,
+    # a aba reaberta que rodava uma conversa ja volta dentro dela, em vez de parar no prompt
+    "retomarConversas": True,
     "mostrarSessoesDeFora": False,
     "avisarQuandoPronta": True,
     "avisoDeLimite": True,
@@ -36,13 +40,15 @@ PADRAO = {
     # o app lembra do que a pessoa escolheu
     "painelUso": False,
     "larguraPainelUso": 310,
+    # quanto da largura fica com o terminal da esquerda na tela dividida em dois
+    "fracaoDivisao": 0.5,
 }
 
 
 # range e number chegam da tela como inteiro mesmo quando o padrao e decimal, e o contrario
 # tambem acontece. Sem isto, arrastar a entrelinha ate 1 nao gravava e a tela voltava sozinha.
 NUMERICOS = {"tamanhoFonte", "entrelinha", "espacoLetra", "historico",
-             "alturaExternas", "larguraLateral", "larguraPainelUso"}
+             "alturaExternas", "larguraLateral", "larguraPainelUso", "fracaoDivisao"}
 
 # A mesma faixa que a tela aceita. Um historico 0 vindo do campo apagado, ou do arquivo editado
 # a mao, cortava na hora a rolagem de todas as abas abertas, sem volta.
@@ -55,6 +61,8 @@ FAIXAS = {
     "larguraLateral": (180, 520),
     # mais estreito que isso a barra de 5h perde o texto do zera em; mais largo rouba o terminal
     "larguraPainelUso": (280, 480),
+    # mais pro canto que isso um dos dois terminais fica estreito demais pro Claude escrever
+    "fracaoDivisao": (0.2, 0.8),
 }
 
 

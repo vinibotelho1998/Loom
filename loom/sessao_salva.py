@@ -25,6 +25,8 @@ def gravar(abas: list[dict]) -> None:
     for aba in validas[:TETO_DE_ABAS]:
         limpas.append(
             {
+                # o id do shell, que da nome ao arquivo do historico daquela aba
+                "sessao": str(aba.get("sessao", "")),
                 "shell": str(aba.get("shell", "")),
                 "perfil": str(aba.get("perfil", "")),
                 "pasta": str(aba.get("pasta", "")),

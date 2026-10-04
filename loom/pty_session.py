@@ -6,6 +6,7 @@ import shutil
 import sys
 import threading
 import time
+from pathlib import Path
 
 from PySide6.QtCore import QObject, Signal
 from winpty import PtyProcess, WinptyError
@@ -58,11 +59,38 @@ def ambiente_limpo() -> dict[str, str]:
     se acha um subprocesso, para de gravar transcript e some do medidor de uso.
     Tambem tiramos as variaveis do Qt, que sao nossas e nao dizem respeito ao shell.
     """
-    return {
+    limpo = {
         chave: valor
         for chave, valor in os.environ.items()
         if not any(chave.startswith(prefixo) for prefixo in HERANCA_SUJA)
     }
+    if getattr(sys, "frozen", False):
+        for chave in limpo:
+            if chave.upper() == "PATH":
+                limpo[chave] = path_sem_a_pasta(limpo[chave], Path(sys.executable).parent)
+    return limpo
+
+
+def _normal(caminho: str) -> str:
+    return os.path.normcase(os.path.normpath(caminho.strip().strip('"')))
+
+
+def path_sem_a_pasta(path: str, pasta: Path) -> str:
+    """O PATH sem as entradas que moram dentro daquela pasta.
+
+    O exe congelado poe a propria _internal e a do PySide6 na frente do PATH, e todo shell da aba
+    herdava isso: as DLLs do Qt do Loom vinham antes das do sistema pra qualquer programa rodado
+    ali, e um python ou um app Qt do usuario carregava a versao errada.
+    """
+    base = _normal(str(pasta))
+    ficam = []
+    for entrada in path.split(os.pathsep):
+        if entrada.strip():
+            alvo = _normal(entrada)
+            if alvo == base or alvo.startswith(base.rstrip(os.sep) + os.sep):
+                continue
+        ficam.append(entrada)
+    return os.pathsep.join(ficam)
 
 
 # o console que o Windows cria pra um programa de console nao e trabalho de ninguem

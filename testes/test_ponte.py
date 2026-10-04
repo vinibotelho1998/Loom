@@ -317,7 +317,9 @@ class AbrirAba(ComPonteNaPastaTemporaria):
             (env["LOOM_ABA"], env["LOOM_PERFIL"], env["CLAUDE_CONFIG_DIR"]), (sid, conta.id, str(conta.config_dir))
         )
         self.assertIn("coletar.py", (conta.config_dir / "settings.json").read_text(encoding="utf-8"))
-        self.assertEqual(self.digitado, [(sid, "claude", 700)])
+        # o CLI vai na subida do shell, pelo argv, e nao digitado depois de 700 ms
+        self.assertEqual(self.criadas[0].kwargs["argv"], [r"C:\Windows\System32\cmd.exe", "/K", "claude"])
+        self.assertEqual(self.digitado, [])
 
     def test_abertura_automatica_desligada_nao_digita(self):
         config.salvar({"abrirCliDaConta": False})
@@ -369,7 +371,7 @@ class AbrirAba(ComPonteNaPastaTemporaria):
     def test_retomar_desliga_a_abertura_automatica_so_durante_a_abertura(self):
         durante = []
 
-        def abrir(*args):
+        def abrir(*args, **_comando):
             durante.append(self.ponte._sem_autoabrir)
             raise OSError("pty nao subiu")
 

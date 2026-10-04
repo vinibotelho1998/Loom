@@ -43,8 +43,9 @@ var setTimeout = qualquer, clearTimeout = qualquer, setInterval = qualquer;
 # O que o script guarda em let nao vira global e o eval do QJSEngine nao alcanca. Um objeto
 # criado no fim do proprio script le e troca cada um por dentro.
 MUTAVEIS = (
-    "pastaPessoal", "perfis", "limitesPorPerfil", "abaAtiva", "usoBruto", "usoPerfis", "usoLimites",
+    "pastaPessoal", "perfis", "limitesPorPerfil", "abaAtiva",
     "cfg", "zoomAtual", "Aba", "bridge", "emGrade", "desenho", "placaDesistida", "perdasDeContexto",
+    "varrendo", "varrendoDesde",
 )
 # o que e const so se le: a lista de abas se mexe por dentro dela
 SO_LEITURA = ("ordem", "TETO_DE_WEBGL")
@@ -61,14 +62,14 @@ def garantir_app() -> None:
 
 
 def texto_da_pagina() -> str:
-    """stats.js e app.js juntos, na ordem do index.html.
+    """O app.js, que desde a saida da tela de Uso antiga carrega sozinho o que era do stats.js.
 
     O QJSEngine nao conhece funcao async, e o app.js tem uma so, a de colar pelo navegador:
     ela vira funcao comum aqui, o que nao muda a sintaxe do resto.
     """
     app = (UI / "app.js").read_text(encoding="utf-8")
     app = app.replace("async function", "function").replace("await ", "")
-    return (UI / "stats.js").read_text(encoding="utf-8") + "\n" + app + DE_DENTRO
+    return app + DE_DENTRO
 
 
 class ComPagina(unittest.TestCase):
@@ -102,7 +103,7 @@ class PaginaSobe(ComPagina):
         html = (UI / "index.html").read_text(encoding="utf-8")
         existentes = set(re.findall(r'\bid="([^"]+)"', html))
         faltando = []
-        for nome in ("app.js", "stats.js"):
+        for nome in ("app.js",):
             codigo = (UI / nome).read_text(encoding="utf-8")
             criados = set(re.findall(r'\.id = "([^"]+)"', codigo))
             for alvo in re.findall(r'(?:\bel|getElementById)\("([^"]+)"\)', codigo):
@@ -570,83 +571,8 @@ class LinhaDoDesenho(ComPagina):
         self.assertIn("variável de ambiente", t["agora"])
 
 
-class UsoPorConta(ComPagina):
-    def tearDown(self) -> None:
-        self.definir("estado.usoBruto = {}; estado.usoPerfis = []; estado.usoLimites = {}")
-
-    def dados(self, bruto: dict, perfis: list) -> None:
-        self.definir(f"estado.usoBruto = {json.dumps(bruto)}; estado.usoPerfis = {json.dumps(perfis)}")
-
-    @staticmethod
-    def gasto(semana: int, hoje: int = 0) -> dict:
-        return {"hoje": {"saida": hoje}, "semana": {"saida": semana}, "mes": {}, "total": {}, "serie": [], "modelos": []}
-
-    def test_pasta_de_sempre_cadastrada_soma_o_gasto_antigo_na_conta(self):
-        """Sem juntar, Principal e a conta apareciam lado a lado e o gasto contava duas vezes."""
-        self.dados({"__padrao__": self.gasto(5), "p1": self.gasto(7)}, [{"id": "p1", "nome": "Minha", "padrao": True}])
-        contas = self.rodar("contasDoUso()")
-        self.assertEqual([(c["id"], c["chaves"]) for c in contas], [("p1", ["p1", "__padrao__"])])
-        self.assertEqual(self.rodar('totalDe(["p1", "__padrao__"]).semana.saida'), 12)
-
-    def test_conta_apagada_vai_pro_fim_como_removidas(self):
-        self.dados(
-            {"velha": self.gasto(100), "p1": self.gasto(1), "p2": self.gasto(9), "__padrao__": self.gasto(3)},
-            [{"id": "p1", "nome": "Um"}, {"id": "p2", "nome": "Dois"}],
-        )
-        contas = self.rodar("contasDoUso()")
-        self.assertEqual([c["nome"] for c in contas], ["Dois", "Principal", "Um", "Removidas"])
-        self.assertEqual(contas[-1]["chaves"], ["velha"])
-
-    def test_leitura_do_plano_pelo_id_e_senao_a_mais_nova_das_juntas(self):
-        self.definir(
-            "estado.usoLimites = {p1: {faixas: {}}, __padrao__: {lido: 5, faixas: {five_hour: {usado: 40}}},"
-            " x: {lido: 9, faixas: {five_hour: {usado: 70}}}}"
-        )
-        self.assertEqual(self.rodar('faixasDaConta({id: "p1", chaves: ["p1", "__padrao__", "x"]})'), {"five_hour": {"usado": 70}})
-        self.definir("estado.usoLimites.p1 = {faixas: {seven_day: {usado: 2}}}")
-        self.assertEqual(self.rodar('faixasDaConta({id: "p1", chaves: ["p1", "x"]})'), {"seven_day": {"usado": 2}})
-        self.assertEqual(self.rodar('faixasDaConta({id: "z", chaves: ["z"]})'), {})
-
-    def test_conta_so_com_leitura_do_plano_entra_na_lista(self):
-        """Conta recem logada, sem transcript, tinha o limite e nao aparecia em lugar nenhum."""
-        self.dados({"p1": self.gasto(3)}, [{"id": "p1", "nome": "Um"}, {"id": "p2", "nome": "Nova"}])
-        self.definir("estado.usoLimites = {p2: {faixas: {five_hour: {usado: 12}}}, p9: {faixas: {five_hour: {usado: 1}}}}")
-        contas = self.rodar("contasDoUso()")
-        self.assertEqual([(c["id"], c["chaves"]) for c in contas], [("p1", ["p1"]), ("p2", ["p2"])])
-
-    def test_leitura_da_pasta_de_sempre_vai_pra_conta_que_a_cadastrou(self):
-        self.dados({}, [{"id": "p1", "nome": "Minha", "padrao": True}])
-        self.definir("estado.usoLimites = {__padrao__: {faixas: {seven_day: {usado: 30}}}}")
-        contas = self.rodar("contasDoUso()")
-        self.assertEqual([(c["id"], c["chaves"]) for c in contas], [("p1", ["p1", "__padrao__"])])
-
-    def test_todas_mostra_o_limite_de_cada_conta(self):
-        """O botao Uso abre em Todas, e ali o bloco do limite nem aparecia."""
-        self.dados({"p1": self.gasto(3), "p2": self.gasto(1)}, [{"id": "p1", "nome": "Um"}, {"id": "p2", "nome": "Dois"}])
-        self.definir("estado.usoLimites = {p1: {faixas: {five_hour: {usado: 91}}}}")
-        html = self.rodar("limitesDeTodas(contasDoUso())")
-        self.assertIn("Limite do plano", html)
-        self.assertEqual(html.count('class="limite-conta"'), 1)
-        self.assertIn("Um", html)
-        self.assertIn('class="regua critico"', html)
-        self.definir("estado.usoLimites = {}")
-        self.assertEqual(self.rodar("limitesDeTodas(contasDoUso())"), "")
-
-    def test_numero_do_uso_diz_a_unidade(self):
-        self.assertEqual(self.rodar("apoioDoNumero({mensagens: 40})"), "tokens gerados em 40 respostas")
-        self.assertEqual(self.rodar("apoioDoNumero({mensagens: 1})"), "tokens gerados em 1 resposta")
-        self.assertEqual(self.rodar("apoioDoNumero({})"), "tokens gerados em 0 respostas")
-
-    def test_semana_comeca_na_segunda_e_o_domingo_fecha_a_anterior(self):
-        semanas = self.rodar(
-            'porSemana([{dia: "2026-09-13", saida: 1, porModelo: {a: 1}},'
-            ' {dia: "2026-09-14", saida: 2, porModelo: {a: 2}},'
-            ' {dia: "2026-09-20", saida: 4, porModelo: {b: 4}}])'
-        )
-        self.assertEqual(
-            [(s["dia"], s["saida"], s["porModelo"]) for s in semanas],
-            [("2026-09-07", 1, {"a": 1}), ("2026-09-14", 6, {"a": 2, "b": 4})],
-        )
+class NomesQueSairamDoStats(ComPagina):
+    """A tela de Uso antiga saiu junto com o stats.js; o que o app usava dele mora no app.js."""
 
     def test_apelido_da_conta_nao_vira_html(self):
         self.assertEqual(
@@ -654,30 +580,16 @@ class UsoPorConta(ComPagina):
             "&#60;img src=x onerror=&#34;a()&#34;&#62;&#38;&#39;",
         )
 
-    def test_regua_do_plano(self):
-        self.assertIn("Sem leitura ainda", self.rodar('regua("5h", null)'))
-        self.assertIn('class="regua critico"', self.rodar('regua("5h", {usado: 85})'))
-        self.assertIn('class="regua atencao"', self.rodar('regua("5h", {usado: 60})'))
-        cheia = self.rodar('regua("5h", {usado: 130.4})')
-        self.assertIn("width:100%", cheia)
-        self.assertIn("<b>130%</b>", cheia)
-
-    def test_numeros_e_nomes_de_modelo_curtos(self):
+    def test_nome_do_modelo_curto_com_ponto_na_versao(self):
         casos = {
-            "curto(0)": "0",
-            "curto(999)": "999",
-            "curto(1500)": "1.5k",
-            "curto(2500000)": "2.5M",
-            "curto(3e9)": "3.00B",
-            # o mesmo nome da barra de baixo, com ponto na versao
-            'nomeModelo("claude-opus-5-20260101")': "Opus 5",
-            'nomeModelo("claude-sonnet-4-5")': "Sonnet 4.5",
-            'nomeModelo("<b>x</b>")': "bx/b",
-            'familiaDoModelo("claude-opus-5")': "#b088f0",
-            'familiaDoModelo("gpt")': "#5b6371",
+            'nomeDeModelo("claude-opus-5-20260101")': "Opus 5",
+            'nomeDeModelo("claude-sonnet-4-5")': "Sonnet 4.5",
+            'nomeDeModelo("Sonnet 4.5 (1M context)")': "Sonnet 4.5 (1M context)",
+            'nomeDeModelo("")': "",
         }
         for expressao, esperado in casos.items():
             self.assertEqual(self.rodar(expressao), esperado, expressao)
+
 
 
 if __name__ == "__main__":
