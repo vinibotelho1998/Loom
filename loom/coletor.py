@@ -21,6 +21,7 @@ import re
 import subprocess
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 
 from . import uso_fora as mod_fora
@@ -52,6 +53,53 @@ def _gravar(alvo: Path, dados: dict) -> None:
         raise
 
 
+def _ler_anterior(alvo: Path, perfil: str) -> dict:
+    """O que ja estava gravado da sessao, se for da mesma conta; senao vazio."""
+    try:
+        atual = json.loads(alvo.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(atual, dict) or atual.get("perfil") != perfil:
+        return {}
+    return atual
+
+
+def _lido_das_faixas(dados: dict) -> float:
+    """Quando os percentuais de limite desta leitura chegaram da status line."""
+    for campo in ("lidoFaixas", "lido"):
+        valor = dados.get(campo)
+        if isinstance(valor, (int, float)) and not isinstance(valor, bool):
+            return valor
+    return 0
+
+
+def _instante_do_reinicio(valor):
+    """O reinicio da janela em segundos desde 1970, que e o que a barra, o aviso e o painel comparam.
+
+    O Claude Code manda em segundos, mas o campo ja apareceu em outros formatos de versao pra
+    versao. Texto ISO ou milissegundos passavam direto, o aviso descartava a leitura e a janela
+    nao entrava no historico.
+    """
+    if isinstance(valor, bool):
+        return None
+    if isinstance(valor, str):
+        texto = valor.strip()
+        try:
+            valor = float(texto)
+        except ValueError:
+            try:
+                quando = datetime.fromisoformat(texto.replace("Z", "+00:00"))
+            except ValueError:
+                return None
+            if quando.tzinfo is None:
+                quando = quando.astimezone()
+            return quando.timestamp()
+    if isinstance(valor, (int, float)):
+        # passa de 1e12 so em milissegundos: em segundos isso e o ano 33658
+        return valor / 1000 if valor > 1e12 else valor
+    return None
+
+
 def guardar(perfil: str, dados: dict) -> None:
     sessao = dados.get("session_id")
     alvo = _arquivo_da_sessao(sessao)
@@ -68,13 +116,35 @@ def guardar(perfil: str, dados: dict) -> None:
     }
 
     limites = dados.get("rate_limits") or {}
+    frescas = {}
     for chave in FAIXAS:
         faixa = limites.get(chave)
         if isinstance(faixa, dict):
-            resumo["faixas"][chave] = {
+            frescas[chave] = {
                 "usado": faixa.get("used_percentage"),
-                "zera": faixa.get("resets_at"),
+                "zera": _instante_do_reinicio(faixa.get("resets_at")),
             }
+
+    anterior = _ler_anterior(alvo, perfil)
+    # A status line tambem roda sem rate_limits, e cada chamada regravava o arquivo do zero: a
+    # leitura vazia apagava a boa, e conta com uma sessao so ficava sem limite na barra. A faixa
+    # que nao veio continua a de antes, da mesma conta, com a hora em que ela foi lida de fato,
+    # pra nao passar na frente da leitura nova de outra sessao.
+    faixas_antes = anterior.get("faixas")
+    if frescas:
+        resumo["lidoFaixas"] = resumo["lido"]
+    if isinstance(faixas_antes, dict) and len(frescas) < len(FAIXAS):
+        guardadas = {c: f for c, f in faixas_antes.items() if c in FAIXAS and c not in frescas and isinstance(f, dict)}
+        if guardadas:
+            resumo["faixas"].update(guardadas)
+            if not frescas:
+                resumo["lidoFaixas"] = _lido_das_faixas(anterior)
+    resumo["faixas"].update(frescas)
+    # O aviso de permissao vem do gancho e nao da status line. Ela roda de novo enquanto o pedido
+    # esta na tela, e sem isto a sessao saia de "permissao" no meio da espera. Aviso velho nao
+    # atrapalha: a lista so conta o que e mais novo que o transcript.
+    if isinstance(anterior.get("aviso"), dict):
+        resumo["aviso"] = anterior["aviso"]
 
     janela = dados.get("context_window") or {}
     if janela.get("used_percentage") is not None:
@@ -103,7 +173,7 @@ def guardar(perfil: str, dados: dict) -> None:
 
     _gravar(alvo, resumo)
     try:
-        mod_fora.guardar_leituras_do_claude(perfil, resumo["faixas"], resumo["lido"])
+        mod_fora.guardar_leituras_do_claude(perfil, frescas, resumo["lido"])
     except (OSError, TypeError, ValueError, AttributeError):
         # o historico das janelas e extra: nada dele pode tirar a barra de baixo do ar
         pass
@@ -167,6 +237,9 @@ def marcar(perfil: str, dados: dict, aviso: bool = False) -> None:
             atual = {}
         if not isinstance(atual, dict):
             atual = {}
+    if atual.get("faixas") and "lidoFaixas" not in atual:
+        # o lido vai ser renovado aqui sem percentual novo; a hora da faixa fica guardada a parte
+        atual["lidoFaixas"] = _lido_das_faixas(atual)
     atual.update(
         {
             "sessao": sessao,
@@ -312,6 +385,10 @@ def limites_por_perfil(vistas: dict[str, dict] | None = None) -> dict[str, dict]
         tinha = bool(atual.get("faixas"))
         if tem and not tinha:
             melhor[chave] = dados
+        elif tem and tinha:
+            # a faixa guardada de uma sessao calada nao passa na frente da leitura nova de outra
+            if _lido_das_faixas(dados) > _lido_das_faixas(atual):
+                melhor[chave] = dados
         elif tem == tinha and dados["lido"] > atual["lido"]:
             melhor[chave] = dados
     return melhor

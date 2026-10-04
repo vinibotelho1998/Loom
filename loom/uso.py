@@ -17,21 +17,28 @@ from .caminhos import RAIZ, gravar_texto
 
 # A versao 2 do cache mora em arquivo proprio. O Loom de antes, instalado e aberto ao mesmo tempo,
 # regrava o uso-cache.json no formato dele e jogaria fora o legado; aqui ele so e lido, na migracao.
-CACHE = RAIZ / "uso-cache-v2.json"
+# A versao 6 tambem: o Loom instalado com a 5 regravava o v2 no formato dele a cada passada, e os
+# dois ficariam jogando o cache um do outro pro legado e relendo tudo do zero.
+CACHE = RAIZ / "uso-cache-v3.json"
 NOME_DA_VERSAO_1 = "uso-cache.json"
+# de onde a migracao le quando o arquivo da versao atual ainda nao existe, do mais novo pro mais velho
+NOMES_ANTERIORES = ("uso-cache-v2.json", NOME_DA_VERSAO_1)
 
 CAMPOS = ("entrada", "saida", "raciocinio", "cacheEscrito", "cacheLido", "mensagens")
 # A escrita de cache de 1 hora custa mais que a de 5 minutos, e o cacheEscrito e a soma das duas.
 CAMPOS_GUARDADOS = CAMPOS + ("cache5m", "cache1h")
 # o que entra na conta do custo, cada um com o seu preco
 CAMPOS_DE_CUSTO = ("entrada", "saida", "cache5m", "cache1h", "cacheLido")
-VERSAO = 5
+VERSAO = 6
 # O projeto de cada resposta entrou na versao 3, o esforco na 4 e o uso por balde de 5 minutos na 5. Cache mais velho vira legado e os transcript sao
 # lidos de novo, que e o que da o projeto ao historico que ainda existe em disco.
+# A 6 conta a saida da ultima linha de cada resposta; a 5 contava a da primeira, que e parcial.
 # Os baldes por projeto guardam so este tanto de dias.
 DIAS_DE_PROJETOS = 60
 # Os baldes por hora servem ao bloco de 5 horas e a janela de 7 dias do painel; mais velho sai.
 DIAS_DE_HORAS = 8
+# depois disso sem o arquivo crescer, a ultima resposta dele esta inteira no disco
+RESPOSTA_FECHADA = 3600
 # a coleta do painel roda fora da tela: ler e gravar o cache e de uma thread por vez
 _TRAVA = threading.Lock()
 
@@ -46,6 +53,7 @@ def _cache_vazio() -> dict:
         "versao": VERSAO,
         "arquivos": {},
         "ultimos": {},
+        "contadosUltimos": {},
         "dias": {},
         "horas": {},
         "vistoEm": {},
@@ -73,8 +81,9 @@ def _ler_cache_bruto(caminho: Path) -> dict | None:
 def _carregar_cache(caminho: Path | None = None) -> dict:
     alvo = CACHE if caminho is None else caminho
     bruto = _ler_cache_bruto(alvo)
-    if bruto is None and alvo.name != NOME_DA_VERSAO_1:
-        bruto = _ler_cache_bruto(alvo.with_name(NOME_DA_VERSAO_1))
+    for nome in NOMES_ANTERIORES:
+        if bruto is None and alvo.name != nome:
+            bruto = _ler_cache_bruto(alvo.with_name(nome))
     cache = _cache_vazio()
     if bruto is None:
         return cache
@@ -324,6 +333,48 @@ def _podar_horas(horas: dict, corte: float) -> dict:
     return mantidas
 
 
+def _somar_consumo(
+    consumo: dict, chave_perfil: str, projeto: str, esforco: str,
+    dias: dict, projetos: dict, esforcos: dict, tempo: dict, horas: dict, corte_das_horas: float,
+) -> None:
+    """Soma uma resposta, ou o que ela cresceu, em todos os baldes do cache."""
+    _acumular(dias.setdefault(f"{chave_perfil}|{consumo['dia']}|{consumo['modelo']}", {}), consumo)
+    _acumular(projetos.setdefault(f"{chave_perfil}|{consumo['dia']}|{projeto}|{consumo['modelo']}", {}), consumo)
+    _acumular(esforcos.setdefault(f"{chave_perfil}|{consumo['dia']}|{consumo['modelo']}|{esforco}", {}), consumo)
+    mod_fora.somar_tempo(tempo, consumo["ts"], tokens_do_balde(consumo), f"{chave_perfil}|")
+    if consumo["ts"] >= corte_das_horas:
+        _acumular_hora(horas, chave_perfil, consumo)
+
+
+def _crescimento(antes: dict, depois: dict) -> dict | None:
+    """O que a linha nova da mesma resposta traz alem do que ja foi contado, ou None se nada.
+
+    Fica no dia, na hora e no modelo da primeira linha: a resposta e uma so, e mudar de balde
+    por causa dos segundos entre um bloco e outro partiria ela em dois dias.
+    """
+    delta = {campo: max(0, _numero(depois.get(campo)) - _numero(antes.get(campo))) for campo in CAMPOS_GUARDADOS}
+    if not any(delta.values()):
+        return None
+    delta["mensagens"] = 0
+    delta.update({"dia": antes["dia"], "ts": antes["ts"], "modelo": antes["modelo"], "longo": bool(antes.get("longo"))})
+    return delta
+
+
+def _contado_valido(contado) -> bool:
+    """O que o cache guardou da ultima resposta de um arquivo ainda serve pra continuar a conta."""
+    if not isinstance(contado, dict) or not isinstance(contado.get("consumo"), dict):
+        return False
+    consumo = contado["consumo"]
+    return (
+        isinstance(contado.get("projeto"), str)
+        and isinstance(contado.get("esforco"), str)
+        and isinstance(consumo.get("dia"), str)
+        and isinstance(consumo.get("modelo"), str)
+        and isinstance(consumo.get("ts"), (int, float))
+        and all(isinstance(consumo.get(campo), (int, float)) for campo in CAMPOS_GUARDADOS)
+    )
+
+
 def _normal(pasta) -> str:
     return os.path.normcase(os.path.abspath(str(pasta)))
 
@@ -410,8 +461,9 @@ def _coletar(pastas: dict[str, Path], estado: dict | None, alvo: Path, parar) ->
     projetos = cache["projetos"]
     esforcos = cache["esforcos"]
     tempo = cache["tempo"]
-    # o id da ultima resposta lida de cada arquivo
+    # o id da ultima resposta lida de cada arquivo, e o que dela ja entrou na conta
     ultimos = cache["ultimos"]
+    contados_ultimos = cache["contadosUltimos"]
     mudou = False
     parcial = False
     orcamento = TETO_TOTAL_POR_PASSADA
@@ -432,13 +484,18 @@ def _coletar(pastas: dict[str, Path], estado: dict | None, alvo: Path, parar) ->
             achados.append((marca.st_mtime, marca.st_size, arquivo, chave_perfil))
     achados.sort(key=lambda achado: achado[0], reverse=True)
 
-    for _, tamanho, arquivo, chave_perfil in achados:
+    agora = time.time()
+    for mtime, tamanho, arquivo, chave_perfil in achados:
         if parar is not None and parar.is_set():
             parcial = True
             break
         chave = str(arquivo)
         desde = arquivos.get(chave, 0)
         if tamanho == desde:
+            # arquivo parado ha uma hora ja gravou o ultimo bloco da resposta: a conta dela fecha
+            # e sai do cache, senao ele carregava uma entrada por transcript pra sempre
+            if agora - mtime > RESPOSTA_FECHADA and contados_ultimos.pop(chave, None) is not None:
+                mudou = True
             continue
         if orcamento <= 0:
             # a passada ja leu o que podia; este fica pra proxima, e a tela diz que esta lendo
@@ -455,12 +512,16 @@ def _coletar(pastas: dict[str, Path], estado: dict | None, alvo: Path, parar) ->
             parcial = True
         if not registros and novo_fim == desde:
             continue
-        ids = set()
-        # Cada bloco da resposta vira uma linha com o mesmo id e o mesmo consumo, e elas
-        # chegam ao disco com segundos de distancia. Lendo com a conversa em andamento, o
-        # primeiro bloco caia numa passada e o resto na seguinte, e a resposta contava duas vezes.
+        # Cada bloco da resposta vira uma linha com o mesmo id, e elas chegam ao disco com segundos
+        # de distancia. So a ultima traz a saida inteira: as de antes levam a saida parcial do
+        # streaming, tipo 4 tokens onde o fim diz 1431. Contar so a primeira deixava um quinto da
+        # saida real de fora do painel. Entao a resposta conta uma vez e cada linha seguinte soma
+        # so o que cresceu. O que ja foi contado da ultima resposta do arquivo fica no cache,
+        # porque o resto dos blocos pode cair na passada seguinte.
+        contados: dict[str, dict | None] = {}
         if desde and ultimos.get(chave):
-            ids.add(ultimos[chave])
+            anterior = contados_ultimos.get(chave)
+            contados[ultimos[chave]] = anterior if _contado_valido(anterior) else None
         ultimo = None
         for registro in registros:
             if not isinstance(registro, dict):
@@ -468,33 +529,41 @@ def _coletar(pastas: dict[str, Path], estado: dict | None, alvo: Path, parar) ->
             # a mesma resposta pode aparecer duas vezes quando a sessao e retomada
             # ou quando o Claude reescreve o bloco. Contar duas vezes inflaria o gasto.
             identificador = _identificador(registro)
+            consumo = _consumo(registro)
             if identificador:
                 ultimo = identificador
-                if identificador in ids:
+                if identificador in contados:
+                    ja = contados[identificador]
+                    if ja is not None and consumo is not None:
+                        delta = _crescimento(ja["consumo"], consumo)
+                        if delta is not None:
+                            _somar_consumo(
+                                delta, chave_perfil, ja["projeto"], ja["esforco"],
+                                dias, projetos, esforcos, tempo, horas, corte_das_horas,
+                            )
+                            for campo in CAMPOS_GUARDADOS:
+                                ja["consumo"][campo] = max(ja["consumo"][campo], consumo[campo])
                     continue
-                ids.add(identificador)
-            consumo = _consumo(registro)
             if consumo is None:
+                if identificador:
+                    contados[identificador] = None
                 continue
-            _acumular(dias.setdefault(f"{chave_perfil}|{consumo['dia']}|{consumo['modelo']}", {}), consumo)
             projeto = projeto_do_registro(registro, arquivo)
-            _acumular(
-                projetos.setdefault(f"{chave_perfil}|{consumo['dia']}|{projeto}|{consumo['modelo']}", {}), consumo
+            esforco = esforco_do_registro(registro)
+            _somar_consumo(
+                consumo, chave_perfil, projeto, esforco, dias, projetos, esforcos, tempo, horas, corte_das_horas
             )
-            _acumular(
-                esforcos.setdefault(
-                    f"{chave_perfil}|{consumo['dia']}|{consumo['modelo']}|{esforco_do_registro(registro)}", {}
-                ),
-                consumo,
-            )
-            mod_fora.somar_tempo(tempo, consumo["ts"], tokens_do_balde(consumo), f"{chave_perfil}|")
-            if consumo["ts"] >= corte_das_horas:
-                _acumular_hora(horas, chave_perfil, consumo)
+            if identificador:
+                contados[identificador] = {"consumo": dict(consumo), "projeto": projeto, "esforco": esforco}
             if consumo["ts"] > vistos_em.get(chave_perfil, 0):
                 vistos_em[chave_perfil] = int(consumo["ts"])
         arquivos[chave] = novo_fim
         if ultimo:
             ultimos[chave] = ultimo
+            if contados.get(ultimo) is not None:
+                contados_ultimos[chave] = contados[ultimo]
+            else:
+                contados_ultimos.pop(chave, None)
         mudou = True
 
     grupos = _grupos(pastas)

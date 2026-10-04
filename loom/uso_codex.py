@@ -266,7 +266,14 @@ def _processar(registros: list, conta: dict, chave: str, arquivo: dict, corte: f
             if not isinstance(total, dict):
                 continue
             atual = {c: _inteiro(total.get(c)) for c in CAMPOS_DO_TOTAL}
-            delta = _diferenca(atual, arquivo.get("total"))
+            anterior = arquivo.get("total")
+            ultimo_uso = info.get("last_token_usage")
+            if not isinstance(anterior, dict) and isinstance(ultimo_uso, dict):
+                # Rollout que nasce de outro, como o do revisor guardian, abre com o total herdado da
+                # conversa de origem, milhoes de tokens que ja contaram no rollout dela. O primeiro
+                # total do arquivo so vale pelo que a ultima resposta gastou; o resto e a base.
+                anterior = {c: atual[c] - min(_inteiro(ultimo_uso.get(c)), atual[c]) for c in CAMPOS_DO_TOTAL}
+            delta = _diferenca(atual, anterior)
             arquivo["total"] = atual
             pendente = arquivo.setdefault("pendente", [])
             if delta and len(pendente) < PENDENTES_GUARDADOS:

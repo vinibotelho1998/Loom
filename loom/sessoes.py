@@ -103,6 +103,23 @@ def _texto_da_fala(conteudo) -> str:
     return ""
 
 
+def _resposta_continua(mensagem: dict, blocos: list[dict]) -> bool:
+    """A linha do modelo na ponta e so um pedaco de uma resposta que ainda esta saindo.
+
+    O Claude grava cada bloco da resposta numa linha assim que o bloco fecha: o raciocinio,
+    depois o texto, depois a ferramenta, com ate dezenas de segundos entre eles. Enquanto o
+    resto sai, a linha da ponta vem sem stop_reason, ou com o de ferramenta ainda sem o
+    tool_use gravado, ou e so raciocinio. Lida como resposta pronta, a sessao virava ready e
+    soava o aviso de que terminou no meio do trabalho. Transcript antigo sem o campo conta
+    como resposta pronta, como sempre contou.
+    """
+    fim = mensagem.get("stop_reason", "end_turn")
+    if fim is None or fim == "tool_use":
+        return True
+    so_raciocinio = bool(blocos) and all(b.get("type") in ("thinking", "redacted_thinking") for b in blocos)
+    return so_raciocinio and fim == "end_turn"
+
+
 def _ler_estado(registros: list[dict]) -> dict:
     """Le a cauda de tras pra frente ate achar o que a sessao estava fazendo.
 
@@ -136,6 +153,8 @@ def _ler_estado(registros: list[dict]) -> dict:
             if usos:
                 ferramenta, alvo = _resumo(usos[-1])
                 bruto = "pergunta" if ferramenta in FERRAMENTAS_DE_PERGUNTA else "rodando"
+            elif _resposta_continua(mensagem, blocos):
+                bruto = "pensando"
             else:
                 bruto = "respondeu"
             break

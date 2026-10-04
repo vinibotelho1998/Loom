@@ -41,6 +41,21 @@ def _instante(iso) -> float | None:
         return None
 
 
+# O Codex manda o reinicio da mesma janela variando alguns segundos de uma leitura pra outra; nos
+# rollouts reais a semana chegou com ate 13 s de diferenca. Comparando o numero exato, cada variacao
+# parecia janela nova e o aviso de 95% saia de novo. Janelas diferentes ficam horas longe.
+TOLERANCIA_DA_JANELA = 120
+
+
+def _mesma_janela(uma, outra) -> bool:
+    if uma is None or outra is None:
+        return uma is None and outra is None
+    try:
+        return abs(float(uma) - float(outra)) <= TOLERANCIA_DA_JANELA
+    except (TypeError, ValueError):
+        return False
+
+
 def leituras_do_claude(limites: dict, nomes: dict[str, str]) -> list[dict]:
     """As janelas de cada conta do Claude, como a status line leu por ultimo."""
     leituras = []
@@ -129,7 +144,7 @@ def avisos_novos(leituras: list[dict], vistos: dict, agora: float) -> tuple[list
         if degrau is None:
             continue
         antes = vistos.get(leitura["chave"])
-        if antes and antes.get("zera") == leitura.get("zera") and antes.get("degrau", 0) >= degrau:
+        if antes and _mesma_janela(antes.get("zera"), leitura.get("zera")) and antes.get("degrau", 0) >= degrau:
             continue
         vistos[leitura["chave"]] = {"zera": leitura.get("zera"), "degrau": degrau}
         avisos.append(texto_do_aviso(leitura, agora))

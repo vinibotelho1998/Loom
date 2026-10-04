@@ -312,8 +312,11 @@ def _leitura_de_limite(conta: dict, limites: dict, memoria: dict) -> dict | None
     for dados in candidatas:
         if not isinstance(dados, dict) or not isinstance(dados.get("faixas"), dict) or not dados["faixas"]:
             continue
-        if melhor is None or _real(dados.get("lido")) > _real(melhor.get("lido")):
-            melhor = {"lido": _real(dados.get("lido")), "faixas": dados["faixas"]}
+        # vale a hora em que os percentuais chegaram, e nao a ultima vez que a sessao foi marcada:
+        # o gancho e a status line sem limite renovam o lido e mantem a faixa antiga
+        quando = _real(mod_coletor._lido_das_faixas(dados))
+        if melhor is None or quando > _real(melhor.get("lido")):
+            melhor = {"lido": quando, "faixas": dados["faixas"]}
     if melhor is not None:
         memoria[conta["id"]] = melhor
     return melhor
