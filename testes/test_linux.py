@@ -472,6 +472,111 @@ class PathDoApp(unittest.TestCase):
             self.assertEqual(ambiente["PATH"], f"/usr/bin:{casa}/.local/bin", "repetiu a pasta")
 
 
+@fora_do_windows
+class InstaladorDoLinux(unittest.TestCase):
+    """O script que poe o Loom no menu, de dentro do pacote baixado e a partir do repositorio."""
+
+    def setUp(self) -> None:
+        self.raiz = Path(tempfile.mkdtemp(prefix="loom-instala-"))
+        self.addCleanup(shutil.rmtree, self.raiz, True)
+        self.dados = self.raiz / "dados"
+        self.origem = Path(__file__).resolve().parent.parent / "packaging"
+
+    def pacote(self, pasta: Path, com_app: bool = True) -> Path:
+        pasta.mkdir(parents=True)
+        for nome in ("instalar-linux.sh", "loom.png"):
+            shutil.copy(self.origem / nome, pasta / nome)
+        if com_app:
+            app = pasta / "Loom"
+            app.write_text("#!/bin/sh\n")
+            app.chmod(0o755)
+        return pasta
+
+    def instalar(self, pasta: Path, *args) -> subprocess.CompletedProcess:
+        ambiente = {"PATH": os.environ.get("PATH", ""), "HOME": str(self.raiz), "XDG_DATA_HOME": str(self.dados)}
+        return subprocess.run(["bash", str(pasta / "instalar-linux.sh"), *args], env=ambiente, capture_output=True, text=True, timeout=20)
+
+    def atalho(self) -> str:
+        return (self.dados / "applications" / "loom.desktop").read_text(encoding="utf-8")
+
+    def test_pacote_baixado_se_instala_de_dentro_da_pasta_extraida(self):
+        pasta = self.pacote(self.raiz / "com espaço" / "Loom")
+        feito = self.instalar(pasta)
+        self.assertEqual(feito.returncode, 0, feito.stderr)
+        self.assertIn(f'Exec="{pasta}/Loom"', self.atalho())
+        self.assertIn("Icon=loom", self.atalho())
+        self.assertTrue((self.dados / "icons/hicolor/256x256/apps/loom.png").is_file())
+
+    def test_o_nome_do_atalho_bate_com_o_que_o_app_anuncia(self):
+        """O compositor acha o icone da janela por este nome."""
+        self.instalar(self.pacote(self.raiz / "Loom"))
+        self.assertIn("StartupWMClass=loom", self.atalho())
+        texto = (Path(__file__).resolve().parent.parent / "loom" / "app.py").read_text(encoding="utf-8")
+        self.assertIn('app.setDesktopFileName("loom")', texto)
+
+    def test_no_repositorio_usa_o_build_ou_a_pasta_pedida(self):
+        repo = self.raiz / "repo"
+        script = self.pacote(repo / "packaging", com_app=False)
+        (repo / "dist" / "Loom").mkdir(parents=True)
+        app = repo / "dist" / "Loom" / "Loom"
+        app.write_text("#!/bin/sh\n")
+        app.chmod(0o755)
+        self.assertEqual(self.instalar(script).returncode, 0)
+        self.assertIn(f'Exec="{app}"', self.atalho())
+
+        outra = self.raiz / "outra"
+        outra.mkdir()
+        (outra / "Loom").write_text("#!/bin/sh\n")
+        (outra / "Loom").chmod(0o755)
+        self.assertEqual(self.instalar(script, str(outra)).returncode, 0)
+        self.assertIn(f'Exec="{outra}/Loom"', self.atalho())
+
+    def test_sem_o_executavel_avisa_e_nao_instala(self):
+        script = self.pacote(self.raiz / "packaging", com_app=False)
+        feito = self.instalar(script)
+        self.assertNotEqual(feito.returncode, 0)
+        self.assertIn("nao achei", feito.stderr)
+        self.assertFalse((self.dados / "applications" / "loom.desktop").exists())
+
+
+class PacoteNaRelease(unittest.TestCase):
+    """O que precisa estar no CI pra quem baixa receber um pacote que funciona."""
+
+    def workflow(self) -> str:
+        return (Path(__file__).resolve().parent.parent / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+
+    def job(self) -> str:
+        texto = self.workflow()
+        return texto[texto.index("  build-linux:"):]
+
+    def test_o_job_do_linux_vem_depois_do_windows_e_na_versao_nova(self):
+        self.assertIn("needs: build", self.job(), "a release nasce no job do Windows")
+        self.assertRegex(self.job(), r"ref: main", "sem isto o pacote sai com a versao de antes do incremento")
+
+    def test_o_pacote_leva_o_instalador_e_o_icone(self):
+        empacotar = self.job()[self.job().index("Empacotar"):]
+        self.assertIn("cp packaging/instalar-linux.sh packaging/loom.png dist/Loom/", empacotar)
+        self.assertLess(empacotar.index("cp packaging"), empacotar.index("tar -czf"), "copiar depois do tar nao entra no pacote")
+
+    def test_o_pacote_entra_na_release_sem_apagar_o_exe(self):
+        self.assertIn("gh release upload latest dist/Loom-Linux-x64.tar.gz --clobber", self.job())
+        self.assertNotIn("gh release delete", self.job())
+
+    def test_toda_biblioteca_do_motor_web_esta_na_lista(self):
+        for pacote in ("libnss3", "libasound2t64", "libxkbfile1", "libgbm1", "libegl1", "libxcb-cursor0"):
+            self.assertIn(pacote, self.job(), pacote)
+
+    def test_o_job_do_windows_continua_como_era(self):
+        texto = self.workflow()
+        antes = texto[:texto.index("  build-linux:")]
+        self.assertIn("runs-on: windows-latest", antes)
+        self.assertIn('gh release create latest "dist/Loom-Setup.exe"', antes)
+
+    def test_a_bateria_nao_abre_janela_fora_do_windows(self):
+        texto = (Path(__file__).resolve().parent / "rodar.py").read_text(encoding="utf-8")
+        self.assertIn('os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")', texto)
+
+
 class BarraDaJanela(unittest.TestCase):
     """O que a pagina pede pra janela sem a barra do sistema, com a janela falsa."""
 

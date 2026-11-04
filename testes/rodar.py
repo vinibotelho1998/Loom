@@ -7,9 +7,17 @@ Nenhum teste de dados encosta na pasta de verdade: cada um roda numa pasta tempo
 Os de janela sobem a tela inteira, e a tela abre a aba padrao com um shell de verdade.
 """
 
+import os
 import sys
 import unittest
 from pathlib import Path
+
+if sys.platform != "win32":
+    # Fora do Windows, sem isto os testes de janela abririam de verdade na tela de quem roda, e o
+    # motor web pediria placa de video e sandbox que o runner do CI nao tem
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    os.environ.setdefault("QT_QUICK_BACKEND", "software")
+    os.environ.setdefault("QTWEBENGINE_CHROMIUM_FLAGS", "--disable-gpu --no-sandbox")
 
 AQUI = Path(__file__).resolve().parent
 sys.path.insert(0, str(AQUI))
