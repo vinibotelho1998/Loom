@@ -572,6 +572,12 @@ class PacoteNaRelease(unittest.TestCase):
         self.assertIn("runs-on: windows-latest", antes)
         self.assertIn('gh release create latest "dist/Loom-Setup.exe"', antes)
 
+    def test_a_biblioteca_que_fala_com_o_driver_de_video_fica_de_fora_do_pacote(self):
+        """A libgbm do runner nao combina com o Mesa de quem baixa, e o desenho cai num caminho pior."""
+        spec = (Path(__file__).resolve().parent.parent / "packaging" / "Loom.spec").read_text(encoding="utf-8")
+        self.assertIn('startswith("libgbm.so")', spec)
+        self.assertLess(spec.index('startswith("libgbm.so")'), spec.index("COLLECT("), "tem que sair antes de juntar o pacote")
+
     def test_a_bateria_nao_abre_janela_fora_do_windows(self):
         texto = (Path(__file__).resolve().parent / "rodar.py").read_text(encoding="utf-8")
         self.assertIn('os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")', texto)

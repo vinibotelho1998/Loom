@@ -85,6 +85,12 @@ coletor = Analysis(
 _verificar_runtime_windows(app.binaries)
 _verificar_runtime_windows(coletor.binaries)
 
+# A libgbm conversa com o driver de video de quem roda, e tem que ser a do sistema. Levada do runner
+# do CI, ela nao combina com outro Mesa: o Chromium avisa Failed to create GBM buffer e cai num
+# caminho pior de desenho.
+if os.name != "nt":
+    app.binaries = [b for b in app.binaries if not os.path.basename(b[0]).startswith("libgbm.so")]
+
 pyz_app = PYZ(app.pure)
 pyz_coletor = PYZ(coletor.pure)
 
