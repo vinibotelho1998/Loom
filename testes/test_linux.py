@@ -577,6 +577,31 @@ class PacoteNaRelease(unittest.TestCase):
         self.assertIn('os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")', texto)
 
 
+class FiltroDaJanela(unittest.TestCase):
+    """No Windows o filtro de eventos e da aplicacao inteira e ja recebe evento durante o __init__."""
+
+    def test_evento_antes_de_a_view_existir_nao_derruba(self):
+        from unittest.mock import patch
+
+        from PySide6.QtCore import QChildEvent, QEvent, QObject
+        from PySide6.QtWidgets import QApplication, QMainWindow
+
+        from loom import app as mod_app
+
+        QApplication.instance() or QApplication([])
+
+        class SemView(mod_app.MainWindow):
+            # o estado da janela no meio do __init__, com o filtro ligado e a view ainda sem nascer
+            def __init__(self):
+                QMainWindow.__init__(self)
+
+        janela = SemView()
+        self.assertFalse(hasattr(janela, "view"))
+        filho = QObject()
+        with patch.object(mod_app.sys, "platform", "win32"):
+            self.assertFalse(janela.eventFilter(QObject(), QChildEvent(QEvent.Type.ChildAdded, filho)))
+
+
 class BarraDaJanela(unittest.TestCase):
     """O que a pagina pede pra janela sem a barra do sistema, com a janela falsa."""
 

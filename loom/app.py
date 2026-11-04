@@ -319,7 +319,9 @@ class MainWindow(QMainWindow):
         mandamos pra tela ja resolvido.
         """
         tipo = evento.type()
-        if tipo == QEvent.Type.ChildAdded and obj is self.view and sys.platform != "win32":
+        # O sistema vem antes de tudo: no Windows o filtro e da aplicacao inteira e ja recebe evento
+        # durante o __init__, antes de a view existir
+        if sys.platform != "win32" and tipo == QEvent.Type.ChildAdded and obj is self.view:
             # o widget que recebe o arrasto nasce por dentro do motor web, depois da view
             filho = evento.child()
             if isinstance(filho, QWidget):

@@ -26,10 +26,13 @@ def carimbo(segundos_atras: float = 0) -> str:
 
     Contado a partir de uma ancora que e agora, menos nos primeiros minutos depois da meia-noite:
     ali "segundos atras" caia em ontem e os testes do que e de hoje falhavam so por causa do relogio.
+    Sempre no meio de um balde de 5 minutos do medidor: solto, uma vez a cada 300 segundos a leitura e
+    a resposta de 1 s antes caiam em baldes diferentes, e a proporcao de tokens saia pela metade.
     """
     agora = datetime.now().astimezone()
     ancora = max(agora, agora.replace(hour=1, minute=0, second=0, microsecond=0))
-    return (ancora.astimezone(timezone.utc) - timedelta(seconds=segundos_atras)).isoformat().replace("+00:00", "Z")
+    meio_do_balde = (ancora.timestamp() - 150) // 300 * 300 + 150
+    return datetime.fromtimestamp(meio_do_balde - segundos_atras, timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def dias_atras(dias: int) -> str:

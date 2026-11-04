@@ -369,6 +369,12 @@ def conta_do_painel(teste: ComPainel, ferramenta: str) -> dict:
     return next(conta for conta in json.loads(json.dumps(painel))["contas"] if conta["ferramenta"] == ferramenta)
 
 
+class RelogioDosTestes(unittest.TestCase):
+    def test_o_carimbo_nunca_cai_na_beira_de_um_balde(self):
+        """Na beira, o teste de baixo falhava em uma posicao do relogio a cada 300, e travava a release."""
+        self.assertEqual(instante_de(0) % uso_fora.PASSO, uso_fora.PASSO / 2)
+
+
 class ForaDoComputadorNoPainelDoCodex(ComPainel):
     def antiga_com_trabalho_continuo(self) -> None:
         """Uma janela de 10 pontos em 90 minutos de trabalho com 6 mi de tokens por resposta."""

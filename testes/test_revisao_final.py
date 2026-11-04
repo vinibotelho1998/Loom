@@ -1,6 +1,7 @@
 """Revisao independente: somente arquivos sinteticos e JavaScript no Qt."""
 
 import json
+import os
 from collections import OrderedDict
 from unittest.mock import patch
 
@@ -131,6 +132,19 @@ class LeituraIncremental(ComPastaPropria):
         dados, fim = uso._ler_novidades(arquivo, fim)
         self.assertEqual(dados, [json.loads(novo)])
         self.assertEqual(fim, len(novo))
+
+    def test_arquivo_reescrito_no_mesmo_tique_do_relogio_nao_herda_a_sobra(self):
+        """No Windows, duas gravacoes seguidas podem sair com o mesmo carimbo, e o teste acima oscilava."""
+        arquivo = self.raiz / "mesmo-tique.jsonl"
+        antigo = json.dumps(self.resposta("2026-10-02T12:00:00Z", "x" * 600)).encode()
+        novo = json.dumps(self.resposta("2026-10-02T12:00:01Z", "novo")).encode() + b"\n"
+        arquivo.write_bytes(antigo)
+        carimbo = arquivo.stat().st_mtime_ns
+        _, fim = uso._ler_novidades(arquivo, 0, teto=100)
+        arquivo.write_bytes(novo)
+        os.utime(arquivo, ns=(carimbo, carimbo))
+        dados, fim = uso._ler_novidades(arquivo, fim)
+        self.assertEqual(dados, [json.loads(novo)])
 
     def test_linha_maior_que_teto_real_nao_fica_presa(self):
         arquivo = self.raiz / "imagem-grande.jsonl"

@@ -135,8 +135,10 @@ def _ler_novidades(
         desde = 0
     chave = (str(caminho.resolve()), desde, filtro)
     pendente = _LINHAS_PENDENTES.pop(chave, None)
-    if pendente and (pendente[2] != marca.st_ino or
-                     (marca.st_mtime_ns != pendente[3] and tamanho <= pendente[4])):
+    # Arquivo que encolheu foi reescrito, mesmo com a mesma hora: no Windows, duas gravacoes no mesmo
+    # tique do relogio saem com o mesmo carimbo, e a sobra antiga virava linha do arquivo novo
+    if pendente and (pendente[2] != marca.st_ino or tamanho < pendente[4] or
+                     (marca.st_mtime_ns != pendente[3] and tamanho == pendente[4])):
         pendente[0].close()
         pendente = None
     sobra = pendente[0] if pendente else tempfile.SpooledTemporaryFile(max_size=BLOCO)
