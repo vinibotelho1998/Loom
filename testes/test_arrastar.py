@@ -40,6 +40,7 @@ def soltar_na_janela(dados: QMimeData) -> tuple[bool, list[str]]:
 
 
 class ArrastarArquivo(unittest.TestCase):
+    @unittest.skipUnless(sys.platform == "win32", "caminho do Windows")
     def test_o_caminho_chega_inteiro_e_com_a_barra_do_windows(self):
         dados = QMimeData()
         dados.setUrls([QUrl.fromLocalFile("C:/Users/eu/pasta com espaco/arquivo.txt")])
@@ -49,6 +50,18 @@ class ArrastarArquivo(unittest.TestCase):
         self.assertTrue(tratou, "o filtro precisa consumir o drop antes do motor web")
         self.assertEqual(len(recebidos), 1)
         esperado = str(Path("C:/Users/eu/pasta com espaco/arquivo.txt"))
+        self.assertEqual(json.loads(recebidos[0]), [esperado])
+
+    @unittest.skipIf(sys.platform == "win32", "caminho do Linux")
+    def test_o_caminho_chega_inteiro_no_linux(self):
+        dados = QMimeData()
+        dados.setUrls([QUrl.fromLocalFile("/home/eu/pasta com espaco/arquivo.txt")])
+
+        tratou, recebidos = soltar_na_janela(dados)
+
+        self.assertTrue(tratou, "o filtro precisa consumir o drop antes do motor web")
+        self.assertEqual(len(recebidos), 1)
+        esperado = str(Path("/home/eu/pasta com espaco/arquivo.txt"))
         self.assertEqual(json.loads(recebidos[0]), [esperado])
 
     def test_varios_arquivos_de_uma_vez(self):

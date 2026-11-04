@@ -1,13 +1,13 @@
 # Loom
 
-Gerenciador de terminal para Windows, no espírito do Warp, feito para quem roda
-vários agentes de linha de comando ao mesmo tempo. Cada aba é um ConPTY de
+Gerenciador de terminal para Linux e Windows, no espírito do Warp, feito para quem
+roda vários agentes de linha de comando ao mesmo tempo. Cada aba é um terminal de
 verdade, com cor, redimensionamento e Ctrl+C, e cada sessão de agente aparece
 numa barra lateral que mostra o estado dela sem você precisar entrar na aba.
 
 [![Build](https://github.com/vinibotelho1998/Loom/actions/workflows/release.yml/badge.svg)](https://github.com/vinibotelho1998/Loom/actions/workflows/release.yml)
 ![Python](https://img.shields.io/badge/python-3.14-blue)
-![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11%20x64-0078D6)
+![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Windows%20x64-0078D6)
 ![UI](https://img.shields.io/badge/UI-PySide6%20%2B%20xterm.js-41CD52)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
@@ -29,23 +29,30 @@ por id de mensagem, converte o horário de UTC para o fuso local e agrega por di
 semana, modelo e perfil. Leitura incremental: guarda o deslocamento de cada
 arquivo e nunca relê o que já contou.
 
-**Terminal de verdade.** xterm.js na tela, pywinpty no ConPTY do Windows, e a
-tela fala com os shells pelo canal interno do Qt, dentro do mesmo processo, sem
-porta de rede nenhuma.
+**Terminal de verdade.** xterm.js na tela, o PTY do kernel no Linux, pywinpty no
+ConPTY do Windows, e a tela fala com os shells pelo canal interno do Qt, sem porta
+de rede nenhuma.
 
 ## Instalação
 
-Baixe o **Loom-Setup.exe** da [última release](https://github.com/vinibotelho1998/Loom/releases/latest)
+**Windows:** baixe o **Loom-Setup.exe** da [última release](https://github.com/vinibotelho1998/Loom/releases/latest)
 e execute. Não precisa de Python nem do repositório.
+
+**Linux:** gere o build e coloque no menu do sistema. Testado no KDE Plasma em Wayland.
+
+```
+packaging/build.sh
+packaging/instalar-linux.sh
+```
 
 ## Rodar a partir do código-fonte
 
-Precisa de Python 3.14 no Windows.
+Precisa de Python 3.14.
 
 ```
 python -m venv .venv
-.venv\Scripts\pip install -r requirements.txt
-.venv\Scripts\python run.py
+.venv/bin/pip install -r requirements.txt       no Windows, .venv\Scripts\pip
+.venv/bin/python run.py                         no Windows, .venv\Scripts\python
 ```
 
 ## Testes
@@ -62,11 +69,8 @@ ficam fora do `rapido`.
 
 ## Gerar o instalador
 
-```
-BUILD.bat
-```
-
-Sai em `dist\Loom-Setup.exe`. O CI gera um a cada push na `main`.
+No Windows, `BUILD.bat` gera `dist\Loom-Setup.exe`, e o CI gera um a cada push na
+`main`. No Linux, `packaging/build.sh` gera a pasta `dist/Loom`.
 
 ## Onde ficam os dados
 

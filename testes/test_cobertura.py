@@ -20,6 +20,7 @@ from datetime import datetime, timedelta, timezone
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from base import ComPastaPropria  # noqa: E402
+from base import so_no_windows  # noqa: E402
 from test_usabilidade import ComPonte  # noqa: E402
 
 from loom import app as mod_app  # noqa: E402
@@ -399,6 +400,7 @@ class SettingsForaDoFormato(ComPastaPropria):
         self.assertFalse(perfis.instalar_coletor(self.conta, "py.exe", "C:\\proj"))
         self.assertEqual(json.loads(self.settings.read_text(encoding="utf-8"))["statusLine"]["command"], comando)
 
+    @so_no_windows
     def test_trocar_do_codigo_pro_instalado_leva_a_barra_junto(self):
         anterior = 'npx ccstatus --tema "escuro"'
         self.settings.write_text(json.dumps({"statusLine": {"command": anterior}}), encoding="utf-8")
@@ -532,8 +534,7 @@ class LeituraDaPrincipalForaDoPadrao(ComPastaPropria):
         return json.loads(self.alvo.read_text(encoding="utf-8"))
 
     def fuga_do_atalho(self) -> str:
-        linhas = (perfis.RAIZ / "status-line.cmd").read_text(encoding="utf-8").splitlines()
-        return linhas[linhas.index(") else (") + 1]
+        return "  " + perfis._anterior_do_atalho((perfis.RAIZ / perfis.ATALHO).read_text(encoding="utf-8"))
 
     def test_barra_com_aspas_vai_escapada_e_volta_igual(self):
         anterior = 'npx ccstatus --tema "escuro"'
@@ -574,7 +575,7 @@ class LeituraDaPrincipalForaDoPadrao(ComPastaPropria):
     def test_atalho_apagado_deixa_de_contar_como_ligado(self):
         self.alvo.write_text("{}", encoding="utf-8")
         perfis.ligar_leitura_principal("py.exe", str(self.projeto))
-        (perfis.RAIZ / "status-line.cmd").unlink()
+        (perfis.RAIZ / perfis.ATALHO).unlink()
         self.assertFalse(perfis.leitura_principal_ligada())
 
 
@@ -899,7 +900,6 @@ class AbaESessao(ComPaginaInteira):
         )
         self.assertEqual(self.rodar('abaDaSessao({sessao: "s1"}).nome'), "certa")
         self.assertIsNone(self.rodar('abaDaSessao({sessao: "s9"})'))
-        self.assertFalse(self.rodar('ehDaCasa({sessao: "s9"})'))
 
     def test_abas_da_conta_so_as_vivas(self):
         self.definir(
@@ -1087,9 +1087,7 @@ class ConversaDaAbaSemPrograma(ComPaginaInteira):
     TROCAS = {
         "avisarProntas": "() => {}",
         "anotarAbas": "() => {}",
-        "aplicarAlturaExternas": "() => {}",
         "pintarUsoDaBarra": "() => {}",
-        "montarCartao": "(s) => { anotado.push(s.sessao); return {}; }",
     }
     SESSOES = (
         '[{sessao: "velha", aba: "a1", idade: 900, estado: "aguardando", bruto: "respondeu", titulo: "antiga", terminal: "loom"},'
@@ -1103,22 +1101,21 @@ class ConversaDaAbaSemPrograma(ComPaginaInteira):
             "const aba = {viva: true, sessionId: 'a1', elevado: %s, refletir(s) { this.dono = s ? s.sessao : null; }};"
             " deDentro.ordem.length = 0; deDentro.ordem.push(aba);"
             " deDentro.sessoesVistas = %s; deDentro.abasComPrograma = %s;"
-            " deDentro.cfg = {mostrarSessoesDeFora: true};"
             " montarSessoes();"
             " return {dono: aba.dono, anterior: aba.conversaAnterior || '', titulo: aba.tituloAnterior || '',"
-            " vivo: aba.programaVivo, cartoes: anotado};" % ("true" if elevada else "false", self.SESSOES, com_programa),
+            " vivo: aba.programaVivo};" % ("true" if elevada else "false", self.SESSOES, com_programa),
         )
 
     def test_com_o_claude_rodando_a_mais_recente_e_a_dona(self):
         self.assertEqual(
             self.montar("new Set(['a1'])"),
-            {"dono": "nova", "anterior": "", "titulo": "", "vivo": True, "cartoes": ["fora"]},
+            {"dono": "nova", "anterior": "", "titulo": "", "vivo": True},
         )
 
     def test_sem_programa_a_conversa_vira_o_retomar_da_aba(self):
         self.assertEqual(
             self.montar("new Set()"),
-            {"dono": None, "anterior": "nova", "titulo": "deploy", "vivo": False, "cartoes": ["fora"]},
+            {"dono": None, "anterior": "nova", "titulo": "deploy", "vivo": False},
         )
 
     def test_elevada_ou_sem_consulta_fica_como_era(self):

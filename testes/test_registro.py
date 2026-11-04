@@ -20,6 +20,7 @@ from pathlib import Path
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import base  # noqa: E402,F401
+from base import so_no_windows  # noqa: E402
 
 from loom import registro  # noqa: E402
 
@@ -74,6 +75,7 @@ class ArquivoDeLog(ComLog):
         self.assertFalse(manipulador.stream.closed)
         self.assertTrue(faulthandler.is_enabled())
 
+    @so_no_windows
     def test_arquivo_preso_por_outro_loom_nao_perde_linha_nem_copia(self):
         """O Loom instalado e o do codigo escrevem no mesmo log, e o Windows nao renomeia o
         arquivo que o outro segura aberto. A linha que pedia a troca se perdia."""

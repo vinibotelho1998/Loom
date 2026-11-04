@@ -2,19 +2,19 @@
 
 
 const TEMA = {
-  background: "#16181c",
-  foreground: "#d3d8e0",
-  cursor: "#4f9cf9",
-  cursorAccent: "#16181c",
-  // com o fundo em cinza, o azul antigo quase nao aparecia por cima do texto
-  selectionBackground: "#3c5a80",
-  selectionForeground: "#eef2f8",
-  selectionInactiveBackground: "#2c3d52",
-  black: "#16181c", red: "#e05561", green: "#6cc98a", yellow: "#d5b06b",
-  blue: "#4f9cf9", magenta: "#b088f0", cyan: "#56c2c9", white: "#c8cfda",
-  brightBlack: "#5b6371", brightRed: "#f0808a", brightGreen: "#8ce0a8",
-  brightYellow: "#f0cd85", brightBlue: "#7fb8ff", brightMagenta: "#cba8ff",
-  brightCyan: "#87dce2", brightWhite: "#eef2f8",
+  background: "#111214",
+  foreground: "#e6e6e8",
+  cursor: "#2ab4e0",
+  cursorAccent: "#111214",
+  // com o fundo escuro, o azul antigo quase nao aparecia por cima do texto
+  selectionBackground: "#2f5a6b",
+  selectionForeground: "#f4f4f5",
+  selectionInactiveBackground: "#27404a",
+  black: "#1c1d20", red: "#ff7b72", green: "#8bd97f", yellow: "#e8c872",
+  blue: "#6cb6ff", magenta: "#d09bf5", cyan: "#5fd4d8", white: "#d6d7da",
+  brightBlack: "#6a6b72", brightRed: "#ffa198", brightGreen: "#aef0a2",
+  brightYellow: "#f4dc98", brightBlue: "#9ccfff", brightMagenta: "#e2bdfa",
+  brightCyan: "#8de8ea", brightWhite: "#f7f7f8",
 };
 
 /* Teclas que a janela trata e o terminal NAO pode receber. Sem isto o xterm manda o
@@ -1228,14 +1228,13 @@ function perguntar(titulo, texto, opcoes) {
 const TECLAS_SOLTAS = new Set(["Control", "Shift", "Alt", "AltGraph", "Meta", "CapsLock"]);
 
 function menuAberto() {
-  return !elMenu.hidden || !elMenuAba.hidden || !elMenuSessao.hidden;
+  return !elMenu.hidden || !elMenuAba.hidden;
 }
 
 function fecharMenus() {
   esconderMenu();
   elMenuAba.hidden = true;
   abaDoMenu = null;
-  fecharMenuSessao();
 }
 
 /* ----------------------------------------------------------------- menu */
@@ -1280,7 +1279,7 @@ function montarMenu() {
     escudo.title = elevacao.disponivel
       ? "Abrir este shell com privilégio de administrador, sem conta"
       : TEXTO_DA_ELEVACAO[elevacao.motivo] ||
-        "Precisa do sudo do Windows 11 ou do gsudo pra abrir elevado na mesma aba";
+        "Precisa do sudo, ou do gsudo no Windows, pra abrir elevado na mesma aba";
     // apagado, mas clicavel: botao desabilitado nao recebe o clique, e o motivo so existia
     // num tooltip de botao apagado
     escudo.classList.toggle("indisponivel", !elevacao.disponivel);
@@ -1843,6 +1842,7 @@ const CAMPOS = [
   ["cursor", "select"],
   ["cursorPisca", "check"],
   ["densidade", "select"],
+  ["barraDoSistema", "check"],
   ["desenho", "select"],
   ["shellPadrao", "select"],
   ["perfilPadrao", "select"],
@@ -2051,7 +2051,6 @@ el("vazio-nova").addEventListener("click", abaPadrao);
 
 const elLateral = el("lateral");
 const elListaSessoes = el("abas");
-const elListaExternas = el("lista-externas");
 let sessoes = [];
 
 function tempoCurto(s) {
@@ -2158,8 +2157,6 @@ function comoNaAba(s, aba) {
   return s;
 }
 
-let sessaoDoMenu = null;
-
 let pastaPessoal = "";
 
 function contaDaSessao(s) {
@@ -2233,8 +2230,6 @@ function montarSessoes() {
   // shell novo nascia com o titulo e o ready de uma conversa que morreu com o app.
   const usadas = new Set();
   const donos = new Map();
-  // o que rodou numa aba que continua aberta: some da lista de fora e vira o Retomar dela
-  const daAbaViva = new Set();
 
   for (const aba of terminais) {
     if (!aba.viva) continue;
@@ -2244,7 +2239,6 @@ function montarSessoes() {
     aba.programaVivo = !abasComPrograma || aba.elevado || abasComPrograma.has(aba.sessionId);
     const daqui = sessoes.filter((s) => !usadas.has(s.sessao) && s.aba && s.aba === aba.sessionId);
     if (!daqui.length) continue;
-    for (const s of daqui) daAbaViva.add(s.sessao);
     // a mais recente e a de agora: depois de um /clear, a velha, pronta, vinha antes na lista
     const recente = daqui.reduce((a, b) => (b.idade < a.idade ? b : a));
     if (aba.programaVivo) {
@@ -2268,112 +2262,8 @@ function montarSessoes() {
   if (emGrade) pintarGrade();
   else if (divisao) pintarDivisao();
 
-  // A conversa que nasceu aqui e cuja aba nao existe mais sumia da lista e virava so um numero
-  // no rotulo. Ela entra com as de fora, depois delas, marcada como encerrada, e o botao
-  // direito retoma. A que ainda trabalha provavelmente foi retomada em outro terminal. A de
-  // uma aba que continua aberta, depois de um /clear ou de sair do Claude, nao entra: ela
-  // aparecia como closed, com a aba viva, e o Encerrar dela fechava a aba da conversa atual.
-  const soltas = sessoes.filter((s) => !usadas.has(s.sessao) && !daAbaViva.has(s.sessao));
-  const deFora = soltas.filter((s) => s.terminal !== "loom");
-  const orfas = soltas.filter((s) => s.terminal === "loom");
-  const lista = deFora.concat(orfas);
-
-  const rotulo = el("divisor-rotulo");
-  const nomeDaLista = deFora.length ? (orfas.length ? "Fora das abas" : "Terminais externos") : "Conversas encerradas";
-  if (rotulo) {
-    rotulo.textContent = nomeDaLista;
-    rotulo.title = orfas.length
-      ? orfas.length === 1
-        ? "Inclui 1 conversa deste app cuja aba já foi fechada"
-        : "Inclui " + orfas.length + " conversas deste app cujas abas já foram fechadas"
-      : "";
-  }
-  const nomeDoBotao = el("mostrar-fora-rotulo");
-  if (nomeDoBotao) nomeDoBotao.textContent = nomeDaLista;
-  elListaExternas.innerHTML = "";
-  const mostrar = cfg.mostrarSessoesDeFora === true;
-  const temFora = lista.length > 0;
-
-  el("divisor-fora").hidden = !temFora || !mostrar;
-  elListaExternas.hidden = !temFora || !mostrar;
-  const botaoMostrar = el("mostrar-fora");
-  botaoMostrar.hidden = !temFora || mostrar;
-  el("conta-fora").textContent = temFora ? String(lista.length) : "";
-
-  if (mostrar) {
-    for (const s of lista) elListaExternas.appendChild(montarCartao(s));
-  }
-  elListaExternas.classList.toggle("encolhida", !temFora);
-  aplicarAlturaExternas();
   // o contexto e o modelo da barra saem da aba pareada: saindo do Claude, eles saem junto
   pintarUsoDaBarra();
-}
-
-function montarCartao(s) {
-  {
-    // conversa que nasceu numa aba deste app e nao tem mais aba: parada, e nao ready
-    const encerrada = s.terminal === "loom" && (s.estado === "aguardando" || s.estado === "parada");
-    const cartao = document.createElement("div");
-    cartao.className = "sessao externa " + (encerrada ? "parada" : s.estado);
-    cartao.dataset.sessao = s.sessao;
-
-    const perfil = perfis.find((p) => p.id === contaDaSessao(s));
-    const pasta = nomeDaPasta(s.pasta) || "sem pasta";
-
-    const topo = document.createElement("div");
-    topo.className = "sessao-topo";
-    const pulso = document.createElement("span");
-    pulso.className = "sessao-pulso";
-    // o ponto e do estado, como no cartao da aba; a conta ja esta no rodape
-    if (perfil) pulso.style.setProperty("--cor-conta", perfil.cor);
-    const ferramenta = nomeDaFerramenta(s, perfil);
-    const nome = document.createElement("span");
-    nome.className = "sessao-pasta";
-    nome.textContent = tituloDaConversa(s, ferramenta);
-    nome.title = s.titulo || s.pasta;
-    const idade = document.createElement("span");
-    idade.className = "sessao-idade";
-    idade.textContent = tempoCurto(s.idade);
-    topo.append(pulso, nome, idade);
-
-    const linha = document.createElement("div");
-    linha.className = "sessao-linha";
-    pintarLinhaDeEstado(linha, s, encerrada);
-    // o clique abre um menu, e nao retoma direto como o texto antigo dizia
-    cartao.title = encerrada ? "Fechada aqui. Clique pra ver as opções" : "Clique pra ver as opções";
-
-    const rodape = document.createElement("div");
-    rodape.className = "sessao-rodape";
-    const conta = document.createElement("span");
-    conta.className = "sessao-conta";
-    if (perfil) {
-      conta.textContent = perfil.nome;
-      conta.style.color = perfil.cor;
-    } else if (s.cli === "codex") {
-      conta.textContent = "Codex";
-      conta.title = "Codex, o login do ~/.codex";
-    } else {
-      conta.textContent = "Principal";
-      conta.title = "Principal, o login do ~/.claude";
-    }
-    rodape.appendChild(conta);
-    if (typeof s.contexto === "number") rodape.appendChild(barraContexto(s.contexto));
-
-    const origem = document.createElement("div");
-    origem.className = "sessao-origem";
-    cartao.append(topo, origem, linha, rodape);
-    pintarOrigem(cartao, ferramenta, s, nome.textContent);
-    cartao.addEventListener("contextmenu", (ev) => {
-      ev.preventDefault();
-      abrirMenuSessao(s, ev.clientX, ev.clientY);
-    });
-    // o cartao clareava no hover e o clique nao fazia nada: agora abre o mesmo menu
-    cartao.addEventListener("click", (ev) => {
-      ev.stopPropagation();
-      abrirMenuSessao(s, ev.clientX, ev.clientY);
-    });
-    return cartao;
-  }
 }
 
 function abasDaConta(conta) {
@@ -2388,27 +2278,6 @@ function abaDaSessao(s) {
     if (!aba.ehPainel && aba.sessao && aba.sessao.sessao === s.sessao) return aba;
   }
   return null;
-}
-
-function ehDaCasa(s) {
-  // ser nossa quer dizer que da pra te levar ate ela. Sessao cuja aba ja foi fechada
-  // vira acompanhamento, igual as de outro terminal.
-  return !!abaDaSessao(s);
-}
-
-function irParaSessao(s) {
-  const alvo = abaDaSessao(s);
-  if (alvo) {
-    ativar(alvo);
-    return;
-  }
-  const conta = contaDaSessao(s);
-  const abertas = conta && conta !== "__padrao__" ? abasDaConta(conta).length : 0;
-  piscarAviso(
-    abertas > 1
-      ? "A conta " + ((perfis.find((p) => p.id === conta) || {}).nome || "") + " tem mais de uma aba aberta, não dá pra saber qual é"
-      : "Essa sessão não tem aba aberta aqui, é só acompanhamento"
-  );
 }
 
 let avisoRelogio = null;
@@ -2627,48 +2496,6 @@ function renomearAba(aba) {
   campo.addEventListener("mousedown", (ev) => ev.stopPropagation());
 }
 
-const elMenuSessao = el("menu-sessao");
-
-function abrirMenuSessao(s, x, y) {
-  sessaoDoMenu = s;
-  // sem aba aqui, ir e encerrar ficavam sempre apagados, dois itens mortos no menu
-  const daCasa = !!abaDaSessao(s);
-  elMenuSessao.querySelector('[data-acao="ir"]').hidden = !daCasa;
-  const encerrar = elMenuSessao.querySelector('[data-acao="encerrar"]');
-  encerrar.hidden = !daCasa;
-  elMenuSessao.hidden = false;
-  const caixa = elMenuSessao.getBoundingClientRect();
-  elMenuSessao.style.left = Math.min(x, window.innerWidth - caixa.width - 10) + "px";
-  elMenuSessao.style.top = Math.min(y, window.innerHeight - caixa.height - 10) + "px";
-}
-
-function fecharMenuSessao() {
-  elMenuSessao.hidden = true;
-  sessaoDoMenu = null;
-}
-
-elMenuSessao.querySelectorAll("[data-acao]").forEach((b) => {
-  b.addEventListener("click", () => {
-    const s = sessaoDoMenu;
-    if (!s) return;
-    const acao = b.dataset.acao;
-    if (acao === "ir") irParaSessao(s);
-    else if (acao === "atualizar") atualizarSessoes();
-    else if (acao === "abrir") novaAbaEm(s);
-    else if (acao === "retomar") retomarSessao(s);
-    else if (acao === "copiar") copiarComAviso(s.pasta || "", "Caminho copiado: " + (s.pasta || ""));
-    else if (acao === "encerrar") {
-      const alvo = abaDaSessao(s);
-      if (alvo) fecharComCuidado(alvo);
-    }
-    fecharMenuSessao();
-  });
-});
-
-document.addEventListener("mousedown", (ev) => {
-  if (!elMenuSessao.hidden && !elMenuSessao.contains(ev.target)) fecharMenuSessao();
-});
-
 function retomarSessao(s, mesmoTrabalhando) {
   /* Abre uma aba na conta certa e manda o CLI continuar aquela conversa. */
   const conta = contaDaSessao(s);
@@ -2705,12 +2532,6 @@ function retomarSessao(s, mesmoTrabalhando) {
     return;
   }
   novaAba("", perfil.id, { pasta: s.pasta, conversa: s.sessao });
-}
-
-function novaAbaEm(s) {
-  const perfil = perfis.find((p) => p.id === contaDaSessao(s));
-  // a pasta vai no proprio ConPTY, entao o shell ja nasce la dentro
-  novaAba("", perfil ? perfil.id : "", { pasta: s.pasta || "" });
 }
 
 let janelaAtiva = true;
@@ -2864,10 +2685,6 @@ function envelhecer() {
     aba.sessao = comoNaAba(s, aba);
     escrever(aba.botao, s);
   }
-  for (const cartao of elListaExternas.querySelectorAll("[data-sessao]")) {
-    const s = porId.get(cartao.dataset.sessao);
-    if (s) escrever(cartao, s);
-  }
 }
 
 function reagendarSessoes() {
@@ -2916,7 +2733,9 @@ function caminhoLiteral(caminho, aba) {
   if (/[\r\n\0]/.test(texto)) return null;
   const shell = aba.shell && aba.shell.id;
   if (shell === "pwsh" || shell === "powershell") return "'" + texto.replace(/'/g, "''") + "'";
-  if (shell === "bash" || shell === "wsl") return "'" + texto.replace(/'/g, "'\"'\"'") + "'";
+  if (["bash", "wsl", "zsh", "sh", "dash", "ksh"].includes(shell)) return "'" + texto.replace(/'/g, "'\"'\"'") + "'";
+  // no fish a barra invertida conta dentro das aspas simples, e a aspa se escapa com ela
+  if (shell === "fish") return "'" + texto.replace(/([\\'])/g, "\\$1") + "'";
   // cmd expande %VAR% mesmo entre aspas; !VAR! tambem com expansao atrasada.
   if (shell === "cmd" && !/["%!]/.test(texto)) return '"' + texto + '"';
   return null;
@@ -3641,61 +3460,6 @@ function aplicarLarguraLateral() {
   });
 })();
 
-/* ------------------------------------------- arrastar a divisoria */
-
-const elDivisor = el("divisor-fora");
-
-function aplicarAlturaExternas() {
-  const valor = Math.min(Math.max(cfg.alturaExternas || 25, 8), 75);
-  elLateral.style.setProperty("--altura-externas", valor + "%");
-}
-
-(function ligarArraste() {
-  let arrastando = false;
-  let gravar = null;
-
-  elDivisor.addEventListener("mousedown", (ev) => {
-    ev.preventDefault();
-    arrastando = true;
-    elDivisor.classList.add("puxando");
-    elLateral.classList.add("arrastando");
-  });
-
-  window.addEventListener("mousemove", (ev) => {
-    if (!arrastando) return;
-    const caixa = elLateral.getBoundingClientRect();
-    const daBase = caixa.bottom - ev.clientY;
-    const pct = Math.min(Math.max((daBase / caixa.height) * 100, 8), 75);
-    cfg.alturaExternas = Math.round(pct);
-    aplicarAlturaExternas();
-    clearTimeout(gravar);
-    gravar = setTimeout(() => {
-      bridge.saveConfig(JSON.stringify({ alturaExternas: cfg.alturaExternas }), () => {});
-    }, 400);
-  });
-
-  window.addEventListener("mouseup", () => {
-    if (!arrastando) return;
-    arrastando = false;
-    elDivisor.classList.remove("puxando");
-    elLateral.classList.remove("arrastando");
-  });
-})();
-
-function alternarSessoesDeFora(mostrar) {
-  cfg.mostrarSessoesDeFora = mostrar;
-  bridge.saveConfig(JSON.stringify({ mostrarSessoesDeFora: mostrar }), (json) => {
-    cfg = JSON.parse(json);
-    montarSessoes();
-  });
-}
-
-el("esconder-fora").addEventListener("click", (ev) => {
-  ev.stopPropagation();
-  alternarSessoesDeFora(false);
-});
-el("mostrar-fora").addEventListener("click", () => alternarSessoesDeFora(true));
-
 function alternarLateral() {
   elLateral.classList.toggle("fechada");
   setTimeout(() => {
@@ -3707,14 +3471,54 @@ function alternarLateral() {
 
 el("alternar-lateral").addEventListener("click", alternarLateral);
 
-// alca grudada na divisa: fica sempre a vista, inclusive com a lateral ja fechada
-const alcaLateral = el("recolher-lateral");
-alcaLateral.addEventListener("click", (ev) => {
-  ev.stopPropagation();
-  alternarLateral();
-});
-// sem isso, clicar na alca comeca a arrastar a largura da lateral
-alcaLateral.addEventListener("mousedown", (ev) => ev.stopPropagation());
+/* ------------------------------------------------------ barra da janela */
+
+function ligarJanelaPropria(propria) {
+  /* Sem a barra do sistema, o topo do Loom e a barra: arrasta, duplo clique maximiza, e as
+     bordas mudam o tamanho. O arraste so comeca quando o mouse anda: o compositor toma o ponteiro
+     dali em diante, e comecando no mousedown o duplo clique nunca chegaria aqui. */
+  const linha = el("linha-barra-sistema");
+  if (linha) linha.hidden = !propria && !cfg.barraDoSistema;
+  if (!propria) return;
+  document.body.classList.add("janela-propria");
+  el("janela-botoes").hidden = false;
+  el("bordas-janela").hidden = false;
+  document.querySelectorAll("[data-janela]").forEach((botao) => {
+    botao.addEventListener("click", () => bridge.pedirJanela(botao.dataset.janela));
+  });
+  document.querySelectorAll("[data-borda]").forEach((borda) => {
+    borda.addEventListener("mousedown", (ev) => {
+      if (ev.button !== 0) return;
+      ev.preventDefault();
+      bridge.pedirJanela("borda:" + borda.dataset.borda);
+    });
+  });
+  const cromo = document.querySelector(".cromo");
+  const ehParteLivre = (alvo) => !alvo.closest("button, input, select");
+  let pressao = null;
+  cromo.addEventListener("mousedown", (ev) => {
+    pressao = ev.button === 0 && ehParteLivre(ev.target) ? { x: ev.clientX, y: ev.clientY } : null;
+  });
+  window.addEventListener("mousemove", (ev) => {
+    if (!pressao) return;
+    if (!ev.buttons) pressao = null;
+    else if (Math.abs(ev.clientX - pressao.x) + Math.abs(ev.clientY - pressao.y) > 3) {
+      pressao = null;
+      bridge.pedirJanela("mover");
+    }
+  });
+  window.addEventListener("mouseup", () => {
+    pressao = null;
+  });
+  cromo.addEventListener("dblclick", (ev) => {
+    if (ehParteLivre(ev.target)) bridge.pedirJanela("maximizar");
+  });
+  bridge.janelaMudou.connect((maximizada) => {
+    document.body.classList.toggle("maximizada", maximizada);
+    const botao = document.querySelector('[data-janela="maximizar"]');
+    if (botao) botao.title = maximizada ? "Restaurar" : "Maximizar";
+  });
+}
 
 
 /* ------------------------------------------------------ limite do plano */
@@ -4751,6 +4555,7 @@ new QWebChannel(qt.webChannelTransport, (channel) => {
     }
   });
 
+  bridge.janelaPropria(ligarJanelaPropria);
   bridge.getHome((casa) => {
     pastaPessoal = (casa || "").replace(/[\\/]+$/, "");
   });
@@ -4771,7 +4576,6 @@ new QWebChannel(qt.webChannelTransport, (channel) => {
           montarSelecaoFerramentas();
           preencherCampos();
           ligarCampos();
-          aplicarAlturaExternas();
           aplicarLarguraLateral();
           // antes das abas: o terminal ja nasce na largura que sobra ao lado do painel
           PainelUso.ligar();

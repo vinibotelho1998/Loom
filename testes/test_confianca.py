@@ -13,6 +13,7 @@ import sys
 import unittest.mock
 
 from base import ComPastaPropria
+from base import so_no_windows  # noqa: E402
 
 from loom import ferramentas, perfis
 
@@ -143,6 +144,7 @@ class StatusLineEGanchos(ComPastaPropria):
         self.assertNotIn("velho", " ".join(comandos))
         self.assertEqual(ganchos["PreToolUse"][0]["hooks"][0]["command"], "checa.cmd")
 
+    @so_no_windows
     def test_no_app_instalado_chama_o_exe_e_nao_mexe_no_pythonpath(self):
         with unittest.mock.patch.object(sys, "frozen", True, create=True):
             perfis.instalar_coletor(self.conta, "C:\\Program Files\\Loom\\Loom.exe", "ignorado")
@@ -152,6 +154,7 @@ class StatusLineEGanchos(ComPastaPropria):
         )
         self.assertNotIn("env", salvo)
 
+    @so_no_windows
     def test_rodando_do_codigo_leva_o_projeto_no_pythonpath(self):
         perfis.instalar_coletor(self.conta, "py.exe", "C:\\proj")
         salvo = self.ler()
@@ -190,7 +193,7 @@ class DeQuemEOLogin(ComPastaPropria):
         argumentos, opcoes = chamadas[0]
         self.assertEqual(argumentos, ["claude", "auth", "status"])
         self.assertEqual(opcoes["env"]["CLAUDE_CONFIG_DIR"], str(self.conta.config_dir))
-        self.assertEqual(opcoes["creationflags"], subprocess.CREATE_NO_WINDOW)
+        self.assertEqual(opcoes["creationflags"], getattr(subprocess, "CREATE_NO_WINDOW", 0))
 
     def test_sem_assinatura_o_plano_e_o_jeito_de_entrar(self):
         _, run = self.cli(json.dumps({"loggedIn": True, "authMethod": "api_key"}))

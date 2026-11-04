@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import os
+import shlex
 import shutil
 import subprocess
+import sys
 from dataclasses import dataclass, asdict
 
 
@@ -26,6 +28,16 @@ CANDIDATOS = (
     ("bash", "Git Bash", "bash.exe", ("--login", "-i")),
     ("wsl", "WSL", "wsl.exe", ()),
 )
+
+# fora do Windows o shell e o da pessoa, e a ordem so decide quem vem antes na lista
+CANDIDATOS_UNIX = (
+    ("bash", "Bash", "bash", ()),
+    ("zsh", "Zsh", "zsh", ()),
+    ("fish", "Fish", "fish", ()),
+    ("nu", "Nushell", "nu", ()),
+)
+# entendem -i -c; o fish tem o proprio jeito, e o nu fica de fora: quem chama volta a digitar
+FAMILIA_SH = ("bash", "zsh", "sh", "dash", "ksh")
 
 EXTRAS = {
     "bash": (
@@ -65,7 +77,23 @@ def _git_bash() -> str | None:
     return None
 
 
+def _descobrir_unix() -> list[Shell]:
+    achados = [
+        Shell(sid, nome, caminho, args)
+        for sid, nome, exe, args in CANDIDATOS_UNIX
+        if (caminho := shutil.which(exe))
+    ]
+    # o $SHELL da pessoa pode nao ser nenhum dos conhecidos e tem que estar na lista mesmo assim
+    dela = os.environ.get("SHELL") or ""
+    sid = os.path.basename(dela)
+    if sid and os.path.exists(dela) and not any(s.id == sid for s in achados):
+        achados.insert(0, Shell(sid, sid.capitalize(), dela))
+    return achados
+
+
 def descobrir() -> list[Shell]:
+    if sys.platform != "win32":
+        return _descobrir_unix()
     achados: list[Shell] = []
     for sid, nome, exe, args in CANDIDATOS:
         if sid == "bash":
@@ -175,15 +203,36 @@ def com_comando(shell: Shell, comando: str) -> list[str] | None:
         return [shell.caminho, *shell.args, "-NoExit", "-Command", comando]
     if shell.id == "cmd":
         return [shell.caminho, *shell.args, "/K", comando]
+    if sys.platform != "win32":
+        return _com_comando_unix(shell, comando)
     if shell.id == "bash":
         # o -c sozinho sairia no fim do comando; o exec deixa no lugar um bash de login comum
         return [shell.caminho, "--login", "-i", "-c", f"{comando}; exec bash --login -i"]
     return None
 
 
+def _com_comando_unix(shell: Shell, comando: str) -> list[str] | None:
+    """O mesmo para bash, zsh e fish.
+
+    Sem o trap, Ctrl+C num programa que morre pelo sinal levava junto o resto da linha do -c, com
+    o exec, e a aba fechava em vez de voltar pro prompt. O trap nao passa pro programa, que nasce
+    com o sinal no padrao.
+    """
+    if shell.id == "fish":
+        return [shell.caminho, *shell.args, "-i", "-C", comando]
+    if shell.id in FAMILIA_SH:
+        depois = shlex.join([shell.caminho, *shell.args, "-i"])
+        return [shell.caminho, *shell.args, "-i", "-c", f"trap : INT; {comando}; trap - INT; exec {depois}"]
+    return None
+
+
 def padrao(shells: list[Shell]) -> Shell:
     por_id = {s.id: s for s in shells}
-    for preferido in ("pwsh", "powershell", "cmd"):
+    if sys.platform != "win32":
+        dela = os.path.basename(os.environ.get("SHELL") or "")
+        if dela in por_id:
+            return por_id[dela]
+    for preferido in ("pwsh", "powershell", "cmd", "bash"):
         if preferido in por_id:
             return por_id[preferido]
     return shells[0]

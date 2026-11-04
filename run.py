@@ -11,11 +11,13 @@ log vem antes de tudo, pra anotar a escolha e o que der errado dali em diante.
 import os
 import sys
 
+from loom import caminhos as mod_caminhos
 from loom import config as mod_config
 from loom import motor as mod_motor
 from loom import registro as mod_registro
 
 mod_registro.configurar()
+mod_caminhos.completar_path()
 
 if "--tela" not in sys.argv and not os.environ.get("LOOM_SEM_NUCLEO"):
     from loom.nucleo import main_nucleo

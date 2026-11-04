@@ -15,7 +15,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from PySide6.QtCore import QCoreApplication, QTimer  # noqa: E402
+from PySide6.QtCore import QCoreApplication, QEventLoop, QTimer  # noqa: E402
 
 from loom import shells  # noqa: E402
 from loom.pty_session import CORES_LIGADAS, PtySession, ambiente_limpo  # noqa: E402
@@ -28,6 +28,20 @@ LIMPAR = re.compile(r"\x1b\[[0-9;?]*[a-zA-Z]|\x1b\][^\x07]*\x07")
 # pwsh devolve o padrao dele. E do ambiente, nao do app, entao a prova de tamanho
 # fica so na maquina de quem desenvolve.
 SEM_CONSOLE = os.environ.get("CI") == "true"
+
+# o mesmo pedido na lingua de cada shell
+if sys.platform == "win32":
+    LARGURA, VARIAVEL = '"{0}=$([Console]::WindowWidth)"\r', '"V=$env:LOOM_TESTE"\r'
+else:
+    LARGURA, VARIAVEL = "echo {0}=$(tput cols)\r", "echo V=$LOOM_TESTE\r"
+
+
+def rodar_por(ms: int) -> None:
+    # Um laco proprio e nao o app.exec: com o motor web ja subido por outro teste da bateria, o
+    # segundo exec da mesma aplicacao derruba o processo no Linux
+    laco = QEventLoop()
+    QTimer.singleShot(ms, laco.quit)
+    laco.exec()
 
 
 class Ambiente(unittest.TestCase):
@@ -55,7 +69,7 @@ class Shells(unittest.TestCase):
             self.assertTrue(Path(s.caminho).exists(), f"{s.nome} aponta pra caminho que nao existe")
 
     def test_escolhe_um_padrao(self):
-        self.assertIn(shells.padrao(shells.descobrir()).id, {"pwsh", "powershell", "cmd", "bash", "wsl"})
+        self.assertIn(shells.padrao(shells.descobrir()).id, {"pwsh", "powershell", "cmd", "bash", "wsl", "zsh", "fish"})
 
 
 class TerminalDeVerdade(unittest.TestCase):
@@ -70,8 +84,7 @@ class TerminalDeVerdade(unittest.TestCase):
 
         for atraso, acao in passos:
             QTimer.singleShot(atraso, acao(sessao))
-        QTimer.singleShot(int(segundos * 1000), app.quit)
-        app.exec()
+        rodar_por(int(segundos * 1000))
         sessao.stop()
         return LIMPAR.sub("", "".join(recebido))
 
@@ -82,28 +95,26 @@ class TerminalDeVerdade(unittest.TestCase):
     @unittest.skipIf(SEM_CONSOLE, "o runner nao repassa o tamanho do pseudo terminal")
     def test_redimensionar_chega_no_processo_filho(self):
         passos = [
-            (1500, lambda s: lambda: s.write('"L=$([Console]::WindowWidth)"\r')),
+            (1500, lambda s: lambda: s.write(LARGURA.format("L"))),
             (3200, lambda s: lambda: s.resize(60, 20)),
-            (4600, lambda s: lambda: s.write('"D=$([Console]::WindowWidth)"\r')),
+            (4600, lambda s: lambda: s.write(LARGURA.format("D"))),
         ]
         saida = self.conversar(passos, segundos=7)
         self.assertIn("L=100", saida, "o shell devia nascer com a largura pedida")
         self.assertIn("D=60", saida, "redimensionar a aba tem que chegar no processo")
 
     def test_variavel_da_aba_chega_no_shell(self):
-        saida = self.conversar([(1500, lambda s: lambda: s.write('"V=$env:LOOM_TESTE"\r'))], segundos=5)
+        saida = self.conversar([(1500, lambda s: lambda: s.write(VARIAVEL))], segundos=5)
         self.assertIn("V=1", saida)
 
     def test_encerrar_derruba_o_processo(self):
         app = QCoreApplication.instance() or QCoreApplication([])
         sessao = PtySession("teste", cols=80, rows=24)
         sessao.start()
-        QTimer.singleShot(1200, app.quit)
-        app.exec()
+        rodar_por(1200)
         self.assertTrue(sessao.alive)
         sessao.stop()
-        QTimer.singleShot(600, app.quit)
-        app.exec()
+        rodar_por(600)
         self.assertFalse(sessao.alive)
 
 

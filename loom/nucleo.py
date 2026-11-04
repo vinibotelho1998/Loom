@@ -69,7 +69,7 @@ def segurar_trava(nome: str) -> bool:
     """A trava do nucleo deste usuario e desta instalacao. False enquanto outro nucleo a segura."""
     global _trava
     if sys.platform != "win32":
-        return True
+        return mod_instancia.trava_em_arquivo(nome)
     k = ctypes.WinDLL("kernel32", use_last_error=True)
     k.CreateMutexW.restype = ctypes.c_void_p
     k.CreateMutexW.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_wchar_p]

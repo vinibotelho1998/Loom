@@ -117,7 +117,7 @@ class SudoSemJanela(ComPastaPropria):
             resposta = shells.elevacao()
 
         self.assertTrue(resposta["disponivel"])
-        self.assertEqual(chamadas[0].get("creationflags"), subprocess.CREATE_NO_WINDOW)
+        self.assertEqual(chamadas[0].get("creationflags"), getattr(subprocess, "CREATE_NO_WINDOW", 0))
 
 
 class ColetorBlindado(ComPastaPropria):

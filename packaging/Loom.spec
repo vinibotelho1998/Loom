@@ -43,12 +43,17 @@ QT_SOBRANDO = (
 
 # O winpty nao e so um .pyd: a dll procura o agente pelo nome, na propria pasta.
 # Sem os dois .exe do lado dela, abrir uma aba falha sem mensagem nenhuma.
-WINPTY = os.path.dirname(get_module_file_attribute("winpty"))
-BINARIOS = collect_dynamic_libs("winpty") + [
-    (os.path.join(WINPTY, nome), "winpty")
-    for nome in ("winpty.dll", "conpty.dll", "winpty-agent.exe", "OpenConsole.exe")
-    if os.path.exists(os.path.join(WINPTY, nome))
-]
+# Fora do Windows o terminal e o PTY do kernel, e nao ha nada a mais pra levar.
+BINARIOS = []
+IMPORTS_DO_SISTEMA = []
+if os.name == "nt":
+    WINPTY = os.path.dirname(get_module_file_attribute("winpty"))
+    BINARIOS = collect_dynamic_libs("winpty") + [
+        (os.path.join(WINPTY, nome), "winpty")
+        for nome in ("winpty.dll", "conpty.dll", "winpty-agent.exe", "OpenConsole.exe")
+        if os.path.exists(os.path.join(WINPTY, nome))
+    ]
+    IMPORTS_DO_SISTEMA = ["winpty"]
 
 # A janela: entrada com as flags do Chromium, sem console.
 app = Analysis(
@@ -57,7 +62,7 @@ app = Analysis(
     binaries=BINARIOS,
     # a tabela de preco do painel de uso vai ao lado do modulo que le ela, em loom/dados
     datas=[(os.path.join(ROOT, "ui"), "ui"), (os.path.join(ROOT, "loom", "dados"), os.path.join("loom", "dados"))],
-    hiddenimports=["winpty"],
+    hiddenimports=IMPORTS_DO_SISTEMA,
     excludes=["tkinter", "unittest", *QT_SOBRANDO],
     noarchive=False,
     optimize=0,

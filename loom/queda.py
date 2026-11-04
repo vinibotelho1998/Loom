@@ -63,6 +63,18 @@ def _kernel32():
     return w, k
 
 
+def _nascido_no_proc(pid: int) -> int | None:
+    """Em que tique desde o boot o processo nasceu, lido do /proc. None se ele nao existe mais."""
+    try:
+        texto = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8", errors="replace")
+        # o nome do processo vem entre parenteses e pode ter espaco: conta do ultimo parentese.
+        # Depois dele o primeiro campo e o estado e o vigesimo, o tique em que nasceu
+        campos = texto[texto.rfind(")") + 1 :].split()
+        return None if campos[0] in ("Z", "X") else int(campos[19])
+    except (OSError, IndexError, ValueError):
+        return None
+
+
 def criado_em(pid: int) -> int | None:
     """Quando o processo nasceu, ou None se ele nao existe mais.
 
@@ -70,11 +82,7 @@ def criado_em(pid: int) -> int | None:
     continua vivo sempre que outro programa herdasse o mesmo pid.
     """
     if sys.platform != "win32":
-        try:
-            os.kill(pid, 0)
-        except OSError:
-            return None
-        return 0
+        return _nascido_no_proc(pid)
     w, k = _kernel32()
     PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
     processo = k.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
@@ -93,10 +101,13 @@ def criado_em(pid: int) -> int | None:
         k.CloseHandle(processo)
 
 
-def _id_do_boot() -> int | None:
-    """O contador que o Windows soma a cada partida. None quando nao da pra ler."""
+def _id_do_boot() -> int | str | None:
+    """O que identifica esta partida: o contador do Windows, ou o boot_id do kernel."""
     if sys.platform != "win32":
-        return None
+        try:
+            return Path("/proc/sys/kernel/random/boot_id").read_text(encoding="ascii").strip() or None
+        except (OSError, UnicodeError):
+            return None
     import winreg
 
     try:

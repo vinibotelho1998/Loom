@@ -9,6 +9,7 @@ import unittest.mock
 from pathlib import Path
 
 from base import ComPastaPropria
+from base import so_no_windows  # noqa: E402
 
 from loom import ferramentas, perfis
 
@@ -168,6 +169,7 @@ class BarraResiliente(ComPastaPropria):
         quebra_dupla = chr(13) + chr(13) + chr(10)
         self.assertNotIn(quebra_dupla, conteudo, "quebra dupla estraga arquivo cmd")
 
+    @so_no_windows
     def test_sem_o_projeto_ainda_chama_a_barra_de_sempre(self):
         sumido = self.raiz / "nao-existe"
         atalho = perfis.blindar_status_line("py.exe", str(sumido), "minha-barra")

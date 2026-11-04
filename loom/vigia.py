@@ -20,7 +20,7 @@ from typing import Callable
 
 # um tom acima do fundo da pagina: pra quem olha e a mesma cor, e quando a pagina some e ela
 # que aparece, lisa, em vez do cinza claro padrao do Qt piscando na troca de tela
-COR_SENTINELA = "#16181d"
+COR_SENTINELA = "#121315"
 INTERVALO_MS = 3000
 # tela recem montada ainda esta carregando e pode mostrar o fundo sem estar quebrada
 CARENCIA = 12.0

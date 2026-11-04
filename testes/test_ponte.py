@@ -14,6 +14,7 @@ import time
 import unittest.mock
 from pathlib import Path
 
+from base import so_no_windows
 from test_usabilidade import ComPonte
 
 from PySide6.QtCore import QCoreApplication, QEvent
@@ -158,7 +159,7 @@ class LinkClicado(ComPonteNaPastaTemporaria):
         self.assertEqual(aviso, "")
         comando = popen.call_args.args[0]
         self.assertEqual(comando, f'"C:\\VS Code\\code.cmd" -g "{self.projeto / "src/a.py"}:12"')
-        self.assertEqual(popen.call_args.kwargs["creationflags"], mod_bridge.subprocess.CREATE_NO_WINDOW)
+        self.assertEqual(popen.call_args.kwargs["creationflags"], getattr(mod_bridge.subprocess, "CREATE_NO_WINDOW", 0))
 
     def test_aspas_em_volta_do_caminho_sao_tiradas(self):
         aviso, popen, _ = self.abrir(f'"{self.projeto / "src" / "a.py"}"', "", {"code": "code.cmd"})
@@ -236,6 +237,7 @@ class LinhaDoEditor(ComPonteNaPastaTemporaria):
             self.assertFalse(mod_bridge._roda_ao_abrir(r"C:\p\notas.md"))
             self.assertFalse(mod_bridge._roda_ao_abrir(r"C:\p\sem-extensao"))
 
+    @so_no_windows
     def test_pasta_pessoal_com_barra_no_fim_e_outra_caixa_ainda_e_ela(self):
         with unittest.mock.patch("os.path.expanduser", return_value=r"C:\Users\eu"):
             self.assertTrue(mod_bridge._e_a_pasta_pessoal("c:\\users\\eu\\"))

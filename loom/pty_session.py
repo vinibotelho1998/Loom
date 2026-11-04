@@ -9,7 +9,13 @@ import time
 from pathlib import Path
 
 from PySide6.QtCore import QObject, Signal
-from winpty import PtyProcess, WinptyError
+
+if sys.platform == "win32":
+    from winpty import PtyProcess, WinptyError
+else:
+    # o mesmo jeito de usar, com o PTY do kernel e sem dependencia nova
+    from .pty_posix import ErroDoPty as WinptyError
+    from .pty_posix import PtyProcess
 
 log = logging.getLogger(__name__)
 
@@ -24,7 +30,12 @@ CODIGO_DESCONHECIDO = -1
 
 
 def default_shell() -> list[str]:
-    """pwsh se existir, senao o powershell de sempre, e cmd como ultimo recurso."""
+    """pwsh se existir, senao o powershell de sempre, e cmd como ultimo recurso.
+
+    Fora do Windows, o shell da pessoa, o mesmo que um terminal qualquer abriria.
+    """
+    if sys.platform != "win32":
+        return [os.environ.get("SHELL") or shutil.which("bash") or "/bin/sh"]
     for nome, args in (("pwsh.exe", ["-NoLogo"]), ("powershell.exe", ["-NoLogo"])):
         caminho = shutil.which(nome)
         if caminho:
@@ -39,6 +50,15 @@ HERANCA_SUJA = (
     "QT_",
     "CODEX_HOME",
     "GEMINI_CONFIG_DIR",
+    # aberto de dentro de outro terminal, o CLI acharia que roda nele e pediria o que so ele tem
+    "TERM_PROGRAM",
+    "TERM_SESSION_ID",
+    "GHOSTTY_",
+    "KONSOLE_",
+    "KITTY_",
+    "WEZTERM_",
+    "ALACRITTY_",
+    "VTE_",
 )
 
 
@@ -68,7 +88,21 @@ def ambiente_limpo() -> dict[str, str]:
         for chave in limpo:
             if chave.upper() == "PATH":
                 limpo[chave] = path_sem_a_pasta(limpo[chave], Path(sys.executable).parent)
+        _sem_as_bibliotecas_do_app(limpo)
     return limpo
+
+
+def _sem_as_bibliotecas_do_app(ambiente: dict[str, str]) -> None:
+    """Devolve o LD_LIBRARY_PATH de antes do exe congelado subir.
+
+    O PyInstaller aponta a variavel pra propria _internal, e o que vale pra ele valia pra todo
+    programa rodado na aba: o Qt do Loom vinha antes do do sistema, e o Dolphin nao abria.
+    """
+    original = ambiente.pop("LD_LIBRARY_PATH_ORIG", None)
+    if original is not None:
+        ambiente["LD_LIBRARY_PATH"] = original
+    else:
+        ambiente.pop("LD_LIBRARY_PATH", None)
 
 
 def _normal(caminho: str) -> str:
@@ -106,10 +140,49 @@ def _filhos_de(pid: int, processos: list[tuple[int, int, str]]) -> list[str]:
     ]
 
 
-def _processos() -> list[tuple[int, int, str]] | None:
-    """Foto de todos os processos da maquina, so leitura. None quando o Windows nao entrega."""
-    if sys.platform != "win32":
+def _linha_do_proc(texto: str) -> tuple[int, int, str] | None:
+    """(pid, pai, nome) de uma linha de /proc/<pid>/stat. None pro processo ja morto.
+
+    O nome vem entre parenteses e pode ter espaco e parentese dentro: o que vale e o ultimo. Um
+    zumbi ja acabou e so espera o pai ler o codigo, e nao conta como programa rodando.
+    """
+    fim = texto.rfind(")")
+    inicio = texto.find("(")
+    if inicio < 0 or fim < inicio:
         return None
+    campos = texto[fim + 1 :].split()
+    if len(campos) < 2 or campos[0] in ("Z", "X"):
+        return None
+    try:
+        return int(texto[:inicio]), int(campos[1]), texto[inicio + 1 : fim]
+    except ValueError:
+        return None
+
+
+def _processos_do_proc(raiz: str = "/proc") -> list[tuple[int, int, str]] | None:
+    try:
+        nomes = os.listdir(raiz)
+    except OSError:
+        return None
+    achados = []
+    for nome in nomes:
+        if not nome.isdigit():
+            continue
+        try:
+            with open(os.path.join(raiz, nome, "stat"), encoding="utf-8", errors="replace") as arquivo:
+                linha = _linha_do_proc(arquivo.read())
+        except OSError:
+            # o processo morreu entre a lista e a leitura
+            continue
+        if linha:
+            achados.append(linha)
+    return achados
+
+
+def _processos() -> list[tuple[int, int, str]] | None:
+    """Foto de todos os processos da maquina, so leitura. None quando o sistema nao entrega."""
+    if sys.platform != "win32":
+        return _processos_do_proc()
     import ctypes
     from ctypes import wintypes
 

@@ -272,15 +272,15 @@ class RegrasDoPainel(ComPainel):
     def test_renova_em_conta_minutos_para_cima(self):
         hora, dia = 3600000, 86400000
         casos = {
-            2 * hora + 15 * 60000: "Renova em 2h 15m",
-            2 * dia + 3 * hora: "Renova em 2d 3h",
-            2 * dia + 15 * 60000: "Renova em 2d 15m",
-            2 * dia: "Renova em 2d",
-            3 * hora: "Renova em 3h",
-            59500: "Renova em 1m",
-            45 * 60000 - 1000: "Renova em 45m",
-            500: "Renova agora",
-            -60000: "Renova agora",
+            2 * hora + 15 * 60000: "renova em 2h 15m",
+            2 * dia + 3 * hora: "renova em 2d 3h",
+            2 * dia + 15 * 60000: "renova em 2d 15m",
+            2 * dia: "renova em 2d",
+            3 * hora: "renova em 3h",
+            59500: "renova em 1m",
+            45 * 60000 - 1000: "renova em 45m",
+            500: "renova agora",
+            -60000: "renova agora",
         }
         for falta, esperado in casos.items():
             self.assertEqual(self.rodar(f"R.textoZera({falta}, 0)"), esperado, falta)
@@ -367,21 +367,6 @@ class RegrasDoPainel(ComPainel):
         self.assertEqual(self.rodar("R.alturasDasBarras([1, 4, 2, 4], 8)"), [12.5, 50, 25, 50])
         self.assertEqual(self.rodar("R.alturasDasBarras([3], 0)"), [0])
 
-    def test_esforco_e_ordinal_num_matiz_so_e_o_fora_da_escala_fica_neutro(self):
-        tons = self.rodar('["minimal", "low", "medium", "high", "xhigh", "max", "ultra"].map(R.tomDoEsforco)')
-        self.assertTrue(all("var(--marca)" in tom for tom in tons), "um matiz so, o do provedor")
-        # max e ultra sao o teto de cada ferramenta e dividem o degrau de cima; o resto tem o seu
-        self.assertEqual(tons[5], tons[6])
-        self.assertEqual(len(set(tons[:6])), 6)
-        # os de baixo apagam pro fundo e os de cima clareiam pro branco, na ordem
-        fundo = [int(re.search(r"(\d+)%, var\(--uso-fundo\)", tom).group(1)) for tom in tons[:3]]
-        branco = [int(re.search(r"#ffffff (\d+)%", tom).group(1)) for tom in tons[3:6]]
-        self.assertEqual(fundo, sorted(fundo))
-        self.assertEqual(branco, sorted(branco))
-        self.assertIsNone(self.rodar('R.tomDoEsforco("sem registro")'))
-        self.assertIsNone(self.rodar('R.tomDoEsforco("<b>")'))
-        self.assertIsNone(self.rodar('R.tomDoEsforco("toString")'), "nome de propriedade do objeto nao vira degrau")
-
     def test_custo_do_periodo_nao_vira_zero_quando_falta_preco(self):
         casos = {
             "R.textoCustoDoPeriodo(42.1, 1000, false)": "US$ 42,10",
@@ -394,40 +379,32 @@ class RegrasDoPainel(ComPainel):
         for expressao, esperado in casos.items():
             self.assertEqual(self.rodar(expressao), esperado, expressao)
 
-    def test_pior_nivel_da_conta_vem_da_janela_mais_cheia(self):
-        self.assertEqual(self.rodar('R.piorNivel({janelas: [{tipo: "5h", usado: 10}, {tipo: "7d", usado: 70}]})'), "alto")
-        self.assertEqual(self.rodar('R.piorNivel({janelas: [{tipo: "5h", usado: 90}, {tipo: "7d", usado: 70}]})'), "critico")
-        self.assertEqual(self.rodar('R.piorNivel({janelas: [{tipo: "5h", usado: null}]})'), "ok")
-        self.assertEqual(self.rodar("R.piorNivel({})"), "ok")
-
 class DesenhoDoContrato(ComPainel):
     def test_claude_do_contrato(self):
         html = self.desenho(CONTRATO)
         fim_do_bloco = f"{local('2026-09-28T22:00:00-03:00'):%H:%M}"
-        zera = local("2026-09-29T00:40:00-03:00")
         cartao = html[html.index('<section class="uso-cartao"'):]
         for trecho in (
-            '<span class="uso-avatar" aria-hidden="true"><svg viewBox="0 0 100 100"><path d="M25.7146',
+            '<span class="uso-avatar" aria-hidden="true">P</span>',
             '<h3 class="uso-nome" title="Principal">Principal</h3>',
             '<span class="uso-email">Claude</span>',
             '<span class="uso-plano">Max</span>',
             '<p class="uso-atualizado">Atualizado há 1 min</p>',
-            '<span class="uso-janela-titulo">Sessão de 5 horas</span></div>',
+            '<span class="uso-janela-titulo">Sessão de 5 horas</span>',
             '<span class="uso-janela-valor"><b>12%</b> usado</span>',
-            f'<span class="uso-janela-zera" title="Renova em {zera.day} de {MESES[zera.month - 1]} às {zera:%H:%M}">',
-            "</svg>Renova em 3h 10m</span>",
+            '<span class="uso-janela-zera">renova em 3h 10m</span>',
             '<b class="uso-medidor-cheio" style="width:12%"></b>',
             '<i class="uso-medidor-ritmo" style="--p:36.67%"',
             '<span class="uso-ritmo reserva"',
-            "</svg>25% abaixo do ritmo</span>",
+            "25% abaixo do ritmo</span>",
             '<span class="uso-janela-titulo">Semana</span>',
             "<b>16%</b> usado",
             "26% abaixo do ritmo",
-            "Renova em 4d 1h",
+            "renova em 4d 1h",
             '<span class="uso-kpi-rotulo">Hoje</span><b class="uso-kpi-valor">US$ 42,10</b><span class="uso-kpi-sub">1,1 mi tokens</span>',
             '<span class="uso-kpi-rotulo">Últimos 30 dias</span><b class="uso-kpi-valor">US$ 1.381</b><span class="uso-kpi-sub">27 mi tokens</span>',
             '<span class="uso-kpi-rotulo">Bloco de 5h atual</span><b class="uso-kpi-valor">US$ 38,20</b>',
-            f"Projeção de US$ 71,00 até {fim_do_bloco} · 6,1 mil tokens/min",
+            f"projeção US$ 71,00 até {fim_do_bloco} · 6,1 mil tokens/min",
             '<p class="uso-nota">Preço de API calculado pelos logs locais. Não é a fatura.</p>',
             "<span>US$ 40</span><span>US$ 20</span><span>US$ 0</span>",
             "<small>30 de ago.</small><strong>US$ 40,00</strong><span>900 mil tokens</span>",
@@ -436,30 +413,26 @@ class DesenhoDoContrato(ComPainel):
         ):
             self.assertIn(trecho, cartao)
         self.assertEqual(cartao.count('class="uso-janela nivel-ok"'), 2)
-        self.assertNotIn("uso-estado", cartao, "nenhuma janela esta alta: nada de rotulo de estado")
+        self.assertNotIn("uso-nivel", cartao, "nenhuma janela esta alta: nada de rotulo de estado")
         self.assertNotIn("uso-selo", html, "tudo veio do limite da propria ferramenta")
         self.assertNotIn("uso-aviso", html)
         self.assertNotIn("uso-janela-alerta", html, "abaixo do ritmo nao ganha previsao")
-        # a ordem da pergunta: limite, custo, como andou, e so depois o detalhe
+        # a ordem do painel do Windows: limite, custo, e so no fim o grafico
         ordem = [cartao.index(s) for s in ("uso-limites", "uso-custo", "uso-grafico")]
         self.assertEqual(ordem, sorted(ordem))
 
-    def test_resumo_poe_as_janelas_de_todas_as_contas_lado_a_lado(self):
+    def test_em_cima_as_abas_de_provedor_com_a_cota_de_cada_um(self):
+        """O painel do Windows: Claude e Codex em abas, cada uma com a semana ao lado do nome."""
         html = self.desenho(CONTRATO)
-        resumo = html[:html.index('<section class="uso-cartao"')]
-        linhas = re.findall(r'<button class="uso-linha( ativo)?"[^>]*data-ferramenta="(\w+)" data-escolher-conta="([^"]+)"', resumo)
-        self.assertEqual(linhas, [(" ativo", "claude", "claude:84092a89"), ("", "codex", "codex:padrao")])
-        # duas colunas fixas, 5h e semana, mesmo na conta que nao tem a de 5h
+        topo = html[:html.index('<section class="uso-cartao"')]
         self.assertEqual(
-            re.findall(r'<span class="uso-mini( vazio| nivel-\w+)"><span class="uso-mini-rotulo">([^<]+)</span>', resumo),
-            [(" nivel-ok", "5h"), (" nivel-ok", "Semana"), (" vazio", "5h"), (" nivel-critico", "Semana")],
+            re.findall(r'<button class="uso-provedor( ativo)?"[^>]*data-provedor="(\w+)"', topo),
+            [(" ativo", "claude"), ("", "codex")],
         )
-        self.assertEqual(re.findall(r'<span class="uso-mini-valor">([^<]+)</span>', resumo), ["12%", "16%", "--", "85%"])
-        self.assertIn('<b style="width:85%"></b>', resumo)
-        # o estado da conta vai escrito, pela janela mais cheia
-        self.assertIn('<span class="uso-linha-nome">Codex</span><span class="uso-estado critico">No limite</span>', resumo)
-        self.assertIn('aria-pressed="true"', resumo)
-        self.assertIn('title="Codex: Codex · Semana: 85% usado"', resumo, "a dica diz de que janela e cada numero")
+        self.assertIn('<span class="uso-provedor-nome">Claude</span>', topo)
+        self.assertRegex(topo, r'<span class="uso-provedor-cota nivel-critico"[^>]*>85%</span>')
+        self.assertRegex(topo, r'<span class="uso-provedor-cota nivel-ok"[^>]*>16%</span>')
+        self.assertNotIn("uso-resumo", html, "o resumo de contas do redesenho nao mora neste painel")
 
     def test_uma_conta_so_dispensa_o_resumo(self):
         dados = contrato()
@@ -468,30 +441,21 @@ class DesenhoDoContrato(ComPainel):
         self.assertNotIn("uso-resumo", html)
         self.assertTrue(html.startswith('<section class="uso-cartao"'))
 
-    def test_linha_da_conta_com_erro_avisa_no_resumo(self):
-        dados = contrato()
-        dados["contas"][1]["erro"] = "Falhou <x>"
-        html = self.desenho(dados)
-        self.assertIn('<span class="uso-linha-erro" title="Falhou &#60;x&#62;"><svg class="uso-linha-erro-icone"', html)
-        self.assertIn('</svg>Erro</span><span class="uso-estado critico">No limite</span>', html)
-
     def test_codex_do_contrato(self):
         html = self.desenho(CONTRATO, {"provedor": "codex"})
         velho = local("2026-09-26T18:02:00-03:00")
         cartao = html[html.index('<section class="uso-cartao"'):]
         for trecho in (
             '<section class="uso-cartao" style="--marca:#2AA6B8" data-conta="codex:padrao">',
-            '<span class="uso-avatar" aria-hidden="true"><svg viewBox="0 0 100 100"><path d="M83.7733',
+            '<span class="uso-avatar" aria-hidden="true">C</span>',
             '<h3 class="uso-nome" title="Codex">Codex</h3>',
             f"Atualizado em {velho.day} de {MESES[velho.month - 1]}, {velho:%H:%M}</p>",
             '<span class="uso-plano">Pro</span>',
             '<div class="uso-janela nivel-critico" data-tipo="7d">',
-            '<span class="uso-janela-titulo">Semana</span><span class="uso-estado critico">No limite</span>',
-            "<b>85%</b> usado",
-            "</svg>No ritmo</span>",
-            '<p class="uso-janela-alerta"><svg class="uso-alerta-icone"',
-            "</svg>No passo de agora, acaba em 1d 59m, antes de renovar</p>",
-            "Renova em 1d 2h",
+            '<span class="uso-nivel">no limite</span><b>85%</b> usado',
+            "No ritmo</span>",
+            '<p class="uso-janela-alerta">No passo de agora, acaba em 1d 59m, antes de renovar</p>',
+            "renova em 1d 2h",
             '<b class="uso-kpi-valor">US$ 0,00</b><span class="uso-kpi-sub">0 tokens</span>',
             '<b class="uso-kpi-valor">≥ US$ 210</b><span class="uso-kpi-sub">5,4 mi tokens</span>',
             "Há modelo sem preço na tabela",
@@ -500,7 +464,7 @@ class DesenhoDoContrato(ComPainel):
             self.assertIn(trecho, cartao)
         self.assertNotIn("Bloco", html)
         self.assertNotIn('class="uso-email"', html, "a conta chamada Codex nao repete o nome do provedor")
-        self.assertIn('<button class="uso-linha ativo" aria-pressed="true" data-ferramenta="codex"', html)
+        self.assertRegex(html, r'<button class="uso-provedor ativo"[^>]*data-provedor="codex"')
 
     def test_codex_com_modelo_sem_preco_nao_mostra_zero_de_graca(self):
         dados = contrato()
@@ -512,7 +476,7 @@ class DesenhoDoContrato(ComPainel):
         self.assertIn('<span class="uso-kpi-rotulo">Hoje</span><b class="uso-kpi-valor">Sem preço</b><span class="uso-kpi-sub">665 mi tokens</span>', html)
         self.assertIn('<span class="uso-kpi-rotulo">Bloco de 5h, estimado</span><b class="uso-kpi-valor">Sem preço</b>', html)
         self.assertIn('<span class="uso-kpi-sub">825 mil tokens/min</span>', html)
-        self.assertNotIn("Projeção de US$ 0,00", html, "projecao de zero com modelo sem preco enganaria")
+        self.assertNotIn("projeção US$ 0,00", html, "projecao de zero com modelo sem preco enganaria")
         self.assertNotIn("US$ 0,00</b>", html)
 
     def test_grafico_de_30_dias_destaca_hoje_e_tem_o_detalhe_de_cada_dia(self):
@@ -526,7 +490,7 @@ class DesenhoDoContrato(ComPainel):
         # o maior dia vale 90 e o topo do eixo e 100: a barra dele ocupa 90% da altura
         self.assertEqual(colunas[21][1], "90")
         self.assertEqual(html.count('class="uso-dica" role="tooltip"'), 30)
-        self.assertIn("<span>30 de ago.</span><span>Hoje</span>", html)
+        self.assertIn("<span>30 de ago.</span><span>hoje</span>", html)
         self.assertIn("<span>US$ 100</span><span>US$ 50</span><span>US$ 0</span>", html)
         # tres modelos do mais caro pro mais barato no detalhe de hoje
         hoje = html[html.index('class="uso-coluna hoje dir"'):]
@@ -548,19 +512,17 @@ class DesenhoDoContrato(ComPainel):
         dados["contas"][0]["serie"][0]["porModelo"] = {f"claude-m{i}": float(i) for i in range(1, 7)}
         html = self.desenho(dados)
         self.assertEqual(html.count("<li>"), 5)
-        self.assertIn("<li><span>Outros 2</span><em>US$ 3,00</em></li>", html)
+        self.assertIn("<li><span>outros 2</span><em>US$ 3,00</em></li>", html)
 
     def test_tabela_gemea_do_grafico_abre_pela_vista(self):
         dados = contrato()
         dados["contas"][0]["serie"] = serie_de_30()
         fechada = self.desenho(dados)
-        self.assertIn('<details class="uso-detalhes"><summary data-abrir="tabela|claude:84092a89">', fechada)
-        self.assertIn("</svg>Ver os dias em tabela</summary>", fechada)
+        self.assertIn('<details class="uso-tabela"><summary data-tabela>Ver os dias em tabela</summary>', fechada)
         self.assertEqual(fechada.count("<tr><td>"), 30)
         self.assertLess(fechada.index("<td>28 de set.</td>"), fechada.index("<td>30 de ago.</td>"), "o dia mais novo vem primeiro")
-        aberta = self.desenho(dados, {"abertos": {"tabela|claude:84092a89": True}})
-        self.assertIn('<details class="uso-detalhes" open><summary data-abrir="tabela|claude:84092a89">', aberta)
-        self.assertIn("</svg>Esconder a tabela</summary>", aberta)
+        aberta = self.desenho(dados, {"tabelas": {"claude:84092a89": True}})
+        self.assertIn('<details class="uso-tabela" open><summary data-tabela>Esconder a tabela</summary>', aberta)
 
     def test_selo_quando_o_limite_e_estimado(self):
         dados = contrato()
@@ -571,7 +533,7 @@ class DesenhoDoContrato(ComPainel):
         self.assertIn('class="uso-selo"', sessao)
         self.assertNotIn("uso-selo", semana)
 
-    def test_linha_da_conta_acende_com_a_janela_alta_e_diz_quando_nao_tem_leitura(self):
+    def test_chip_da_conta_acende_com_a_janela_alta_e_fica_sem_numero_sem_leitura(self):
         dados = contrato()
         outra = json.loads(json.dumps(dados["contas"][0]))
         outra.update(id="claude:trab", nome="Trabalho")
@@ -580,13 +542,8 @@ class DesenhoDoContrato(ComPainel):
         sem.update(id="claude:velha", nome="Velha", janelas=[])
         dados["contas"][1:1] = [outra, sem]
         html = self.desenho(dados)
-        self.assertIn('<span class="uso-linha-nome">Trabalho</span><span class="uso-estado critico">No limite</span>', html)
-        self.assertIn('<span class="uso-mini nivel-critico"><span class="uso-mini-rotulo">Semana</span>', html)
-        self.assertIn(
-            '<span class="uso-linha-nome">Velha</span></span><span class="uso-linha-janelas"><span class="uso-linha-sem">Sem leitura de limite</span>',
-            html,
-            "conta sem leitura de limite nao inventa numero",
-        )
+        self.assertRegex(html, r'data-escolher-conta="claude:trab"[^>]*>Trabalho<span class="uso-conta-cota nivel-critico">91%</span></button>')
+        self.assertRegex(html, r'data-escolher-conta="claude:velha"[^>]*>Velha</button>', "conta sem leitura de limite nao inventa numero")
 
     def test_uso_alto_e_critico_tem_rotulo_escrito(self):
         dados = contrato()
@@ -594,10 +551,9 @@ class DesenhoDoContrato(ComPainel):
         dados["contas"][0]["janelas"][1]["usado"] = 67.0
         html = self.desenho(dados)
         self.assertIn('<div class="uso-janela nivel-critico" data-tipo="5h">', html)
-        self.assertIn('Sessão de 5 horas</span><span class="uso-estado critico">No limite</span>', html)
+        self.assertIn('<span class="uso-nivel">no limite</span><b>91%</b> usado', html)
         self.assertIn('<div class="uso-janela nivel-alto" data-tipo="7d">', html)
-        self.assertIn('Semana</span><span class="uso-estado alto">Alto</span>', html)
-        self.assertIn('<span class="uso-linha-nome">Principal</span><span class="uso-estado critico">No limite</span>', html)
+        self.assertIn('<span class="uso-nivel">alto</span><b>67%</b> usado', html)
 
     def test_aviso_de_preco_faltando_e_de_custo_aproximado(self):
         dados = contrato()
@@ -608,7 +564,7 @@ class DesenhoDoContrato(ComPainel):
         self.assertIn("sem preço", avisos[0])
         self.assertIn("aproximado", avisos[1])
 
-    def test_varias_contas_do_mesmo_provedor_entram_no_resumo(self):
+    def test_varias_contas_do_mesmo_provedor_viram_chips(self):
         dados = contrato()
         email = "alguem.com.um.nome.longo@empresa-grande.com.br"
         outra = json.loads(json.dumps(dados["contas"][0]))
@@ -616,15 +572,14 @@ class DesenhoDoContrato(ComPainel):
         outra["janelas"][0]["usado"] = 70.0
         dados["contas"].insert(1, outra)
         html = self.desenho(dados)
-        self.assertEqual(len(re.findall(r'<button class="uso-linha[ "]', html)), 3)
+        self.assertEqual(len(re.findall(r'<button class="uso-conta[ "]', html)), 2)
         # e-mail corta no meio: o comeco e o dominio e que dizem de quem e
-        self.assertIn('<span class="uso-linha-nome">' + email[:12] + "…" + email[-11:] + "</span>", html)
-        self.assertIn('<span class="uso-mini nivel-alto"><span class="uso-mini-rotulo">5h</span>', html)
-        self.assertIn("Sessão de 5 horas: 70% usado · Semana: 16% usado", html, "a dica da linha diz de que janela e o numero")
+        self.assertIn(">" + email[:12] + "…" + email[-11:] + '<span class="uso-conta-cota', html)
+        self.assertIn('title="' + email + ' · Semana: 16% usado"', html, "a dica do chip diz de que janela e o numero")
 
         trab = self.desenho(dados, {"provedor": "claude", "contas": {"claude": "claude:trab"}})
         self.assertIn('data-conta="claude:trab"', trab)
-        self.assertIn('<button class="uso-linha ativo" aria-pressed="true" data-ferramenta="claude" data-escolher-conta="claude:trab"', trab)
+        self.assertRegex(trab, r'<button class="uso-conta ativo"[^>]*data-escolher-conta="claude:trab"')
         self.assertIn("<b>70%</b> usado", trab)
         self.assertIn(">" + email[:16] + "…" + email[-15:] + "</span>", trab)
 
@@ -688,10 +643,8 @@ class EstadosDoPainel(ComPainel):
         dados["contas"][0]["janelas"][0]["usado"] = None
         html = self.desenho(dados)
         self.assertIn('<div class="uso-janela sem-leitura" data-tipo="5h">', html)
-        self.assertIn('<span class="uso-janela-valor">Sem leitura</span>', html)
-        self.assertIn("Renova em 3h 10m", html)
-        self.assertIn('<div class="uso-medidor vazio" aria-hidden="true"></div>', html)
-        self.assertIn('<span class="uso-mini vazio"><span class="uso-mini-rotulo">5h</span>', html)
+        self.assertIn('<span class="uso-janela-valor">sem leitura</span>', html)
+        self.assertIn("renova em 3h 10m", html)
 
     def test_janela_do_mes_e_outras_vem_depois_da_semana(self):
         dados = contrato()
@@ -835,30 +788,32 @@ class LayoutDoPainel(ComPainel):
                 " getAttribute: (k) => (" + json.dumps(atributos) + ")[k], closest: () => " + cartao + "})}"
             )
 
-        # um clique na linha do resumo troca o provedor e a conta juntos
-        codex = {"data-escolher-conta": "codex:padrao", "data-ferramenta": "codex"}
-        self.definir(f'painel.disparar("click", {{target: {alvo(codex)}}})')
-        self.assertIn('<h3 class="uso-nome" title="Codex">Codex</h3>', self.rodar("painel.innerHTML"))
-        claude = {"data-escolher-conta": "claude:84092a89", "data-ferramenta": "claude"}
-        self.definir(f'painel.disparar("click", {{target: {alvo(claude)}}})')
-        self.assertIn('<h3 class="uso-nome" title="Principal">Principal</h3>', self.rodar("painel.innerHTML"))
-        # a aba de provedor de antes continua valendo pra quem a chama
+        # a aba de provedor troca o que o painel mostra
         self.definir(f'painel.disparar("click", {{target: {alvo({"data-provedor": "codex"})}}})')
-        self.assertIn('data-conta="codex:padrao"', self.rodar("painel.innerHTML"))
-        self.definir(f'painel.disparar("click", {{target: {alvo(claude)}}})')
+        self.assertIn('<h3 class="uso-nome" title="Codex">Codex</h3>', self.rodar("painel.innerHTML"))
+        self.definir(f'painel.disparar("click", {{target: {alvo({"data-provedor": "claude"})}}})')
+        self.assertIn('<h3 class="uso-nome" title="Principal">Principal</h3>', self.rodar("painel.innerHTML"))
         self.definir(f'painel.disparar("click", {{target: {alvo({"data-metrica": "tokens"}, "claude:84092a89")}}})')
         self.assertIn("mi tokens em 30 dias", self.rodar("painel.innerHTML"))
 
         # a tabela abre pelo painel, e o clique no resumo nao deixa o navegador abrir e fechar por conta
-        abrir = {"data-abrir": "tabela|claude:84092a89"}
+        abrir = {"data-tabela": ""}
         impedido = self.rodar(
-            f'(() => {{ const ev = {{target: {alvo(abrir)}, preventDefault() {{ this.feito = true; }}}};'
+            f'(() => {{ const ev = {{target: {alvo(abrir, "claude:84092a89")}, preventDefault() {{ this.feito = true; }}}};'
             ' painel.disparar("click", ev); return !!ev.feito; })()'
         )
         self.assertTrue(impedido)
-        self.assertIn('<details class="uso-detalhes" open><summary data-abrir="tabela|claude:84092a89">', self.rodar("painel.innerHTML"))
-        self.definir(f'painel.disparar("click", {{target: {alvo(abrir)}, preventDefault() {{}}}})')
-        self.assertNotIn('uso-detalhes" open', self.rodar("painel.innerHTML"), "o segundo clique fecha")
+        self.assertIn('<details class="uso-tabela" open>', self.rodar("painel.innerHTML"))
+        self.definir(f'painel.disparar("click", {{target: {alvo(abrir, "claude:84092a89")}, preventDefault() {{}}}})')
+        self.assertNotIn('uso-tabela" open', self.rodar("painel.innerHTML"), "o segundo clique fecha")
+
+    def test_mostrar_conta_abre_no_provedor_e_na_conta_pedidos(self):
+        """O clique no 5h ou no nome da conta, na barra de baixo, leva direto a ela."""
+        self.ligar(ABERTO, resposta=contrato())
+        self.definir('PainelUso.mostrarConta("codex:padrao")')
+        self.assertIn('data-conta="codex:padrao"', self.rodar("painel.innerHTML"))
+        self.definir('PainelUso.mostrarConta("claude:84092a89")')
+        self.assertIn('data-conta="claude:84092a89"', self.rodar("painel.innerHTML"))
 
     def test_mostrar_conta_abre_no_provedor_e_na_conta_pedidos(self):
         self.ligar({}, resposta=contrato())
@@ -930,12 +885,12 @@ class PaginaComOPainel(unittest.TestCase):
             self.assertIn(variavel + ":", bloco(".uso-cartao"), variavel)
         self.assertIn('style="--marca:', (UI / "painel-uso.js").read_text(encoding="utf-8"))
 
-    def test_icone_e_svg_e_nunca_um_caractere(self):
-        """Seta e triangulo de texto mudam de tamanho com a fonte e somem em fonte sem o glifo."""
-        for nome in ("painel-uso.js", "painel-uso.css"):
-            texto = (UI / nome).read_text(encoding="utf-8")
-            for glifo in "▲▼●▸▾►◄✓✔⚠":
-                self.assertNotIn(glifo, texto, f"{glifo} em {nome}")
+    def test_painel_nao_herda_as_cores_do_tema_da_janela(self):
+        """O painel tem o visual do app do Windows: as cores dele sao dele, e mudar o tema nao o alcanca."""
+        css = (UI / "painel-uso.css").read_text(encoding="utf-8")
+        bloco = css[css.index(".uso-lateral {"):css.index("}", css.index(".uso-lateral {"))]
+        for token, cor in (("--texto", "#d3d8e0"), ("--linha", "#2a2e36"), ("--acento", "#4f9cf9"), ("--uso-fundo", "#121419")):
+            self.assertIn(f"{token}: {cor}", bloco, token)
 
     def test_classe_nova_do_painel_comeca_com_uso(self):
         """A barra de baixo ja quebrou por uma classe do painel com o nome dela. Fora do prefixo uso-,

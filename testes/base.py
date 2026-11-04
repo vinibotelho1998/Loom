@@ -28,6 +28,11 @@ from loom import (  # noqa: E402
 )
 
 
+# o que so existe no Windows: registro, ConPTY, caminho com C: e arquivo que nao troca aberto
+so_no_windows = unittest.skipUnless(sys.platform == "win32", "comportamento do Windows")
+fora_do_windows = unittest.skipIf(sys.platform == "win32", "comportamento do Linux")
+
+
 class ComPastaPropria(unittest.TestCase):
     """Base que troca a pasta de dados do app por uma descartavel."""
 

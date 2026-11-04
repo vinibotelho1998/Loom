@@ -16,6 +16,7 @@ from pathlib import Path
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from base import ComPastaPropria  # noqa: E402
+from base import so_no_windows  # noqa: E402
 
 import test_pagina as pagina  # noqa: E402
 import test_usabilidade as usabilidade  # noqa: E402
@@ -48,6 +49,7 @@ class SessaoFalsa:
 class PathDoExeCongelado(unittest.TestCase):
     PASTA = r"C:\Users\eu\Desktop\Loom"
 
+    @so_no_windows
     def test_tira_a_pasta_do_exe_e_o_que_mora_dentro_dela(self):
         path = os.pathsep.join([
             r"C:\Users\eu\Desktop\Loom\_internal",
@@ -60,6 +62,7 @@ class PathDoExeCongelado(unittest.TestCase):
         limpo = pty_session.path_sem_a_pasta(path, Path(self.PASTA)).split(os.pathsep)
         self.assertEqual(limpo, [r"C:\Windows\System32", r"C:\Users\eu\Desktop\LoomVelho\bin", r"C:\Program Files\Git\cmd"])
 
+    @so_no_windows
     def test_ambiente_do_shell_so_limpa_quando_congelado(self):
         path = os.pathsep.join([self.PASTA + r"\_internal", r"C:\Windows"])
         with unittest.mock.patch.dict(os.environ, {"PATH": path}):
@@ -78,6 +81,7 @@ class ComandoNaSubida(unittest.TestCase):
     def shell(self, sid: str, caminho: str = r"C:\x\s.exe", args: tuple = ()) -> shells.Shell:
         return shells.Shell(sid, sid, caminho, args)
 
+    @so_no_windows
     def test_cada_shell_roda_e_fica_aberto(self):
         self.assertEqual(
             shells.com_comando(self.shell("pwsh", args=("-NoLogo",)), "claude"),

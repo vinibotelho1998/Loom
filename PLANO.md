@@ -12,7 +12,9 @@ Este arquivo e o mestre do projeto. Decisao que nao estiver aqui nao vale.
 
 ## 1. Stack
 
-Python 3.14 em venv, PySide6 pra janela, QWebEngineView pra tela, xterm.js pro terminal, pywinpty pro ConPTY.
+Python 3.14 em venv, PySide6 pra janela, QWebEngineView pra tela, xterm.js pro terminal, pywinpty pro ConPTY no Windows e o PTY do kernel no Linux.
+
+No Linux nao entra dependencia nova: `loom/pty_posix.py` usa so o que vem no Python e tem o mesmo jeito de usar do PtyProcess do pywinpty. O codigo e um so nos dois sistemas, e o que muda fica atras de `sys.platform`.
 
 Por que assim:
 
@@ -137,6 +139,13 @@ O app tem que ser bonito de olhar oito horas por dia, e bonito aqui quer dizer c
 A referencia de acabamento e o Warp e o Ghostty. O que nao vamos copiar e o excesso de painel do Warp,
 que rouba espaco do que interessa, que e a saida do comando.
 
+Decidido em 04/11/2026, na repaginacao:
+
+- **Abas na vertical.** A lista da esquerda mostra toda aba, com o estado e a conta. Guias no topo foram testadas e a vertical ficou melhor pra acompanhar varios agentes.
+- **Painel de uso igual ao do Windows.** Ele fica com o visual e as cores do app instalado no Windows, abas Claude e Codex em cima e os chips de conta, qualquer que seja o tema do resto da janela.
+- **Barra propria no Linux.** O topo do Loom fica no lugar da barra de titulo do sistema, com os botoes de janela. Mover e mudar o tamanho ficam com o compositor, e o ajuste Barra de titulo do sistema volta a do sistema. No Windows continua a do sistema, pintada na cor do app, porque o Aero Snap depende dela.
+- **Terminais externos sairam.** A lista dos terminais abertos fora do Loom nao servia pra nada. Conversa antiga continua pela paleta.
+
 ---
 
 ## 8. Terminal, o que precisa ser bom
@@ -180,7 +189,9 @@ Vem depois porque so faz sentido pintar quando o esqueleto ja esta de pe, e ante
 
 ## 10. Testes
 
-`.venv\Scripts\python.exe testesodar.py` roda tudo, e `testesodar.py rapido` pula o que abre processo.
+`.venv\Scripts\python.exe testes
+odar.py` roda tudo, e `testes
+odar.py rapido` pula o que abre processo.
 Nenhum teste encosta na pasta de dados de verdade: cada um roda numa pasta temporaria que e apagada no fim.
 
 O que esta coberto:

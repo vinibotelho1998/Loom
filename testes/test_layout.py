@@ -132,6 +132,12 @@ class NomesDeClasse(unittest.TestCase):
         # o proprio painel e o unico elemento dele que nasce no index.html
         # ativo e so o estado, sempre junto de uma classe propria
         self.assertEqual(do_painel & da_pagina - {"uso-lateral", "ativo"}, set())
+        # e o que o script do painel desenha tambem nao usa classe de elemento da pagina
+        script = (UI / "painel-uso.js").read_text(encoding="utf-8")
+        desenhadas = set()
+        for lista in re.findall(r'class="([\w -]+)"', script):
+            desenhadas.update(lista.split())
+        self.assertEqual(desenhadas & da_pagina - {"uso-lateral", "ativo"}, set())
 
 
 if __name__ == "__main__":

@@ -1,39 +1,42 @@
 /* Painel de uso a direita dos terminais. A organizacao vem do CodexBar, de Peter Steinberger, sob
    a licenca MIT; o desenho segue o guia de visualizacao do Loom. As cores de marca e de estado
-   passaram pelo validador da paleta no fundo deste painel.
-
-   Escala de espaco: 4, 8, 12, 16 e 24 px, e nada fora dela. Tipo: 10.5 pros rotulos de secao e
-   eixos, 11.5 pro texto de apoio, 12.5 pro corpo, 14 pro nome da conta e 22 so pro percentual de
-   cada janela, que e o numero que o painel existe pra mostrar. */
+   passaram pelo validador da paleta no fundo deste painel. */
 
 .uso-lateral {
+  /* O painel mantem o visual que ele tem no app do Windows, com as cores dele, qualquer que seja o
+     tema do resto da janela */
+  --texto: #d3d8e0;
+  --linha: #2a2e36;
+  --linha-forte: #3a3f49;
+  --apagado: #6e7683;
+  --apagado-2: #8a93a1;
+  --apagado-3: #7d8797;
+  --fraco: #5b6371;
+  --acento: #4f9cf9;
   /* o mesmo fundo da lateral da esquerda: os dois lados da janela ficam com o mesmo peso */
   --uso-fundo: #121419;
-  /* um degrau acima do fundo: os cartoes se separam pelo tom, sem moldura forte */
-  --uso-bloco: #181b21;
-  /* mais um degrau, pro que esta escolhido ou erguido */
-  --uso-erguido: #1f232b;
-  --uso-borda: rgba(255, 255, 255, .055);
-  --uso-borda-forte: rgba(255, 255, 255, .1);
+  /* um degrau acima do fundo, pros blocos de numero */
+  --uso-bloco: #171a20;
+  --uso-bloco-borda: rgba(255, 255, 255, .06);
   --uso-texto: var(--texto);
   --uso-sec: var(--apagado-2);
   --uso-ter: var(--apagado-3);
   --uso-grade: #22262e;
-  --uso-eixo: #343943;
+  --uso-eixo: #2e333c;
+  --uso-sep: var(--linha);
   /* estados, da paleta fixa do guia: nunca viram cor de serie e sempre andam com rotulo */
   --uso-alto: #fab219;
   --uso-critico: #d03b3b;
   --uso-bom: #0ca30c;
-  /* o vermelho de estado e escuro demais pra texto pequeno no fundo; este passa de 4,5:1 */
-  --uso-critico-texto: #f08a8a;
+  --uso-erro-texto: #f0808a;
   --marca: var(--acento);
 
   width: clamp(280px, var(--largura-uso, 310px), 480px);
   flex: 0 0 clamp(280px, var(--largura-uso, 310px), 480px);
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  padding: 12px 12px 24px;
+  gap: 12px;
+  padding: 12px 14px 18px;
   border-left: 1px solid var(--linha);
   background: var(--uso-fundo);
   color: var(--uso-texto);
@@ -45,117 +48,81 @@
   overscroll-behavior: contain;
   /* redesenhar o painel nao pode fazer o navegador remedir a coluna dos terminais */
   contain: content;
-  /* a largura e dada pelo proprio painel; as consultas de container trocam o arranjo no largo */
-  container-type: inline-size;
-  container-name: uso;
 }
 .uso-lateral > * { flex: 0 0 auto; }
 .uso-lateral p { margin: 0; }
 .uso-lateral h3, .uso-lateral h4 { margin: 0; font-weight: 600; }
 .uso-lateral button { font-family: inherit; cursor: default; }
-.uso-lateral :focus-visible { outline: 2px solid color-mix(in srgb, var(--acento) 70%, transparent); outline-offset: 1px; }
 
 /* o botao do topo fica aceso com o painel aberto */
 #alternar-uso.ativo { color: var(--texto); }
 
-.uso-secao-titulo {
-  color: var(--uso-ter);
-  font-size: 10.5px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase;
+/* ------------------------------------------------------------- provedores */
+
+.uso-provedores {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 2px;
+  padding: 2px;
+  border-radius: 9px;
+  background: var(--uso-bloco);
+  border: 1px solid var(--uso-bloco-borda);
 }
-.uso-nota { color: var(--uso-ter); font-size: 11px; }
-.uso-aviso {
-  display: flex; gap: 8px;
-  padding: 8px;
-  border-radius: 6px;
-  background: rgba(250, 178, 25, .06);
-  box-shadow: inset 2px 0 0 var(--uso-alto);
-  color: var(--uso-sec);
-  font-size: 11px;
-}
-.uso-info { display: inline-grid; place-items: center; width: 16px; height: 16px; color: var(--uso-ter); }
-.uso-info:hover { color: var(--uso-texto); }
-.uso-info-icone { width: 13px; height: 13px; }
-
-/* ----------------------------------------------------------------- estado */
-
-.uso-estado {
-  flex: 0 0 auto;
-  padding: 1px 6px;
-  border-radius: 4px;
-  font-size: 10.5px; font-weight: 600; line-height: 1.45;
-  white-space: nowrap;
-}
-.uso-estado.alto { background: rgba(250, 178, 25, .13); color: var(--uso-alto); }
-.uso-estado.critico { background: rgba(208, 59, 59, .17); color: var(--uso-critico-texto); }
-
-/* ----------------------------------------------------------------- resumo */
-
-.uso-resumo { display: flex; flex-direction: column; gap: 8px; }.uso-linhas { display: flex; flex-direction: column; gap: 4px; }
-.uso-linha {
-  position: relative;
-  display: flex; flex-direction: column; gap: 8px;
-  width: 100%; min-width: 0;
-  padding: 8px 12px 10px;
-  border: 1px solid transparent;
-  border-radius: 8px;
+.uso-provedor {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  height: 30px; min-width: 0;
+  padding: 0 8px;
+  border: 0; border-radius: 7px;
   background: transparent;
   color: var(--uso-sec);
-  text-align: left;
   font-size: 12.5px;
-  transition: background-color .12s ease, border-color .12s ease;
 }
-.uso-linha:hover { background: var(--uso-bloco); color: var(--uso-texto); }
-.uso-linha.ativo {
-  background: var(--uso-erguido);
-  border-color: var(--uso-borda-forte);
+.uso-provedor:hover { color: var(--uso-texto); background: rgba(255, 255, 255, .03); }
+.uso-provedor.ativo {
   color: var(--uso-texto);
+  background: #21252d;
+  box-shadow: inset 0 -2px 0 var(--marca);
 }
-/* a conta escolhida ganha o fio da cor do provedor na borda: o resto da linha fica no tom do texto */
-.uso-linha.ativo::before {
-  content: "";
-  position: absolute; left: -1px; top: 8px; bottom: 8px;
-  width: 2px; border-radius: 0 2px 2px 0;
-  background: var(--marca);
+.uso-provedor-icone { width: 14px; height: 14px; flex: 0 0 14px; fill: var(--marca); }
+.uso-provedor:not(.ativo) .uso-provedor-icone { opacity: .75; }
+.uso-provedor-nome { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.uso-provedor-cota {
+  padding: 0 5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .06);
+  color: var(--uso-sec);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
 }
-.uso-linha-topo { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.uso-linha-icone { flex: 0 0 14px; width: 14px; height: 14px; fill: var(--marca); }
-.uso-linha:not(.ativo) .uso-linha-icone { opacity: .8; }
-.uso-linha-nome { flex: 1 1 auto; min-width: 0; font-weight: 600; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-/* as duas janelas numa grade so de seis colunas: as duas barras ficam com a mesma largura, mesmo
-   com "Semana" mais comprido que "5h" */
-.uso-linha-janelas {
-  display: grid; grid-template-columns: auto minmax(16px, 1fr) auto auto minmax(16px, 1fr) auto;
-  align-items: center; column-gap: 8px;
-  padding-left: 22px;
-  font-size: 11.5px;
-}
-.uso-linha-janelas .uso-mini { display: contents; }
-.uso-linha-janelas .uso-mini + .uso-mini .uso-mini-rotulo { padding-left: 8px; }
-.uso-linha-erro {
-  flex: 0 0 auto;
-  display: inline-flex; align-items: center; gap: 4px;
-  color: var(--uso-critico-texto);
-  font-size: 10.5px; font-weight: 600;
-}
-.uso-linha-erro-icone { width: 12px; height: 12px; }
-.uso-linha-sem { grid-column: 1 / -1; color: var(--uso-ter); font-size: 11.5px; }
+.uso-provedor-cota.nivel-alto { color: var(--uso-alto); }
+.uso-provedor-cota.nivel-critico { color: var(--uso-erro-texto); }
 
-/* O medidor pequeno do resumo: o mesmo desenho do grande, em 4 px, com o numero ao lado. */
-.uso-mini-rotulo { color: var(--uso-ter); white-space: nowrap; }
-.uso-mini-trilho {
-  position: relative; display: block;
-  height: 4px; border-radius: 2px;
-  background: color-mix(in srgb, var(--marca) 18%, var(--uso-bloco));
-  overflow: hidden;
+/* ----------------------------------------------------------------- contas */
+
+.uso-contas { display: flex; flex-wrap: wrap; gap: 6px; }
+.uso-conta {
+  max-width: 100%;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--uso-bloco-borda);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--uso-sec);
+  font-size: 12px;
+  overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
 }
-.uso-mini-trilho b { position: absolute; inset: 0 auto 0 0; border-radius: 2px; background: var(--marca); }
-.uso-mini.nivel-alto .uso-mini-trilho { background: color-mix(in srgb, var(--uso-alto) 18%, var(--uso-bloco)); }
-.uso-mini.nivel-alto .uso-mini-trilho b { background: var(--uso-alto); }
-.uso-mini.nivel-critico .uso-mini-trilho { background: color-mix(in srgb, var(--uso-critico) 22%, var(--uso-bloco)); }
-.uso-mini.nivel-critico .uso-mini-trilho b { background: var(--uso-critico); }
-.uso-mini.vazio .uso-mini-trilho { background: rgba(255, 255, 255, .07); }
-.uso-mini-valor { min-width: 3ch; text-align: right; color: var(--uso-texto); font-weight: 600; font-variant-numeric: tabular-nums; }
-.uso-mini.vazio .uso-mini-valor { color: var(--uso-ter); font-weight: 400; }
+.uso-conta:hover { color: var(--uso-texto); border-color: rgba(255, 255, 255, .12); }
+.uso-conta.ativo { color: var(--uso-texto); background: #21252d; border-color: color-mix(in srgb, var(--acento) 45%, transparent); }
+.uso-conta-cota {
+  margin-left: 6px;
+  color: var(--uso-ter);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.uso-conta.ativo .uso-conta-cota { color: var(--uso-sec); }
+.uso-conta-cota.nivel-alto { color: var(--uso-alto); }
+.uso-conta-cota.nivel-critico { color: var(--uso-erro-texto); }
 
 /* ----------------------------------------------------------------- cartao */
 
@@ -163,58 +130,55 @@
   display: flex; flex-direction: column; gap: 16px;
   /* o mesmo matiz num passo apagado, pros dias que nao sao hoje e pro trilho do medidor. Mora no
      cartao, que e onde a cor do provedor e definida: calculado acima, saia no acento do Loom */
-  --marca-apagada: color-mix(in srgb, var(--marca) 40%, var(--uso-fundo));
-  --marca-trilho: color-mix(in srgb, var(--marca) 18%, var(--uso-bloco));
+  --marca-apagada: color-mix(in srgb, var(--marca) 55%, var(--uso-fundo));
+  --marca-trilho: color-mix(in srgb, var(--marca) 20%, var(--uso-bloco));
 }
-.uso-resumo + .uso-cartao { padding-top: 16px; border-top: 1px solid var(--linha); }
 
-.uso-cabeca { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.uso-cabeca { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .uso-avatar {
-  flex: 0 0 32px; width: 32px; height: 32px;
+  flex: 0 0 34px; width: 34px; height: 34px;
   display: grid; place-items: center;
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--marca) 16%, var(--uso-bloco));
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--marca) 22%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--marca) 22%, var(--uso-bloco));
+  color: color-mix(in srgb, var(--marca) 70%, #ffffff);
+  font-size: 13px; font-weight: 700; letter-spacing: .02em;
 }
-.uso-avatar svg { width: 18px; height: 18px; fill: var(--marca); }
 .uso-quem { display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; }
-.uso-nome { font-size: 14px; line-height: 1.3; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.uso-nome { font-size: 14.5px; line-height: 1.25; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .uso-email { color: var(--uso-sec); font-size: 11.5px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .uso-plano {
   flex: 0 0 auto;
   padding: 2px 8px;
+  border: 1px solid color-mix(in srgb, var(--marca) 45%, transparent);
   border-radius: 999px;
-  background: color-mix(in srgb, var(--marca) 12%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--marca) 35%, transparent);
   color: var(--uso-texto);
-  font-size: 10.5px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase;
+  font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
 }
 .uso-atualizado {
-  display: flex; align-items: center; gap: 8px;
-  margin-top: -8px;
+  display: flex; align-items: center; gap: 6px;
+  margin-top: -10px;
   color: var(--uso-ter);
-  font-size: 11px;
+  font-size: 11.5px;
 }
 
 .uso-erro {
-  display: flex; align-items: flex-start; gap: 8px;
-  padding: 8px 8px 8px 12px;
+  display: flex; align-items: flex-start; gap: 6px;
+  padding: 8px 10px;
   border-radius: 8px;
-  background: color-mix(in srgb, var(--uso-critico) 10%, var(--uso-fundo));
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--uso-critico) 30%, transparent);
+  background: color-mix(in srgb, var(--uso-critico) 12%, var(--uso-fundo));
+  border: 1px solid color-mix(in srgb, var(--uso-critico) 35%, transparent);
 }
-.uso-erro-icone { flex: 0 0 14px; width: 14px; height: 14px; margin-top: 1px; color: var(--uso-critico-texto); }
 .uso-erro-texto {
   flex: 1 1 auto; min-width: 0;
-  color: var(--uso-critico-texto);
+  color: var(--uso-erro-texto);
   font-size: 11.5px;
   display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
   overflow-wrap: anywhere;
 }
 .uso-copiar {
-  flex: 0 0 24px; width: 24px; height: 24px;
+  flex: 0 0 22px; width: 22px; height: 22px;
   display: grid; place-items: center;
-  padding: 0; border: 0; border-radius: 6px;
+  padding: 0; border: 0; border-radius: 5px;
   background: transparent; color: var(--uso-sec);
 }
 .uso-copiar:hover { background: rgba(255, 255, 255, .06); color: var(--uso-texto); }
@@ -223,128 +187,89 @@
 
 /* ----------------------------------------------------------------- secoes */
 
-.uso-secao { display: flex; flex-direction: column; gap: 8px; }
-.uso-secao-topo { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 20px; }
-.uso-secao-topo .uso-secao-titulo { flex: 1 1 auto; }
+.uso-secao { display: flex; flex-direction: column; gap: 10px; padding-top: 14px; border-top: 1px solid var(--uso-sep); }
+.uso-secao-topo { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.uso-secao-titulo {
+  color: var(--uso-ter);
+  font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase;
+}
+.uso-nota { color: var(--uso-ter); font-size: 11px; }
+.uso-aviso {
+  padding: 6px 8px;
+  border-left: 2px solid var(--uso-alto);
+  background: rgba(250, 178, 25, .06);
+  color: var(--uso-sec);
+  font-size: 11px;
+}
 
 /* ---------------------------------------------------------------- janelas */
 
-.uso-janela {
-  display: flex; flex-direction: column; gap: 8px;
-  padding: 12px;
-  border-radius: 10px;
-  background: var(--uso-bloco);
-  box-shadow: inset 0 0 0 1px var(--uso-borda);
-}
-.uso-janela-topo { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 18px; }
-.uso-janela-titulo { flex: 0 1 auto; min-width: 0; color: var(--uso-sec); font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.uso-janela-topo .uso-estado { margin-left: auto; }
+.uso-janela { display: flex; flex-direction: column; gap: 6px; }
+.uso-janela + .uso-janela { margin-top: 4px; }
+.uso-janela-topo { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.uso-janela-titulo { font-size: 12.5px; font-weight: 600; white-space: nowrap; }
+.uso-janela-valor { margin-left: auto; display: flex; align-items: baseline; gap: 6px; color: var(--uso-sec); font-size: 11.5px; white-space: nowrap; }
+.uso-janela-valor b { color: var(--uso-texto); font-size: 17px; font-weight: 600; letter-spacing: -.01em; }
+.uso-janela.sem-leitura .uso-janela-valor { color: var(--uso-ter); }
 .uso-selo {
-  flex: 0 0 auto;
+  padding: 0 5px;
+  border: 1px solid rgba(255, 255, 255, .12);
+  border-radius: 4px;
+  color: var(--uso-ter);
+  font-size: 10px;
+}
+.uso-nivel {
   padding: 0 6px;
   border-radius: 4px;
-  box-shadow: inset 0 0 0 1px var(--uso-borda-forte);
-  color: var(--uso-ter);
-  font-size: 10.5px;
+  font-size: 10.5px; font-weight: 600;
+  align-self: center;
 }
-.uso-janela-meio { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-width: 0; margin-top: -4px; }
-.uso-janela-valor { display: flex; align-items: baseline; gap: 4px; color: var(--uso-sec); font-size: 11.5px; white-space: nowrap; }
-.uso-janela-valor b { color: var(--uso-texto); font-size: 22px; font-weight: 600; letter-spacing: -.02em; line-height: 1.15; }
-.uso-janela.sem-leitura .uso-janela-valor { color: var(--uso-ter); font-size: 13px; }
-.uso-janela-zera {
-  display: inline-flex; align-items: center; gap: 4px;
-  min-width: 0;
-  color: var(--uso-sec);
-  font-size: 11.5px;
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
-}
-.uso-janela-relogio { flex: 0 0 12px; width: 12px; height: 12px; color: var(--uso-ter); }
+.nivel-alto .uso-nivel { background: rgba(250, 178, 25, .14); color: var(--uso-alto); }
+.nivel-critico .uso-nivel { background: rgba(208, 59, 59, .18); color: var(--uso-erro-texto); }
 
 /* O medidor: o cheio leva o estado, o trilho e um passo apagado da mesma cor, e a marca fina diz
    onde o uso estaria agora gastando por igual ate renovar. */
 .uso-medidor {
   position: relative;
-  height: 6px;
-  border-radius: 3px;
+  height: 8px;
+  border-radius: 4px;
   background: var(--marca-trilho);
 }
-.uso-medidor.vazio { background: var(--uso-grade); }
 .uso-medidor-cheio {
   position: absolute; inset: 0 auto 0 0;
-  border-radius: 3px;
+  border-radius: 4px;
   background: var(--marca);
 }
-.nivel-alto > .uso-medidor { background: color-mix(in srgb, var(--uso-alto) 16%, var(--uso-bloco)); }
 .nivel-alto .uso-medidor-cheio { background: var(--uso-alto); }
-.nivel-critico > .uso-medidor { background: color-mix(in srgb, var(--uso-critico) 22%, var(--uso-bloco)); }
 .nivel-critico .uso-medidor-cheio { background: var(--uso-critico); }
 .uso-medidor-ritmo {
-  position: absolute; top: -4px; bottom: -4px;
+  position: absolute; top: -3px; bottom: -3px;
   left: clamp(0px, calc(var(--p) - 1px), calc(100% - 2px));
   width: 2px;
   border-radius: 1px;
   background: var(--uso-texto);
-  /* o anel na cor do cartao separa a marca do cheio, sem moldura */
-  box-shadow: 0 0 0 2px var(--uso-bloco);
+  box-shadow: 0 0 0 2px var(--uso-fundo);
 }
-.uso-janela-base { display: flex; align-items: center; gap: 8px; color: var(--uso-sec); font-size: 11.5px; }
-.uso-ritmo { min-width: 0; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.uso-ritmo-icone { flex: 0 0 14px; width: 14px; height: 14px; }
-.uso-ritmo.reserva .uso-ritmo-icone { color: var(--uso-bom); }
-.uso-ritmo.deficit .uso-ritmo-icone { color: var(--uso-alto); }
-.uso-ritmo.no-ritmo .uso-ritmo-icone { color: var(--uso-ter); }
-.uso-janela-alerta {
-  display: flex; align-items: flex-start; gap: 8px;
-  padding: 8px;
-  border-radius: 6px;
-  background: rgba(250, 178, 25, .07);
-  color: var(--uso-texto);
+.uso-janela-base {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+  color: var(--uso-sec);
   font-size: 11.5px;
 }
-.uso-alerta-icone { flex: 0 0 14px; width: 14px; height: 14px; color: var(--uso-alto); }
-.nivel-critico .uso-janela-alerta { background: rgba(208, 59, 59, .1); }
-.nivel-critico .uso-alerta-icone { color: var(--uso-critico-texto); }
-.uso-janela-folga { color: var(--uso-sec); font-size: 11.5px; }
-
-.uso-fora { display: flex; flex-direction: column; gap: 4px; padding-top: 8px; border-top: 1px solid var(--uso-borda); }
+.uso-janela-zera { white-space: nowrap; color: var(--uso-ter); font-variant-numeric: tabular-nums; }
+.uso-ritmo { min-width: 0; display: inline-flex; align-items: baseline; gap: 5px; white-space: nowrap; }
+.uso-janela-alerta { color: var(--uso-alto); font-size: 11.5px; }
+.uso-fora { display: flex; flex-direction: column; gap: 3px; margin-top: 2px; }
 .uso-fora-linha { color: var(--uso-sec); font-size: 11.5px; }
 .uso-fora-linha b { color: var(--uso-texto); font-weight: 600; }
 .uso-fora-linha.nada, .uso-fora-linha.sem-base { color: var(--uso-ter); }
-.uso-fora-antes { list-style: none; margin: 4px 0 0; padding: 0 0 0 20px; display: flex; flex-direction: column; gap: 4px; }
+.uso-fora-titulo { margin: 4px 0 0; color: var(--uso-ter); font-size: 11px; }
+.uso-fora-antes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
 .uso-fora-antes li { display: flex; justify-content: space-between; gap: 8px; color: var(--uso-ter); font-size: 11px; font-variant-numeric: tabular-nums; }
-.uso-fora-antes li span:last-child { text-align: right; }
-.uso-sem-limite {
-  padding: 12px;
-  border-radius: 10px;
-  background: var(--uso-bloco);
-  box-shadow: inset 0 0 0 1px var(--uso-borda);
-  color: var(--uso-sec);
-  font-size: 11.5px;
-}
-
-/* --------------------------------------------------------------- detalhes */
-
-.uso-detalhes summary {
-  display: inline-flex; align-items: center; gap: 4px;
-  color: var(--uso-sec);
-  font-size: 11.5px;
-  list-style: none;
-}
-.uso-detalhes summary::-webkit-details-marker { display: none; }
-.uso-detalhes summary:hover { color: var(--uso-texto); }
-.uso-detalhes-seta { width: 14px; height: 14px; color: var(--uso-ter); transition: transform .12s ease; }
-.uso-detalhes[open] .uso-detalhes-seta { transform: rotate(90deg); }
-
-.uso-mais {
-  align-self: flex-start;
-  height: 24px; padding: 0 8px; margin-left: -8px;
-  border: 0; border-radius: 6px;
-  background: transparent;
-  color: var(--uso-sec);
-  font-size: 11.5px;
-}
-.uso-mais:hover { background: var(--uso-bloco); color: var(--uso-texto); }
+.nivel-critico .uso-janela-alerta { color: var(--uso-erro-texto); }
+.uso-ritmo i { font-style: normal; font-size: 9px; }
+.uso-ritmo.reserva i { color: var(--uso-bom); }
+.uso-ritmo.deficit i { color: var(--uso-alto); }
+.uso-ritmo.no-ritmo i { color: var(--uso-ter); }
 
 /* ------------------------------------------------------------------ custo */
 
@@ -352,42 +277,41 @@
 .uso-kpi {
   display: flex; flex-direction: column; gap: 2px;
   min-width: 0;
-  padding: 8px 12px 10px;
-  border-radius: 10px;
+  padding: 10px 11px;
+  border-radius: 9px;
   background: var(--uso-bloco);
-  box-shadow: inset 0 0 0 1px var(--uso-borda);
+  border: 1px solid var(--uso-bloco-borda);
 }
 .uso-kpi.largo { grid-column: 1 / -1; }
 .uso-kpi-rotulo { color: var(--uso-sec); font-size: 11px; }
-.uso-kpi-valor { font-size: 18px; font-weight: 600; letter-spacing: -.01em; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.uso-kpi-sub { color: var(--uso-ter); font-size: 11px; overflow-wrap: anywhere; }
-/* no largo os tres numeros de custo cabem lado a lado */
-@container uso (min-width: 420px) {
-  .uso-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .uso-kpi.largo { grid-column: auto; }
-}
+.uso-kpi-valor { font-size: 18px; font-weight: 600; letter-spacing: -.01em; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.uso-kpi-sub { color: var(--uso-ter); font-size: 11px; overflow: hidden; text-overflow: ellipsis; }
 
-/* ------------------------------------------------- projetos e modelos */
+/* ------------------------------------------------------- uso desta maquina */
 
-.uso-projs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
-.uso-proj { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.uso-kpis-tres { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.uso-kpis-tres .uso-kpi { padding: 8px 9px; }
+.uso-kpis-tres .uso-kpi-valor { font-size: 15px; }
+.uso-projs { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 9px; }
+.uso-proj { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .uso-proj-topo { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
-.uso-proj-nome { min-width: 0; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.uso-proj-valor { flex: 0 0 auto; font-size: 12px; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.uso-proj-barra { height: 4px; border-radius: 2px; background: var(--uso-grade); overflow: hidden; }
+.uso-proj-nome { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.uso-proj-valor { font-size: 12px; font-weight: 600; white-space: nowrap; }
+.uso-proj-barra { height: 4px; border-radius: 2px; background: var(--uso-bloco-borda); overflow: hidden; }
 .uso-proj-barra i { display: block; height: 100%; border-radius: 2px; background: var(--marca-apagada, var(--marca)); }
-.uso-proj-detalhe { color: var(--uso-ter); font-size: 11px; font-variant-numeric: tabular-nums; }
+.uso-proj-detalhe { color: var(--uso-ter); font-size: 11px; }
 
-/* A barra do modelo mede a fatia dele e e cortada pelos niveis de esforco, com 2 px de fundo entre
-   eles. Esforco e ordinal: um matiz so, do apagado pro cheio. */
-.uso-fatias { display: flex; gap: 2px; height: 100%; background: var(--uso-fundo); }
-.uso-fatia { display: block; min-width: 2px; height: 100%; flex: 1 1 0; background: var(--marca); }
-.uso-fatia.neutra, .uso-esforco-cor.neutra { background: #4a505b; }
-
-.uso-esforcos { display: flex; flex-wrap: wrap; gap: 4px 12px; }
-.uso-esforco { display: inline-flex; align-items: center; gap: 4px; color: var(--uso-ter); font-size: 11px; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.uso-esforco b { color: var(--uso-sec); font-weight: 600; }
-.uso-esforco-cor { display: block; width: 8px; height: 8px; border-radius: 2px; background: var(--marca); }
+.uso-esforcos { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
+.uso-esforco {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--uso-bloco);
+  border: 1px solid var(--uso-bloco-borda);
+  color: var(--uso-sec);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.uso-esforco b { color: var(--uso-texto); font-weight: 600; }
 
 /* ---------------------------------------------------------------- grafico */
 
@@ -396,19 +320,18 @@
   padding: 2px;
   border-radius: 7px;
   background: var(--uso-bloco);
-  box-shadow: inset 0 0 0 1px var(--uso-borda);
+  border: 1px solid var(--uso-bloco-borda);
 }
 .uso-alternar button {
-  height: 20px; padding: 0 8px;
+  height: 22px; padding: 0 9px;
   border: 0; border-radius: 5px;
   background: transparent; color: var(--uso-sec);
   font-size: 11px;
 }
 .uso-alternar button:hover { color: var(--uso-texto); }
-.uso-alternar button.ativo { background: var(--uso-erguido); color: var(--uso-texto); box-shadow: 0 1px 2px rgba(0, 0, 0, .3); }
+.uso-alternar button.ativo { background: #21252d; color: var(--uso-texto); }
 
-.uso-total { margin-top: -4px; color: var(--uso-sec); font-size: 11.5px; font-variant-numeric: tabular-nums; }
-.uso-plot { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: 120px auto; column-gap: 8px; row-gap: 4px; margin-top: 8px; }
+.uso-plot { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: 112px auto; column-gap: 6px; row-gap: 5px; }
 .uso-eixo-y {
   display: flex; flex-direction: column; justify-content: space-between; align-items: flex-end;
   /* as marcas ficam centradas nas linhas: a coluna vai de meia letra acima a meia letra abaixo */
@@ -431,19 +354,17 @@
   grid-template-columns: repeat(var(--n, 30), minmax(0, 1fr));
   column-gap: 2px;
 }
-.uso-coluna { position: relative; border-radius: 3px; }
-/* a coluna no foco se mostra pela barra erguida e pela dica, como no mouse; o anel azul cobriria o grafico */
-.uso-lateral .uso-coluna:focus-visible { outline: none; }
+.uso-coluna { position: relative; outline: none; border-radius: 3px; }
 .uso-coluna:hover, .uso-coluna:focus-visible { background: rgba(255, 255, 255, .04); }
 .uso-coluna-barra {
   position: absolute; bottom: 0; left: 50%;
   width: min(100%, 24px);
   transform: translateX(-50%);
-  border-radius: 2px 2px 0 0;
+  border-radius: 3px 3px 0 0;
   background: var(--marca-apagada);
 }
 .uso-coluna.hoje .uso-coluna-barra { background: var(--marca); }
-.uso-coluna:hover .uso-coluna-barra, .uso-coluna:focus-visible .uso-coluna-barra { background: color-mix(in srgb, var(--marca) 80%, #ffffff); }
+.uso-coluna:hover .uso-coluna-barra, .uso-coluna:focus-visible .uso-coluna-barra { background: color-mix(in srgb, var(--marca) 85%, #ffffff); }
 
 /* O detalhe de cada dia mora dentro da coluna e aparece com o ponteiro ou o foco do teclado; nas
    pontas ele abre pra dentro do grafico, senao a borda do painel corta. */
@@ -452,21 +373,22 @@
   /* logo acima do topo da barra do dia */
   bottom: calc(var(--h, 0%) + 8px); left: 50%;
   transform: translateX(-50%);
-  width: max-content; max-width: 200px;
-  display: none; flex-direction: column; gap: 2px;
-  padding: 8px 12px;
+  width: max-content; max-width: 210px;
+  display: none; flex-direction: column; gap: 1px;
+  padding: 8px 10px;
   border-radius: 8px;
-  background: #23272f;
-  box-shadow: inset 0 0 0 1px var(--uso-borda-forte), 0 8px 24px rgba(0, 0, 0, .45);
+  background: #22262e;
+  border: 1px solid rgba(255, 255, 255, .08);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .45);
   pointer-events: none;
 }
 .uso-coluna.esq .uso-dica { left: 0; transform: none; }
 .uso-coluna.dir .uso-dica { left: auto; right: 0; transform: none; }
 .uso-coluna:hover .uso-dica, .uso-coluna:focus-visible .uso-dica { display: flex; }
 .uso-dica small { color: var(--uso-ter); font-size: 10.5px; }
-.uso-dica strong { color: var(--uso-texto); font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.uso-dica strong { color: var(--uso-texto); font-size: 14px; font-weight: 600; }
 .uso-dica > span { color: var(--uso-sec); font-size: 11px; }
-.uso-dica ul { list-style: none; margin: 4px 0 0; padding: 4px 0 0; border-top: 1px solid var(--uso-borda-forte); }
+.uso-dica ul { list-style: none; margin: 6px 0 0; padding: 6px 0 0; border-top: 1px solid rgba(255, 255, 255, .08); }
 .uso-dica li { display: flex; justify-content: space-between; gap: 12px; color: var(--uso-sec); font-size: 11px; }
 .uso-dica li em { font-style: normal; color: var(--uso-texto); font-variant-numeric: tabular-nums; }
 
@@ -475,10 +397,20 @@
   color: var(--uso-ter);
   font-size: 10px;
 }
-.uso-grafico > .uso-detalhes { margin-top: 4px; }
-.uso-tabela { width: 100%; margin-top: 8px; border-collapse: collapse; font-size: 11px; font-variant-numeric: tabular-nums; }
-.uso-tabela th { color: var(--uso-ter); font-weight: 500; text-align: right; padding: 4px 0; border-bottom: 1px solid var(--linha); }
-.uso-tabela td { color: var(--uso-sec); text-align: right; padding: 4px 0; border-bottom: 1px solid var(--uso-grade); }
+.uso-total { color: var(--uso-sec); font-size: 11.5px; }
+
+.uso-tabela summary {
+  color: var(--uso-sec);
+  font-size: 11.5px;
+  list-style: none;
+}
+.uso-tabela summary::-webkit-details-marker { display: none; }
+.uso-tabela summary::before { content: "▸ "; color: var(--uso-ter); }
+.uso-tabela[open] summary::before { content: "▾ "; }
+.uso-tabela summary:hover { color: var(--uso-texto); }
+.uso-tabela table { width: 100%; margin-top: 8px; border-collapse: collapse; font-size: 11px; font-variant-numeric: tabular-nums; }
+.uso-tabela th { color: var(--uso-ter); font-weight: 500; text-align: right; padding: 3px 0; border-bottom: 1px solid var(--uso-sep); }
+.uso-tabela td { color: var(--uso-sec); text-align: right; padding: 3px 0; border-bottom: 1px solid var(--uso-grade); }
 .uso-tabela th:first-child, .uso-tabela td:first-child { text-align: left; }
 
 /* ----------------------------------------------------------------- estados */
@@ -486,16 +418,15 @@
 .uso-vazio {
   display: flex; flex-direction: column; align-items: center; gap: 8px;
   margin-top: 24px;
-  padding: 24px 16px;
+  padding: 22px 16px;
   border-radius: 10px;
   background: var(--uso-bloco);
-  box-shadow: inset 0 0 0 1px var(--uso-borda);
+  border: 1px solid var(--uso-bloco-borda);
   text-align: center;
 }
-.uso-vazio-icone { width: 24px; height: 24px; color: var(--uso-ter); }
 .uso-vazio-titulo { font-size: 13.5px; }
-.uso-vazio-texto { color: var(--uso-sec); font-size: 12px; text-wrap: pretty; }
-.uso-vazio.erro .uso-vazio-icone, .uso-vazio.erro .uso-vazio-titulo { color: var(--uso-critico-texto); }
+.uso-vazio-texto { color: var(--uso-sec); font-size: 12px; }
+.uso-vazio.erro .uso-vazio-titulo { color: var(--uso-erro-texto); }
 .uso-vazio-conta { color: var(--uso-sec); font-size: 12px; }
 
 /* So aparece se a leitura passar de meio segundo: a de todo minuto termina antes e nao pisca. */
@@ -508,10 +439,9 @@
   opacity: 0;
   animation: uso-girar .8s linear infinite, uso-surgir .2s ease .6s forwards;
 }
-.uso-giro.ja { width: 20px; height: 20px; border-width: 2px; animation: uso-girar .8s linear infinite; opacity: 1; }
+.uso-giro.ja { width: 16px; height: 16px; animation: uso-girar .8s linear infinite; opacity: 1; }
 @keyframes uso-girar { to { transform: rotate(360deg); } }
 @keyframes uso-surgir { to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) {
   .uso-giro, .uso-giro.ja { animation: uso-surgir .2s ease .6s forwards; }
-  .uso-linha, .uso-detalhes-seta { transition: none; }
 }

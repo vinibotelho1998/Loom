@@ -54,7 +54,8 @@ class MarcaDeTelaAberta(ComPastaPropria):
         Contar isso tirava a placa de video por uma semana, e a placa nao tinha culpa nenhuma.
         """
         agora = queda.boot_atual()
-        antes = {"id": agora["id"] - 1 if agora["id"] is not None else None, "em": agora["em"] - 3 * 3600}
+        outro = {int: lambda i: i - 1, str: lambda i: "outro-" + i, type(None): lambda i: None}[type(agora["id"])](agora["id"])
+        antes = {"id": outro, "em": agora["em"] - 3 * 3600}
         self.gravar_marca(boot=antes)
         with self.assertLogs("loom.queda", "INFO") as logs:
             self.assertIsNone(self.conferir())

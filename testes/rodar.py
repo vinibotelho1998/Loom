@@ -17,7 +17,7 @@ sys.path.insert(0, str(AQUI.parent))
 
 # Filtrar pelo nome do arquivo e nao por padrao de letra: o antigo test_[cus]* pegava
 # test_colar e test_selecao, que sobem a janela, e com ela um shell e a pasta de dados real.
-ABREM_PROCESSO = {"test_terminal", "test_colar", "test_selecao", "test_arrastar"}
+ABREM_PROCESSO = {"test_terminal", "test_colar", "test_selecao", "test_arrastar", "test_linux"}
 
 rapido = "rapido" in sys.argv
 if rapido:

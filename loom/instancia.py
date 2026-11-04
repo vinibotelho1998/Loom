@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import ctypes
 import getpass
+import os
 import sys
 import time
 
@@ -31,6 +32,8 @@ PRAZO_DE_SUBIDA = 20.0
 
 # o mutex fica aberto ate o processo sair, e o Windows o solta sozinho quando ele sai
 _trava = None
+# fora do Windows a trava e um flock, que o kernel tambem solta quando o processo morre
+_travas_em_arquivo: dict[str, int] = {}
 
 
 def nome() -> str:
@@ -71,6 +74,32 @@ def _kernel32():
     return k
 
 
+def trava_em_arquivo(nome_da_trava: str) -> bool:
+    """A trava fora do Windows: um flock num arquivo da pasta de dados. False se outro a segura.
+
+    Morrer de qualquer jeito solta o flock, sem arquivo velho pra limpar: e por isso que nao e
+    arquivo de pid. O descritor nao passa pros filhos, senao um shell aberto seguraria a trava
+    depois de o Loom sair.
+    """
+    if nome_da_trava in _travas_em_arquivo:
+        return True
+    import fcntl
+
+    try:
+        mod_caminhos.RAIZ.mkdir(parents=True, exist_ok=True)
+        descritor = os.open(mod_caminhos.RAIZ / f"{nome_da_trava}.trava", os.O_RDWR | os.O_CREAT | os.O_CLOEXEC, 0o600)
+    except OSError:
+        # sem trava fica como era antes dela, so com o canal
+        return True
+    try:
+        fcntl.flock(descritor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        os.close(descritor)
+        return False
+    _travas_em_arquivo[nome_da_trava] = descritor
+    return True
+
+
 def segurar_trava() -> bool:
     """Pega a trava deste usuario e desta instalacao. False enquanto outro Loom a segura.
 
@@ -79,7 +108,7 @@ def segurar_trava() -> bool:
     """
     global _trava
     if sys.platform != "win32":
-        return True
+        return trava_em_arquivo(nome())
     k = _kernel32()
     if _trava is None:
         _trava = k.CreateMutexW(None, False, "Local\\" + nome())

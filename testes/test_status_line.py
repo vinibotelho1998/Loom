@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import sys
 
-from base import ComPastaPropria
+from base import ComPastaPropria, so_no_windows
 
 from loom import perfis
 
@@ -54,6 +54,7 @@ class ReparoDaBarra(ComPastaPropria):
     def reparar(self) -> bool:
         return perfis.reparar_status_line_principal("py.exe", str(self.projeto))
 
+    @so_no_windows
     def test_atalho_do_dbx_term_passa_a_chamar_o_coletor_do_loom(self):
         self.atalho.write_text(LEGADO_DBX_TERM, encoding="utf-8", newline="")
         antes = self.settings(self.comando_do_atalho())
@@ -70,6 +71,7 @@ class ReparoDaBarra(ComPastaPropria):
         # o settings da conta principal nao e tocado
         self.assertEqual((self.principal / "settings.json").read_text(encoding="utf-8"), antes)
 
+    @so_no_windows
     def test_no_app_instalado_chama_o_exe_ao_lado_da_janela(self):
         self.atalho.write_text(LEGADO_DBX_TERM, encoding="utf-8", newline="")
         self.settings(self.comando_do_atalho())
@@ -127,6 +129,7 @@ class LeituraDaPrincipal(ComPastaPropria):
     def ler(self) -> dict:
         return json.loads(self.alvo.read_text(encoding="utf-8"))
 
+    @so_no_windows
     def test_ligar_e_desligar_devolve_o_settings_como_era(self):
         gancho_da_pessoa = {"hooks": [{"type": "command", "command": "meu-gancho.cmd"}]}
         original = {

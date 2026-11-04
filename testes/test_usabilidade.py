@@ -19,7 +19,7 @@ from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from base import ComPastaPropria  # noqa: E402
+from base import ComPastaPropria, so_no_windows  # noqa: E402
 
 from PySide6.QtCore import QCoreApplication  # noqa: E402
 
@@ -162,6 +162,7 @@ class UsoHonesto(ComPastaPropria):
         self.assertEqual(set(resposta), {"porConta", "parcial"})
 
 
+@so_no_windows
 class SudoNoModoCerto(ComPastaPropria):
     def elevacao(self, modo, gsudo: str | None = None) -> tuple[dict, list]:
         provas = []
@@ -461,19 +462,22 @@ class VersaoNoTopo(ComPonte):
                 self.assertTrue(titulo.endswith(chamada.args[0]), f"{titulo!r} ganharia {chamada.args[0]!r} no fim")
 
 
-class TestForaDasAbasOcultoPorPadrao(ComPastaPropria):
-    """A lista de conversas fora das abas ocupava a lateral de quem nunca pediu por ela."""
+class TerminaisExternosSairam(ComPastaPropria):
+    """A lateral mostrava os terminais abertos fora do Loom, e isso nao servia pra nada."""
 
-    def test_instalacao_nova_comeca_com_a_lista_escondida(self):
-        self.assertIs(config.carregar()["mostrarSessoesDeFora"], False)
+    def test_nada_na_tela_fala_em_terminal_de_fora(self):
+        for nome in ("index.html", "app.js", "style.css"):
+            texto = (UI / nome).read_text(encoding="utf-8")
+            for resto in ("lista-externas", "Terminais externos", "mostrar-fora", "mostrarSessoesDeFora", "sessao externa"):
+                self.assertNotIn(resto, texto, f"{resto} sobrou em {nome}")
 
-    def test_tela_so_mostra_quando_a_escolha_foi_mostrar(self):
-        codigo = (UI / "app.js").read_text(encoding="utf-8")
-        self.assertIn("const mostrar = cfg.mostrarSessoesDeFora === true;", codigo)
-
-    def test_quem_escolheu_mostrar_continua_vendo(self):
-        config.salvar({"mostrarSessoesDeFora": True})
-        self.assertIs(config.carregar()["mostrarSessoesDeFora"], True)
+    def test_ajuste_antigo_e_ignorado_ao_ler(self):
+        """Quem ja tinha o ajuste gravado no config.json nao pode levar erro nem ficar com a chave."""
+        config.ARQUIVO.parent.mkdir(parents=True, exist_ok=True)
+        config.ARQUIVO.write_text('{"mostrarSessoesDeFora": true, "alturaExternas": 40}', encoding="utf-8")
+        lido = config.carregar()
+        self.assertNotIn("mostrarSessoesDeFora", lido)
+        self.assertNotIn("alturaExternas", lido)
 
 
 if __name__ == "__main__":

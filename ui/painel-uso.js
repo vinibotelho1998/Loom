@@ -23,7 +23,6 @@ const PainelUso = (function () {
   const MESES = ["jan.", "fev.", "mar.", "abr.", "mai.", "jun.", "jul.", "ago.", "set.", "out.", "nov.", "dez."];
   const AVISO_ESTIMATIVA = "Preço de API calculado pelos logs locais. Não é a fatura.";
   const AVISO_SEM_PRECO = "Há modelo sem preço na tabela; o custo soma só os que têm preço.";
-  const AVISO_MINIMO = "Valor com ≥ é o mínimo: soma só os modelos que têm preço.";
   const AVISO_APROXIMADO =
     "Parte dos dias veio do cache antigo, sem separar o cache de 1h e o de 5m; o custo é aproximado.";
   const DICA_ESTIMADA = "Estimado pela regra do bloco de 5h, sem o limite lido da própria ferramenta";
@@ -122,7 +121,7 @@ const PainelUso = (function () {
   function textoZera(alvoMs, agoraMs) {
     const c = contagem(alvoMs, agoraMs);
     if (c === null) return "";
-    return c === "agora" ? "Renova agora" : "Renova em " + c;
+    return c === "agora" ? "renova agora" : "renova em " + c;
   }
 
   function doisDigitos(n) {
@@ -311,6 +310,13 @@ const PainelUso = (function () {
       .replace(/(^|\s)(\S)/g, (_, espaco, letra) => espaco + letra.toUpperCase());
   }
 
+  function iniciais(nome) {
+    // duas letras no maximo: a primeira de cada uma das duas primeiras palavras
+    const palavras = String(nome || "").replace(/[·|()]/g, " ").split(/\s+/).filter((p) => /\w/.test(p));
+    if (!palavras.length) return "?";
+    return (palavras[0][0] + (palavras.length > 1 ? palavras[1][0] : "")).toUpperCase();
+  }
+
   function instante(iso) {
     if (iso === null || iso === undefined || iso === "") return null;
     const ms = typeof iso === "number" ? iso : Date.parse(iso);
@@ -389,6 +395,15 @@ const PainelUso = (function () {
     return usado === null ? null : prender(usado, 0, 100);
   }
 
+  function cotaDaAba(conta) {
+    // a aba mostra a semana, que e a que dura; sem ela, a sessao
+    const janelas = janelasDe(conta);
+    const semana = janelas.find((j) => j.tipo === "7d" && usadoDe(j) !== null);
+    const sessao = janelas.find((j) => j.tipo === "5h" && usadoDe(j) !== null);
+    const alvo = semana || sessao;
+    return alvo ? { usado: usadoDe(alvo), titulo: sobreJanela(alvo).titulo } : null;
+  }
+
   function serieDe(conta) {
     return (Array.isArray(conta.serie) ? conta.serie : []).filter((d) => d && typeof d.dia === "string");
   }
@@ -403,33 +418,9 @@ const PainelUso = (function () {
 
   /* -------------------------------------------------------------- html */
 
-  function icone(corpo, classe) {
-    // icone de traco: herda a cor do texto ao lado, entao estado nunca depende so dele
-    return (
-      '<svg class="' + classe + '" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"' +
-      ' stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + corpo + "</svg>"
-    );
-  }
-
-  const TRACO_ACIMA = '<path d="M4.5 9.75 8 6.25l3.5 3.5"/>';
-  const TRACO_ABAIXO = '<path d="M4.5 6.25 8 9.75l3.5-3.5"/>';
-  const TRACO_IGUAL = '<path d="M4.5 8h7"/>';
-  const TRACO_ALERTA = '<path d="M8 2.75 14.25 13.25H1.75Z"/><path d="M8 6.75v2.75"/><path d="M8 11.4v.1"/>';
-  const TRACO_RELOGIO = '<circle cx="8" cy="8" r="5.75"/><path d="M8 5v3.25l2.25 1.5"/>';
-  const TRACO_INFO = '<circle cx="8" cy="8" r="5.75"/><path d="M8 7.25v3.5"/><path d="M8 5.2v.1"/>';
-  const TRACO_LADO = '<path d="M6.25 4.5 9.75 8l-3.5 3.5"/>';
-  const TRACO_MEDIDOR = '<path d="M2.75 11.5a5.25 5.25 0 0 1 10.5 0"/><path d="M8 11.5l2.25-3"/>';
-  // quantas linhas de projeto e de modelo aparecem antes do "Mostrar todos"
-  const LINHAS_VISIVEIS = 5;
-
   function giro(coletando) {
     // so aparece se a leitura passar de meio segundo: a de todo minuto nao pisca o painel
     return coletando ? '<i class="uso-giro" aria-label="Atualizando"></i>' : "";
-  }
-
-  function info(texto) {
-    // a explicacao longa fica no passar do mouse; o painel estreito nao tem lugar pra ela em linha
-    return '<span class="uso-info" title="' + esc(texto) + '">' + icone(TRACO_INFO, "uso-info-icone") + "</span>";
   }
 
   function htmlSemContas(estado, dados, agoraMs) {
@@ -445,114 +436,59 @@ const PainelUso = (function () {
       const ms = instante(dados && dados.geradoEm);
       if (ms !== null) texto += " " + textoAtualizado(ms, agoraMs) + ".";
     }
-    const marca =
-      estado === "coletando"
-        ? '<i class="uso-giro ja" aria-hidden="true"></i>'
-        : icone(estado === "ilegivel" ? TRACO_ALERTA : TRACO_MEDIDOR, "uso-vazio-icone");
     return (
-      '<section class="uso-vazio' + (estado === "ilegivel" ? " erro" : "") + '">' + marca +
+      '<section class="uso-vazio' + (estado === "ilegivel" ? " erro" : "") + '">' +
+      (estado === "coletando" ? '<i class="uso-giro ja" aria-hidden="true"></i>' : "") +
       '<h3 class="uso-vazio-titulo">' + titulo + '</h3><p class="uso-vazio-texto">' + esc(texto) + "</p></section>"
     );
   }
 
-  /* ---- resumo: os limites de todas as contas lado a lado, e cada linha escolhe a conta */
-
-  function rotuloCurto(j) {
-    if (j.tipo === "5h") return "5h";
-    if (j.tipo === "7d") return "Semana";
-    if (j.tipo === "30d") return "Mês";
-    return String(j.tipo || "Janela");
-  }
-
-  function janelasDoResumo(conta) {
-    // duas colunas fixas pra todas as linhas alinharem: a sessao curta e a janela longa
-    const janelas = janelasDe(conta);
-    return [janelas.find((j) => j.tipo === "5h") || null, janelas.find((j) => j.tipo !== "5h") || null];
-  }
-
-  function piorNivel(conta) {
-    let pior = "ok";
-    for (const j of janelasDe(conta)) {
-      const usado = usadoDe(j);
-      if (usado === null) continue;
-      const n = nivel(usado);
-      if (n === "critico") return n;
-      if (n === "alto") pior = n;
-    }
-    return pior;
-  }
-
-  function htmlEstado(grau) {
-    // o estado sempre escrito: a cor so acompanha
-    if (grau === "critico") return '<span class="uso-estado critico">No limite</span>';
-    if (grau === "alto") return '<span class="uso-estado alto">Alto</span>';
-    return "";
-  }
-
-  function htmlMini(j, rotuloPadrao) {
-    const rotulo = j ? rotuloCurto(j) : rotuloPadrao;
-    const usado = j ? usadoDe(j) : null;
-    if (usado === null) {
-      return (
-        '<span class="uso-mini vazio"><span class="uso-mini-rotulo">' + esc(rotulo) + '</span><i class="uso-mini-trilho"></i>' +
-        '<span class="uso-mini-valor">' + TRACO + "</span></span>"
-      );
-    }
-    return (
-      '<span class="uso-mini nivel-' + nivel(usado) + '"><span class="uso-mini-rotulo">' + esc(rotulo) + "</span>" +
-      '<i class="uso-mini-trilho"><b style="width:' + r2(larguraPreenchimento(usado)) + '%"></b></i>' +
-      '<span class="uso-mini-valor">' + textoPercentual(usado) + "</span></span>"
-    );
-  }
-
-  function nomeDaConta(conta, prov) {
-    return conta.nome || meioCortado(conta.email || conta.id, 24) || prov.nome;
-  }
-
-  function htmlResumo(grupos, ativa) {
-    const contas = [];
-    for (const g of grupos) for (const c of g.contas) contas.push([g, c]);
-    // uma conta so: o detalhe dela ja e o resumo
-    if (contas.length < 2) return "";
-    const linhas = contas.map(([g, c]) => {
+  function htmlProvedores(grupos, ativo, vista) {
+    if (grupos.length < 2) return "";
+    const abas = grupos.map((g) => {
       const prov = provedorDe(g.ferramenta);
-      const escolhida = c === ativa;
-      const [curta, longa] = janelasDoResumo(c);
-      const nome = nomeDaConta(c, prov);
-      let dica = prov.nome + ": " + (c.email && c.nome ? c.nome + ", " + c.email : nome);
-      for (const j of [curta, longa]) {
-        const usado = j ? usadoDe(j) : null;
-        if (usado !== null) dica += " · " + sobreJanela(j).titulo + ": " + textoPercentual(usado) + " usado";
-      }
-      const janelas =
-        curta || longa
-          ? htmlMini(curta, "5h") + htmlMini(longa, "Semana")
-          : '<span class="uso-linha-sem">Sem leitura de limite</span>';
+      const escolhido = g === ativo;
+      const cota = cotaDaAba(contaDoGrupo(g, vista));
+      const selo =
+        cota === null
+          ? ""
+          : '<span class="uso-provedor-cota nivel-' + nivel(cota.usado) + '" title="' + esc(cota.titulo + ": " + textoPercentual(cota.usado) + " usado") + '">' +
+            textoPercentual(cota.usado) + "</span>";
       return (
-        '<button class="uso-linha' + (escolhida ? " ativo" : "") + '" aria-pressed="' + escolhida + '"' +
-        ' data-ferramenta="' + esc(g.ferramenta) + '" data-escolher-conta="' + esc(c.id) + '" title="' + esc(dica) + '"' +
-        ' style="--marca:' + prov.marca + '">' +
-        '<span class="uso-linha-topo"><svg class="uso-linha-icone" viewBox="0 0 100 100" aria-hidden="true">' + prov.icone + "</svg>" +
-        '<span class="uso-linha-nome">' + esc(nome) + "</span>" +
-        // conta com erro de leitura avisa ja no resumo: o numero ao lado pode estar velho
-        (c.erro ? '<span class="uso-linha-erro" title="' + esc(c.erro) + '">' + icone(TRACO_ALERTA, "uso-linha-erro-icone") + "Erro</span>" : "") +
-        htmlEstado(piorNivel(c)) + "</span>" +
-        '<span class="uso-linha-janelas">' + janelas + "</span></button>"
+        '<button class="uso-provedor' + (escolhido ? " ativo" : "") + '" role="tab" aria-selected="' + escolhido + '"' +
+        ' data-provedor="' + esc(g.ferramenta) + '" style="--marca:' + prov.marca + '">' +
+        '<svg class="uso-provedor-icone" viewBox="0 0 100 100" aria-hidden="true">' + prov.icone + "</svg>" +
+        '<span class="uso-provedor-nome">' + esc(prov.nome) + "</span>" + selo + "</button>"
       );
     });
-    return (
-      '<section class="uso-resumo" aria-label="Contas"><h4 class="uso-secao-titulo">Contas</h4>' +
-      '<div class="uso-linhas">' + linhas.join("") + "</div></section>"
-    );
+    return '<nav class="uso-provedores" role="tablist" aria-label="Provedor">' + abas.join("") + "</nav>";
   }
 
-  /* ---- detalhe da conta escolhida */
+  function htmlContas(grupo, ativa) {
+    if (grupo.contas.length < 2) return "";
+    const botoes = grupo.contas.map((c) => {
+      const rotulo = c.nome || meioCortado(c.email || c.id, 24);
+      const cota = cotaDaAba(c);
+      let dica = c.email && c.nome ? c.nome + ", " + c.email : c.nome || c.email || c.id;
+      // o quanto cada conta ja gastou, sem precisar abrir uma por uma
+      if (cota !== null) dica += " · " + cota.titulo + ": " + textoPercentual(cota.usado) + " usado";
+      const selo =
+        cota === null ? "" : '<span class="uso-conta-cota nivel-' + nivel(cota.usado) + '">' + textoPercentual(cota.usado) + "</span>";
+      const escolhida = c === ativa;
+      return (
+        '<button class="uso-conta' + (escolhida ? " ativo" : "") + '" role="tab" aria-selected="' + escolhida + '"' +
+        ' data-ferramenta="' + esc(grupo.ferramenta) + '" data-escolher-conta="' + esc(c.id) + '" title="' + esc(dica) + '">' +
+        esc(rotulo) + selo + "</button>"
+      );
+    });
+    return '<div class="uso-contas" role="tablist" aria-label="Conta">' + botoes.join("") + "</div>";
+  }
 
   function htmlCabeca(conta, prov, coletando, agoraMs, vista) {
     const nome = conta.nome || prov.nome;
     const plano = textoPlano(conta.plano);
     let html =
-      '<header class="uso-cabeca"><span class="uso-avatar" aria-hidden="true"><svg viewBox="0 0 100 100">' + prov.icone + "</svg></span>" +
+      '<header class="uso-cabeca"><span class="uso-avatar" aria-hidden="true">' + esc(iniciais(nome)) + "</span>" +
       '<div class="uso-quem"><h3 class="uso-nome" title="' + esc(nome) + '">' + esc(nome) + "</h3>";
     if (conta.email) html += '<span class="uso-email" title="' + esc(conta.email) + '">' + esc(meioCortado(conta.email, 32)) + "</span>";
     // sem e-mail, a linha de baixo diz de que ferramenta e, menos quando o nome ja e o dela
@@ -562,8 +498,7 @@ const PainelUso = (function () {
     if (conta.erro) {
       const copiado = vista.copiado === conta.id;
       html +=
-        '<div class="uso-erro" role="alert">' + icone(TRACO_ALERTA, "uso-erro-icone") +
-        '<p class="uso-erro-texto" title="' + esc(conta.erro) + '">' + esc(conta.erro) + "</p>" +
+        '<div class="uso-erro" role="alert"><p class="uso-erro-texto" title="' + esc(conta.erro) + '">' + esc(conta.erro) + "</p>" +
         '<button class="uso-copiar' + (copiado ? " copiado" : "") + '" data-copiar title="Copiar o erro">' +
         (copiado ? ICONE_COPIADO : ICONE_COPIAR) + "</button></div>";
     }
@@ -597,15 +532,7 @@ const PainelUso = (function () {
       .join("\n");
   }
 
-  function htmlDetalhes(chave, aberto, resumo, corpo) {
-    // quem abre e fecha e o painel, pela vista: o redesenho de todo minuto mantem como estava
-    return (
-      '<details class="uso-detalhes"' + (aberto ? " open" : "") + '><summary data-abrir="' + esc(chave) + '">' +
-      icone(TRACO_LADO, "uso-detalhes-seta") + resumo + "</summary>" + corpo + "</details>"
-    );
-  }
-
-  function htmlFora(j, conta, vista) {
+  function htmlFora(j) {
     const f = j.fora && typeof j.fora === "object" ? j.fora : null;
     if (!f) return "";
     const partes = [];
@@ -637,43 +564,37 @@ const PainelUso = (function () {
       const linhas = antes
         .map((a) => {
           const zeraMs = instante(a.zeraEm);
-          const rotulo = zeraMs === null ? TRACO : "Até " + dataCurta(zeraMs);
+          const rotulo = zeraMs === null ? TRACO : "até " + dataCurta(zeraMs);
           const fora = numero(a.foraMinimo);
           const texto = fora === null ? TRACO : fora >= 1 ? "fora, no mínimo " + textoPercentual(fora) : "sem consumo de fora";
           return "<li><span>" + esc(rotulo) + "</span><span>" + esc(textoPercentual(a.final) + " usado · " + texto) + "</span></li>";
         })
         .join("");
-      const chave = "anteriores|" + conta.id + "|" + j.tipo;
-      partes.push(
-        htmlDetalhes(chave, !!(vista.abertos || {})[chave], "Janelas anteriores",
-          '<ul class="uso-fora-antes" aria-label="Janelas anteriores">' + linhas + "</ul>")
-      );
+      partes.push('<p class="uso-fora-titulo">Janelas anteriores</p>');
+      partes.push('<ul class="uso-fora-antes" aria-label="Janelas anteriores">' + linhas + "</ul>");
     }
     return '<div class="uso-fora">' + partes.join("") + "</div>";
   }
 
-  function htmlJanela(j, conta, agoraMs, vista) {
+  function htmlJanela(j, conta, agoraMs) {
     const sobre = sobreJanela(j);
     const zeraMs = instante(j.zeraEm);
     const zera = zeraMs === null ? "" : textoZera(zeraMs, agoraMs);
-    const quando = zeraMs === null ? "" : "Renova em " + dataCurta(zeraMs) + " às " + horaCurta(zeraMs);
-    const htmlZera = zera
-      ? '<span class="uso-janela-zera" title="' + esc(quando) + '">' + icone(TRACO_RELOGIO, "uso-janela-relogio") + zera + "</span>"
-      : "";
-    const selo = j.origem === "estimada" ? '<span class="uso-selo" title="' + DICA_ESTIMADA + '">Estimado</span>' : "";
+    const selo = j.origem === "estimada" ? '<span class="uso-selo" title="' + DICA_ESTIMADA + '">estimado</span>' : "";
     const usado = usadoDe(j);
     const titulo = '<span class="uso-janela-titulo">' + esc(sobre.titulo) + "</span>" + selo;
     if (usado === null) {
       return (
-        '<div class="uso-janela sem-leitura" data-tipo="' + esc(j.tipo) + '"><div class="uso-janela-topo">' + titulo + "</div>" +
-        '<div class="uso-janela-meio"><span class="uso-janela-valor">Sem leitura</span>' + htmlZera + "</div>" +
-        '<div class="uso-medidor vazio" aria-hidden="true"></div></div>'
+        '<div class="uso-janela sem-leitura" data-tipo="' + esc(j.tipo) + '"><div class="uso-janela-topo">' + titulo +
+        '<span class="uso-janela-valor">sem leitura</span></div>' +
+        (zera ? '<div class="uso-janela-base"><span></span><span class="uso-janela-zera">' + zera + "</span></div>" : "") + "</div>"
       );
     }
     const grau = nivel(usado);
     const r = ritmo({ usado: usado, janelaMin: numero(j.duracaoMin), zeraEmMs: zeraMs }, agoraMs, sobre.minutos);
     const comRitmo = ritmoVisivel(r, sobre.contexto);
     const marca = comRitmo ? marcaDoRitmo(r) : null;
+    const rotuloNivel = grau === "critico" ? "no limite" : grau === "alto" ? "alto" : "";
     const medidor =
       '<div class="uso-medidor" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + Math.round(usado) + '"' +
       ' aria-label="' + esc(sobre.titulo + ": " + textoPercentual(usado) + " usado") + '">' +
@@ -681,26 +602,20 @@ const PainelUso = (function () {
       (marca ? '<i class="uso-medidor-ritmo" style="--p:' + r2(marca.p) + '%" title="' + DICA_RITMO + '"></i>' : "") +
       "</div>";
     let base = "";
+    let previsao = "";
     if (comRitmo) {
       const lado = ladoDoRitmo(r);
-      const traco = lado === "deficit" ? TRACO_ACIMA : lado === "reserva" ? TRACO_ABAIXO : TRACO_IGUAL;
-      base =
-        '<div class="uso-janela-base"><span class="uso-ritmo ' + lado + '" title="' + DICA_RITMO + '">' +
-        icone(traco, "uso-ritmo-icone") + esc(textoRitmo(r)) + "</span></div>";
-      const previsao = textoPrevisao(r, agoraMs, conta.ferramenta === "codex");
-      // so acabar antes de renovar e alerta; a folga do Codex e boa noticia e fica no tom do texto
-      if (previsao) {
-        const alerta = r.eta !== null && !r.duraAteZerar;
-        base += alerta
-          ? '<p class="uso-janela-alerta">' + icone(TRACO_ALERTA, "uso-alerta-icone") + esc(previsao) + "</p>"
-          : '<p class="uso-janela-folga">' + esc(previsao) + "</p>";
-      }
-    }
+      const seta = lado === "deficit" ? "▲" : lado === "reserva" ? "▼" : "●";
+      base += '<span class="uso-ritmo ' + lado + '" title="' + DICA_RITMO + '"><i aria-hidden="true">' + seta + "</i>" + esc(textoRitmo(r)) + "</span>";
+      previsao = textoPrevisao(r, agoraMs, conta.ferramenta === "codex");
+    } else base += "<span></span>";
+    if (zera) base += '<span class="uso-janela-zera">' + zera + "</span>";
     return (
       '<div class="uso-janela nivel-' + grau + '" data-tipo="' + esc(j.tipo) + '"><div class="uso-janela-topo">' + titulo +
-      htmlEstado(grau) + "</div>" +
-      '<div class="uso-janela-meio"><span class="uso-janela-valor"><b>' + textoPercentual(usado) + "</b> usado</span>" + htmlZera + "</div>" +
-      medidor + base + htmlFora(j, conta, vista) + "</div>"
+      '<span class="uso-janela-valor">' + (rotuloNivel ? '<span class="uso-nivel">' + rotuloNivel + "</span>" : "") +
+      "<b>" + textoPercentual(usado) + "</b> usado</span></div>" + medidor +
+      '<div class="uso-janela-base">' + base + "</div>" +
+      (previsao ? '<p class="uso-janela-alerta">' + esc(previsao) + "</p>" : "") + htmlFora(j) + "</div>"
     );
   }
 
@@ -723,11 +638,11 @@ const PainelUso = (function () {
     const custo = conta.custo || {};
     const tokens = conta.tokens || {};
     const semPreco = !!custo.semPreco;
-    const emTokens = (v) => (numero(v) === null ? "" : textoTokens(v) + " tokens");
     const trinta =
       numero(custo.dias30) === null
         ? TRACO
         : (semPreco && custo.dias30 >= 0.005 ? "≥ " : "") + textoMoedaCompacta(custo.dias30);
+    const emTokens = (v) => (numero(v) === null ? "" : textoTokens(v) + " tokens");
     let html =
       '<section class="uso-secao uso-custo"><h4 class="uso-secao-titulo">Custo estimado</h4><div class="uso-kpis">' +
       htmlKpi("Hoje", textoCustoDoPeriodo(custo.hoje, tokens.hoje, semPreco), emTokens(tokens.hoje)) +
@@ -741,7 +656,7 @@ const PainelUso = (function () {
       const partes = [];
       // projecao de zero com modelo sem preco seria outro US$ 0,00 enganoso
       if (projecao !== null && !(semPreco && projecao < 0.005)) {
-        partes.push("Projeção de " + textoMoeda(projecao) + (fimMs === null ? "" : " até " + horaCurta(fimMs)));
+        partes.push("projeção " + textoMoeda(projecao) + (fimMs === null ? "" : " até " + horaCurta(fimMs)));
       }
       if (porMinuto !== null) partes.push(textoTokens(porMinuto) + " tokens/min");
       if (!partes.length) partes.push(emTokens(bloco.tokens));
@@ -768,28 +683,28 @@ const PainelUso = (function () {
     return (semPreco ? "≥ " : "") + textoMoedaCompacta(custo);
   }
 
-  function htmlMaisLinhas(chave, total, aberto, nome) {
-    if (total <= LINHAS_VISIVEIS) return "";
-    const escondidas = total - LINHAS_VISIVEIS;
-    return (
-      '<button class="uso-mais" data-abrir="' + esc(chave) + '" aria-expanded="' + aberto + '">' +
-      (aberto ? "Mostrar menos" : "Mostrar mais " + escondidas + " " + nome + (escondidas > 1 ? "s" : "")) + "</button>"
-    );
-  }
-
-  function htmlLocal(conta, vista) {
+  function htmlLocal(conta) {
     const local = conta.local && typeof conta.local === "object" ? conta.local : null;
     const ranking = local && Array.isArray(local.ranking) ? local.ranking.filter((p) => p && typeof p === "object") : [];
     if (!ranking.length) return "";
-    const chave = "projetos|" + conta.id;
-    const aberto = !!(vista.abertos || {})[chave];
+    const totais = local.totais && typeof local.totais === "object" ? local.totais : {};
+    const total = (periodo) => {
+      const t = totais[periodo] && typeof totais[periodo] === "object" ? totais[periodo] : {};
+      const tokens = numero(t.tokens);
+      const custo = numero(t.custo);
+      const piso = t.semPreco && custo !== null ? "a partir de " : "";
+      return htmlKpi(
+        { hoje: "Hoje", dias7: "7 dias", dias30: "30 dias" }[periodo],
+        tokens === null ? TRACO : textoTokens(tokens),
+        custo === null ? "" : piso + textoMoedaCompacta(custo)
+      );
+    };
     /* A barra mede o mesmo que o valor ao lado e a ordem da lista: o custo. Com projeto sem preco o
        custo e so um piso, e ai a barra volta pros tokens, que sao contados inteiros. */
     const porCusto = !ranking.some((p) => p.semPreco) && ranking.some((p) => positivo(p.custo) > 0);
     const medida = (p) => (porCusto ? positivo(p.custo) : positivo(p.tokens));
     const maior = Math.max(0.0001, ...ranking.map(medida));
     const linhas = ranking
-      .slice(0, aberto ? ranking.length : LINHAS_VISIVEIS)
       .map((p) => {
         const tokens = numero(p.tokens) || 0;
         const custo = numero(p.custo);
@@ -798,7 +713,7 @@ const PainelUso = (function () {
         const valor = textoCustoLocal(custo, p.semPreco);
         const detalhe = [
           textoTokens(tokens) + " em 30 dias",
-          (numero(p.tokens7) ? textoTokens(p.tokens7) + " em 7 dias" : null),
+          (numero(p.tokens7) ? textoTokens(p.tokens7) + " em 7" : null),
           (numero(p.tokensHoje) ? textoTokens(p.tokensHoje) + " hoje" : null),
         ]
           .filter(Boolean)
@@ -813,13 +728,12 @@ const PainelUso = (function () {
       .join("");
     const mais = numero(local.total) !== null && local.total > ranking.length ? local.total - ranking.length : 0;
     let html =
-      '<section class="uso-secao uso-local"><div class="uso-secao-topo"><h4 class="uso-secao-titulo">Por projeto, nesta máquina</h4>' +
-      info(AVISO_LOCAL) + '</div><ul class="uso-projs">' + linhas + "</ul>" +
-      htmlMaisLinhas(chave, ranking.length, aberto, "projeto");
-    if (mais) html += '<p class="uso-nota">E mais ' + mais + " projeto" + (mais > 1 ? "s" : "") + " com menos uso nos 30 dias.</p>";
-    // o aviso de preco faltando ja saiu no custo; aqui so o que o sinal da lista quer dizer
-    if (ranking.some((p) => p.semPreco)) html += '<p class="uso-nota">' + AVISO_MINIMO + "</p>";
-    return html + "</section>";
+      '<section class="uso-secao uso-local"><h4 class="uso-secao-titulo">Nesta máquina, por projeto</h4>' +
+      '<div class="uso-kpis uso-kpis-tres">' + total("hoje") + total("dias7") + total("dias30") + "</div>" +
+      '<ul class="uso-projs">' + linhas + "</ul>";
+    if (mais) html += '<p class="uso-nota">e mais ' + mais + " projeto" + (mais > 1 ? "s" : "") + " com menos uso.</p>";
+    if (ranking.some((p) => p.semPreco)) html += '<p class="uso-aviso">' + AVISO_SEM_PRECO + " O valor com ≥ é o mínimo.</p>";
+    return html + '<p class="uso-nota">' + AVISO_LOCAL + "</p></section>";
   }
 
   const AVISO_ESFORCO =
@@ -832,70 +746,32 @@ const PainelUso = (function () {
     return cem > 0 && cem < 1 ? "<1%" : Math.round(cem) + "%";
   }
 
-  function tomDoEsforco(nivelDoEsforco) {
-    /* Esforco e ordinal: um matiz so, do apagado ao claro, pra ordem se ler na cor. Os degraus de
-       baixo misturam a marca com o fundo e os de cima com branco. Passaram pelo validador da paleta
-       no fundo do painel, com o Claude e o Codex: o mais apagado passa de 2:1 e cada degrau anda
-       0,06 de luz. Sete degraus nao cabem nessa faixa, entao max e ultra dividem o de cima: sao o
-       teto de cada ferramenta e nunca aparecem no mesmo modelo. O que nao esta na escala, como o
-       sem registro, fica neutro e nao finge um degrau. */
-    const degraus = [
-      "var(--marca) 47%, var(--uso-fundo)",
-      "var(--marca) 64%, var(--uso-fundo)",
-      "var(--marca) 81%, var(--uso-fundo)",
-      "var(--marca), #ffffff 0%",
-      "var(--marca), #ffffff 28%",
-      "var(--marca), #ffffff 50%",
-    ];
-    const posicao = { minimal: 0, low: 1, medium: 2, high: 3, xhigh: 4, max: 5, ultra: 5 };
-    const i = Object.prototype.hasOwnProperty.call(posicao, nivelDoEsforco) ? posicao[nivelDoEsforco] : -1;
-    return i < 0 ? null : "color-mix(in srgb, " + degraus[i] + ")";
-  }
-
-  function htmlModelos(conta, vista) {
+  function htmlModelos(conta) {
     const dados = conta.modelos && typeof conta.modelos === "object" ? conta.modelos : null;
     const ranking = dados && Array.isArray(dados.ranking) ? dados.ranking.filter((m) => m && typeof m === "object") : [];
     if (!ranking.length) return "";
-    const chave = "modelos|" + conta.id;
-    const aberto = !!(vista.abertos || {})[chave];
-    const maiorParte = Math.max(0.0001, ...ranking.map((m) => numero(m.parte) || 0));
     const linhas = ranking
-      .slice(0, aberto ? ranking.length : LINHAS_VISIVEIS)
       .map((m) => {
         const tokens = numero(m.tokens) || 0;
         const custo = numero(m.custo);
         const valor = textoCustoLocal(custo, m.semPreco);
         const niveis = Array.isArray(m.esforcos) ? m.esforcos.filter((n) => n && typeof n === "object") : [];
         const somaNiveis = niveis.reduce((total, n) => total + (numero(n.tokens) || 0), 0);
-        // a barra mede a fatia do modelo e e cortada pelos niveis de esforco, na ordem do menor pro maior
-        let segmentos = "";
         const fatias = niveis
           .map((n) => {
             const parte = somaNiveis ? (numero(n.tokens) || 0) / somaNiveis : 0;
-            const tom = tomDoEsforco(n.nivel);
-            const cor = tom === null ? "" : ' style="background:' + tom + '"';
-            const titulo = String(n.nivel || TRACO) + ": " + textoTokens(numero(n.tokens) || 0) + " tokens em " + (numero(n.mensagens) || 0) + " respostas";
-            // fatia abaixo de 1% vira um ponto solto entre as frestas; ela fica so na legenda
-            if (parte >= 0.01) {
-              segmentos +=
-                '<i class="uso-fatia' + (tom === null ? " neutra" : "") + '" style="flex-grow:' + r2(parte * 100) +
-                (tom === null ? "" : ";background:" + tom) + '"></i>';
-            }
+            const titulo = textoTokens(numero(n.tokens) || 0) + " tokens em " + (numero(n.mensagens) || 0) + " respostas";
             return (
-              '<span class="uso-esforco" title="' + esc(titulo) + '"><i class="uso-esforco-cor' + (tom === null ? " neutra" : "") + '"' + cor + "></i><b>" +
-              esc(String(n.nivel || TRACO)) + "</b> " + textoParte(parte) + "</span>"
+              '<span class="uso-esforco" title="' + esc(titulo) + '"><b>' + esc(String(n.nivel || TRACO)) + "</b> " +
+              textoParte(parte) + "</span>"
             );
           })
           .join("");
-        const largura = Math.max(2, Math.round(((numero(m.parte) || 0) / maiorParte) * 100));
-        const barra = segmentos
-          ? '<div class="uso-proj-barra"><span class="uso-fatias" style="width:' + largura + '%">' + segmentos + "</span></div>"
-          : '<div class="uso-proj-barra"><i style="width:' + largura + '%"></i></div>';
-        const nome = String(m.modelo || TRACO);
+        const largura = Math.max(2, Math.round((numero(m.parte) || 0) * 100));
         return (
-          '<li class="uso-proj"><div class="uso-proj-topo"><span class="uso-proj-nome" title="' + esc(nome) + '">' +
-          esc(meioCortado(nomeDeModelo(nome), 28)) + '</span><b class="uso-proj-valor">' + esc(valor) +
-          "</b></div>" + barra + '<span class="uso-proj-detalhe">' +
+          '<li class="uso-proj"><div class="uso-proj-topo"><span class="uso-proj-nome">' +
+          esc(meioCortado(String(m.modelo || TRACO), 28)) + '</span><b class="uso-proj-valor">' + esc(valor) +
+          '</b></div><div class="uso-proj-barra"><i style="width:' + largura + '%"></i></div><span class="uso-proj-detalhe">' +
           esc(textoTokens(tokens) + " em 30 dias · " + textoParte(m.parte) + " do total") + "</span>" +
           (fatias ? '<div class="uso-esforcos">' + fatias + "</div>" : "") + "</li>"
         );
@@ -903,11 +779,11 @@ const PainelUso = (function () {
       .join("");
     const mais = numero(dados.total) !== null && dados.total > ranking.length ? dados.total - ranking.length : 0;
     let html =
-      '<section class="uso-secao uso-modelos"><div class="uso-secao-topo"><h4 class="uso-secao-titulo">Por modelo e esforço</h4>' +
-      info(AVISO_ESFORCO) + '</div><ul class="uso-projs">' + linhas + "</ul>" + htmlMaisLinhas(chave, ranking.length, aberto, "modelo");
-    if (mais) html += '<p class="uso-nota">E mais ' + mais + " modelo" + (mais > 1 ? "s" : "") + " com menos uso nos 30 dias.</p>";
-    if (ranking.some((m) => m.semPreco)) html += '<p class="uso-nota">' + AVISO_MINIMO + "</p>";
-    return html + "</section>";
+      '<section class="uso-secao uso-modelos"><h4 class="uso-secao-titulo">Por modelo e esforço</h4>' +
+      '<ul class="uso-projs">' + linhas + "</ul>";
+    if (mais) html += '<p class="uso-nota">e mais ' + mais + " modelo" + (mais > 1 ? "s" : "") + " com menos uso.</p>";
+    if (ranking.some((m) => m.semPreco)) html += '<p class="uso-aviso">' + AVISO_SEM_PRECO + " O valor com ≥ é o mínimo.</p>";
+    return html + '<p class="uso-nota">' + AVISO_ESFORCO + "</p></section>";
   }
 
   function modelosDoDia(dia) {
@@ -927,7 +803,7 @@ const PainelUso = (function () {
       const vistos = modelos.slice(0, MODELOS_NA_DICA);
       lista = vistos.map((m) => "<li><span>" + esc(nomeDeModelo(m.id)) + "</span><em>" + textoMoeda(m.custo) + "</em></li>").join("");
       const resto = modelos.slice(MODELOS_NA_DICA).reduce((a, m) => a + m.custo, 0);
-      if (resto > 0) lista += "<li><span>Outros " + (modelos.length - MODELOS_NA_DICA) + "</span><em>" + textoMoeda(resto) + "</em></li>";
+      if (resto > 0) lista += "<li><span>outros " + (modelos.length - MODELOS_NA_DICA) + "</span><em>" + textoMoeda(resto) + "</em></li>";
       lista = "<ul>" + lista + "</ul>";
     }
     return (
@@ -966,13 +842,6 @@ const PainelUso = (function () {
       alternar = '<div class="uso-alternar" role="tablist" aria-label="Medida">' + botao("custo", "Custo") + botao("tokens", "Tokens") + "</div>";
     }
 
-    const soma = valores.reduce((a, v) => a + v, 0);
-    const dias = n === 1 ? "em " + diaDaSerie(serie[0].dia) : "em " + n + " dias";
-    const total =
-      metrica === "custo"
-        ? textoMoeda(soma) + " " + dias + (n > 1 ? " · média de " + textoMoeda(soma / n) + " por dia" : "")
-        : textoTokens(Math.round(soma)) + " tokens " + dias + (n > 1 ? " · média de " + textoTokens(Math.round(soma / n)) + " por dia" : "");
-
     const eixoY = marcas
       .slice()
       .reverse()
@@ -990,31 +859,34 @@ const PainelUso = (function () {
         htmlDica(dia, metrica) + "</div>";
     });
 
-    const ultimo = n === 1 ? "" : "<span>Hoje</span>";
+    const ultimo = n === 1 ? "" : "<span>" + (n > 1 ? "hoje" : "") + "</span>";
     const eixoX = "<span>" + esc(diaDaSerie(serie[0].dia)) + "</span>" + ultimo;
+    const soma = valores.reduce((a, v) => a + v, 0);
+    const dias = n === 1 ? "em " + diaDaSerie(serie[0].dia) : "em " + n + " dias";
+    const total =
+      metrica === "custo"
+        ? textoMoeda(soma) + " " + dias + (n > 1 ? " · média de " + textoMoeda(soma / n) + " por dia" : "")
+        : textoTokens(Math.round(soma)) + " tokens " + dias + (n > 1 ? " · média de " + textoTokens(Math.round(soma / n)) + " por dia" : "");
 
-    const chave = "tabela|" + conta.id;
-    const aberta = !!(vista.abertos || {})[chave];
+    const aberta = !!(vista.tabelas || {})[conta.id];
     const linhas = serie
       .slice()
       .reverse()
       .map((d) => "<tr><td>" + esc(diaDaSerie(d.dia)) + "</td><td>" + textoMoeda(positivo(d.custo)) + "</td><td>" + textoTokens(positivo(d.tokens)) + "</td></tr>")
       .join("");
-    const tabela = htmlDetalhes(
-      chave,
-      aberta,
-      aberta ? "Esconder a tabela" : "Ver os dias em tabela",
-      '<table class="uso-tabela"><thead><tr><th>Dia</th><th>Custo</th><th>Tokens</th></tr></thead><tbody>' + linhas + "</tbody></table>"
-    );
+    const tabela =
+      '<details class="uso-tabela"' + (aberta ? " open" : "") + '><summary data-tabela>' +
+      (aberta ? "Esconder a tabela" : "Ver os dias em tabela") + "</summary>" +
+      "<table><thead><tr><th>Dia</th><th>Custo</th><th>Tokens</th></tr></thead><tbody>" + linhas + "</tbody></table></details>";
 
     return (
       '<section class="uso-secao uso-grafico" data-metrica-atual="' + metrica + '">' +
       '<div class="uso-secao-topo"><h4 class="uso-secao-titulo">Últimos 30 dias</h4>' + alternar + "</div>" +
-      '<p class="uso-total">' + esc(total) + "</p>" +
       '<div class="uso-plot"><div class="uso-eixo-y">' + eixoY + '</div><div class="uso-area">' +
       '<i class="uso-grade" style="--y:0%"></i><i class="uso-grade" style="--y:50%"></i><i class="uso-grade base" style="--y:100%"></i>' +
       '<div class="uso-colunas" style="--n:' + n + '">' + colunas + "</div></div>" +
-      '<span aria-hidden="true"></span><div class="uso-eixo-x">' + eixoX + "</div></div>" + tabela + "</section>"
+      '<span aria-hidden="true"></span><div class="uso-eixo-x">' + eixoX + "</div></div>" +
+      '<p class="uso-total">' + esc(total) + "</p>" + tabela + "</section>"
     );
   }
 
@@ -1031,10 +903,9 @@ const PainelUso = (function () {
     const janelas = janelasDe(conta);
     html += '<section class="uso-secao uso-limites"><h4 class="uso-secao-titulo">Limites</h4>';
     html += janelas.length
-      ? janelas.map((j) => htmlJanela(j, conta, agoraMs, vista)).join("")
-      : '<p class="uso-sem-limite">Sem leitura de limite nesta conta. O limite aparece depois que o ' + esc(prov.nome) + " roda nela pelo Loom.</p>";
-    // a ordem e a da pergunta: quanto do limite foi, quanto custou, como andou e onde foi gasto
-    html += "</section>" + htmlCusto(conta, agoraMs) + htmlGrafico(conta, vista) + htmlLocal(conta, vista) + htmlModelos(conta, vista);
+      ? janelas.map((j) => htmlJanela(j, conta, agoraMs)).join("")
+      : '<p class="uso-nota">Sem leitura de limite nesta conta. O limite aparece depois que o Claude roda nela pelo Loom.</p>';
+    html += "</section>" + htmlCusto(conta, agoraMs) + htmlLocal(conta) + htmlModelos(conta) + htmlGrafico(conta, vista);
     return html + "</section>";
   }
 
@@ -1046,7 +917,7 @@ const PainelUso = (function () {
     const grupos = agrupar(dados.contas);
     const grupo = grupos.find((g) => g.ferramenta === v.provedor) || grupos[0];
     const conta = contaDoGrupo(grupo, v);
-    return htmlResumo(grupos, conta) + htmlCartao(conta, grupo, agoraMs, dados.coletando, v);
+    return htmlProvedores(grupos, grupo, v) + htmlContas(grupo, conta) + htmlCartao(conta, grupo, agoraMs, dados.coletando, v);
   }
 
   /* -------------------------------------------------------------- tela */
@@ -1058,7 +929,7 @@ const PainelUso = (function () {
   let larguraAtual = LARGURA_PADRAO;
   let ultimoHtml = "";
   let ultimoPedido = 0;
-  const vista = { provedor: "", contas: {}, metricas: {}, abertos: {}, copiado: "" };
+  const vista = { provedor: "", contas: {}, metricas: {}, tabelas: {}, copiado: "" };
 
   function visivel() {
     return !!painel && !painel.hidden && document.hidden !== true;
@@ -1117,19 +988,6 @@ const PainelUso = (function () {
     bridge.getPainelUso(receber);
   }
 
-  function alternar(forcar) {
-    if (!painel) return;
-    const aberto = typeof forcar === "boolean" ? forcar : painel.hidden;
-    cfg.painelUso = aberto;
-    aplicarAberto(aberto);
-    gravar({ painelUso: aberto });
-    reencaixar();
-    if (aberto) {
-      pintar();
-      pedir();
-    }
-  }
-
   function mostrarConta(id) {
     /* Abre o painel ja no provedor e na conta pedidos, como o clique no 5h ou no nome da conta
        na barra de baixo. O id e o do relatorio: claude:<perfil>, claude:padrao, codex:<perfil>.
@@ -1144,6 +1002,19 @@ const PainelUso = (function () {
     }
     if (painel.hidden) alternar(true);
     else pintar();
+  }
+
+  function alternar(forcar) {
+    if (!painel) return;
+    const aberto = typeof forcar === "boolean" ? forcar : painel.hidden;
+    cfg.painelUso = aberto;
+    aplicarAberto(aberto);
+    gravar({ painelUso: aberto });
+    reencaixar();
+    if (aberto) {
+      pintar();
+      pedir();
+    }
   }
 
   function aplicar() {
@@ -1220,26 +1091,21 @@ const PainelUso = (function () {
   }
 
   function aoClicar(ev) {
-    const alvo = alvoDe(ev, "[data-provedor],[data-escolher-conta],[data-metrica],[data-copiar],[data-abrir]");
+    const alvo = alvoDe(ev, "[data-provedor],[data-escolher-conta],[data-metrica],[data-copiar],[data-tabela]");
     if (!alvo) return;
     if (alvo.hasAttribute("data-provedor")) {
       vista.provedor = alvo.getAttribute("data-provedor");
     } else if (alvo.hasAttribute("data-escolher-conta")) {
-      // a linha do resumo leva a conta e o provedor juntos: um clique so, de qualquer provedor
-      const ferramenta = alvo.getAttribute("data-ferramenta");
-      vista.provedor = ferramenta;
-      vista.contas[ferramenta] = alvo.getAttribute("data-escolher-conta");
-    } else if (alvo.hasAttribute("data-abrir")) {
-      // detalhes e listas abrem pela vista: o redesenho de todo minuto mantem como estava, e o
-      // clique no resumo nao deixa o navegador abrir e fechar por conta propria
-      if (typeof ev.preventDefault === "function") ev.preventDefault();
-      const chave = alvo.getAttribute("data-abrir");
-      vista.abertos[chave] = !vista.abertos[chave];
+      vista.contas[alvo.getAttribute("data-ferramenta")] = alvo.getAttribute("data-escolher-conta");
     } else {
       const cartao = alvo.closest("[data-conta]");
       const id = cartao ? cartao.getAttribute("data-conta") : "";
       if (alvo.hasAttribute("data-metrica")) vista.metricas[id] = alvo.getAttribute("data-metrica");
-      else copiarErro(id);
+      else if (alvo.hasAttribute("data-tabela")) {
+        // quem abre e fecha a tabela e o painel: o redesenho de todo minuto mantem como estava
+        if (typeof ev.preventDefault === "function") ev.preventDefault();
+        vista.tabelas[id] = !vista.tabelas[id];
+      } else copiarErro(id);
     }
     pintar();
   }
@@ -1314,10 +1180,9 @@ const PainelUso = (function () {
       alturasDasBarras: alturasDasBarras,
       meioCortado: meioCortado,
       textoPlano: textoPlano,
-      diaDaSerie: diaDaSerie,
-      tomDoEsforco: tomDoEsforco,
+      iniciais: iniciais,
       textoCustoDoPeriodo: textoCustoDoPeriodo,
-      piorNivel: piorNivel,
+      diaDaSerie: diaDaSerie,
     },
   };
 })();

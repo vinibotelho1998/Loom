@@ -361,7 +361,8 @@ class HospedeiroComTelaDeVerdade(ComShellFalso):
 
         self.pasta = Path(tempfile.mkdtemp(prefix="loom-nucleo-"))
         self.subidas = self.pasta / "subidas.txt"
-        self.pythonw = str(Path(sys.executable).with_name("pythonw.exe"))
+        # o que nao abre console no Windows; no Linux nao ha console pra abrir
+        self.pythonw = str(Path(sys.executable).with_name("pythonw.exe")) if sys.platform == "win32" else sys.executable
         self.hospedeiros: list[nucleo.Hospedeiro] = []
 
     def tearDown(self) -> None:

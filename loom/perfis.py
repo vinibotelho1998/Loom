@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -228,6 +229,13 @@ def _nosso_comando(comando: str) -> bool:
     return any(marca in comando for marca in ("coletar.py", "loom.coletor", "loom-coletor"))
 
 
+# o executavel do coletor no app instalado, ao lado do da janela
+COLETOR_INSTALADO = "loom-coletor.exe" if sys.platform == "win32" else "loom-coletor"
+# o atalho da status line: um .cmd no Windows, um script de shell nos outros
+ATALHO = "status-line.cmd" if sys.platform == "win32" else "status-line.sh"
+_CHAMA_ATALHO = re.compile(r'''\s*"([^"]+status-line\.(?:cmd|sh))"''')
+
+
 def _chamada_coletor(python: str, projeto: str) -> str:
     """Como o Claude Code chama o coletor.
 
@@ -236,7 +244,7 @@ def _chamada_coletor(python: str, projeto: str) -> str:
     continua sendo o interpretador atual com o script.
     """
     if getattr(sys, "frozen", False):
-        return f'"{Path(python).with_name("loom-coletor.exe")}"'
+        return f'"{Path(python).with_name(COLETOR_INSTALADO)}"'
     return f'"{python}" "{Path(projeto) / "coletar.py"}"'
 
 
@@ -250,9 +258,9 @@ GANCHOS_DO_COLETOR = (("SessionStart", "--hook"), ("Notification", "--aviso"))
 
 
 def _gancho_nosso(comando: str) -> bool:
-    # o da conta principal passa pelo status-line.cmd, que nao tem o nome do coletor
+    # o da conta principal passa pelo atalho da status line, que nao tem o nome do coletor
     return _nosso_comando(comando) or (
-        "status-line.cmd" in comando and any(f" {b} " in f"{comando} " for _, b in GANCHOS_DO_COLETOR)
+        _CHAMA_ATALHO.search(comando) is not None and any(f" {b} " in f"{comando} " for _, b in GANCHOS_DO_COLETOR)
     )
 
 
@@ -320,28 +328,40 @@ def _settings_principal() -> tuple[Path, dict | None]:
     return alvo, atual if isinstance(atual, dict) else None
 
 
+def _gerado_por_nos(texto: str) -> bool:
+    """So atalho gerado por este app: o de outra ferramenta com o mesmo nome fica como esta."""
+    linhas = texto.splitlines()
+    if len(linhas) < 2:
+        return False
+    return (linhas[0] == "@echo off" and linhas[1].startswith("rem Gerado pelo ")) or (
+        linhas[0] == "#!/bin/sh" and linhas[1].startswith("# Gerado pelo ")
+    )
+
+
 def _atalho_da_status_line(linha) -> str | None:
-    """O texto do status-line.cmd gerado por este app que a status line chama, se chama um."""
+    """O texto do atalho gerado por este app que a status line chama, se chama um."""
     comando = linha.get("command", "") if isinstance(linha, dict) else ""
-    casado = re.match(r'\s*"([^"]+status-line\.cmd)"', comando if isinstance(comando, str) else "")
+    casado = _CHAMA_ATALHO.match(comando if isinstance(comando, str) else "")
     if not casado:
         return None
     try:
         texto = Path(casado.group(1)).read_text(encoding="utf-8")
     except OSError:
         return None
-    linhas = texto.splitlines()
-    if len(linhas) < 2 or linhas[0] != "@echo off" or not linhas[1].startswith("rem Gerado pelo "):
-        return None
-    return texto
+    return texto if _gerado_por_nos(texto) else None
 
 
 def _anterior_do_atalho(texto: str) -> str:
     linhas = texto.splitlines()
-    try:
-        return linhas[linhas.index(") else (") + 1].strip()
-    except (ValueError, IndexError):
-        return ""
+    for marca in (") else (", "else"):
+        if marca in linhas:
+            try:
+                anterior = linhas[linhas.index(marca) + 1].strip()
+            except IndexError:
+                return ""
+            # o sh nao aceita bloco vazio, e o : e o que fica no lugar de nao ter status line
+            return "" if anterior == ":" else anterior
+    return ""
 
 
 def leitura_principal_ligada() -> bool:
@@ -627,14 +647,16 @@ def perguntar_identidade(perfil: Perfil) -> tuple[float, dict] | None:
         ambiente[variavel] = str(perfil.config_dir)
     try:
         saida = subprocess.run(
-            [comando, "auth", "status"],
+            [comando, "auth", "status"] if sys.platform == "win32" else [*shlex.split(comando), "auth", "status"],
             capture_output=True,
             text=True,
             encoding="utf-8",
             errors="replace",
             timeout=15,
             env=ambiente,
-            shell=True,
+            # no Windows o comando costuma ser um .cmd, que so roda pelo shell. No Linux o shell com
+            # lista descartaria o auth status e abriria o CLI inteiro, sem terminal
+            shell=sys.platform == "win32",
             # com pythonw nao ha console, e sem isto o cmd.exe do shell pisca uma janela preta
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
@@ -660,17 +682,19 @@ def blindar_status_line(python: str, projeto: str, anterior: str) -> Path:
     Este arquivo mora na pasta de dados, confere se o coletor ainda existe e, se nao existe,
     chama direto a status line de sempre. O pior caso deixa de ser perder a barra.
     """
-    destino = RAIZ / "status-line.cmd"
+    destino = RAIZ / ATALHO
     RAIZ.mkdir(parents=True, exist_ok=True)
     _gravar_atalho(destino, _texto_do_atalho(python, projeto, anterior))
     return destino
 
 
 def _texto_do_atalho(python: str, projeto: str, anterior: str) -> str:
-    """O status-line.cmd: chama o coletor se ele existe, senao a status line de sempre."""
+    """O atalho: chama o coletor se ele existe, senao a status line de sempre."""
+    if sys.platform != "win32":
+        return _texto_do_atalho_sh(python, projeto, anterior)
     if getattr(sys, "frozen", False):
         # no app instalado o coletor e o exe ao lado da janela, e nao existe coletar.py
-        entrada = Path(python).with_name("loom-coletor.exe")
+        entrada = Path(python).with_name(COLETOR_INSTALADO)
         chamada = f'"{entrada}" %*'
     else:
         entrada = Path(projeto) / "coletar.py"
@@ -692,10 +716,36 @@ def _texto_do_atalho(python: str, projeto: str, anterior: str) -> str:
     return quebra.join(linhas) + quebra
 
 
+def _texto_do_atalho_sh(python: str, projeto: str, anterior: str) -> str:
+    """O mesmo atalho em shell. O anterior fica sozinho na linha depois do else, como no .cmd."""
+    if getattr(sys, "frozen", False):
+        entrada = Path(python).with_name(COLETOR_INSTALADO)
+        chamada = f'exec {shlex.quote(str(entrada))} "$@"'
+    else:
+        entrada = Path(projeto) / "coletar.py"
+        chamada = f'exec {shlex.quote(python)} {shlex.quote(str(entrada))} "$@"'
+    linhas = [
+        "#!/bin/sh",
+        "# Gerado pelo Loom. Se o projeto sumir, a status line de sempre continua.",
+        f"if [ -e {shlex.quote(str(entrada))} ]; then",
+        f"  {chamada}",
+        # os ganchos tambem passam por aqui; sem o coletor eles saem calados, porque o que um
+        # gancho de inicio imprime entra na conversa do Claude
+        'elif [ "$1" = "--hook" ] || [ "$1" = "--aviso" ]; then',
+        "  exit 0",
+        "else",
+        f"  {anterior or ':'}",
+        "fi",
+    ]
+    return "\n".join(linhas) + "\n"
+
+
 def _gravar_atalho(destino: Path, texto: str) -> None:
     # newline vazio: sem isso o Windows converte de novo e o arquivo sai com quebra dupla
     with open(destino, "w", encoding="utf-8", newline="") as fh:
         fh.write(texto)
+    if destino.suffix == ".sh":
+        destino.chmod(0o755)
 
 
 def reparar_status_line_principal(python: str, projeto: str) -> bool:
@@ -713,7 +763,7 @@ def reparar_status_line_principal(python: str, projeto: str) -> bool:
         return False
     linha = atual.get("statusLine") if isinstance(atual, dict) else None
     comando = linha.get("command", "") if isinstance(linha, dict) else ""
-    casado = re.match(r'\s*"([^"]+status-line\.cmd)"', comando if isinstance(comando, str) else "")
+    casado = _CHAMA_ATALHO.match(comando if isinstance(comando, str) else "")
     if not casado:
         return False
     atalho = Path(casado.group(1))
@@ -721,14 +771,11 @@ def reparar_status_line_principal(python: str, projeto: str) -> bool:
         texto = atalho.read_text(encoding="utf-8")
     except OSError:
         return False
-    linhas = texto.splitlines()
-    # so atalho gerado por nos: o de outra ferramenta com o mesmo nome fica como esta
-    if len(linhas) < 2 or linhas[0] != "@echo off" or not linhas[1].startswith("rem Gerado pelo "):
+    if not _gerado_por_nos(texto):
         return False
-    try:
-        anterior = linhas[linhas.index(") else (") + 1].strip()
-    except (ValueError, IndexError):
+    if ") else (" not in texto.splitlines() and "else" not in texto.splitlines():
         return False
+    anterior = _anterior_do_atalho(texto)
     novo = _texto_do_atalho(python, projeto, anterior)
     if texto.replace("\r\n", "\n") == novo.replace("\r\n", "\n"):
         return False

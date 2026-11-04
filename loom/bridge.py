@@ -93,6 +93,17 @@ def _separar_editor(texto: str) -> tuple[str, str]:
     return executavel, resto.strip()
 
 
+def _entre_aspas(texto: str) -> str:
+    """O texto como um argumento so da linha de comando.
+
+    O caminho vem do que o terminal imprimiu. No sh, dentro de aspas duplas o $ e a crase ainda
+    rodam comando: clicar num arquivo chamado a$(rm x).py executaria o rm.
+    """
+    if sys.platform != "win32":
+        texto = re.sub(r'(\\*)(["$`])', lambda m: m.group(1) * 2 + "\\" + m.group(2), texto)
+    return f'"{texto}"'
+
+
 def linha_do_editor(editor: str, arquivo: str, linha: str) -> str | None:
     """A linha de comando que abre o arquivo no editor do campo, ou None se ele nao existe.
 
@@ -106,16 +117,16 @@ def linha_do_editor(editor: str, arquivo: str, linha: str) -> str | None:
     achado = executavel if Path(executavel).is_file() else shutil.which(executavel)
     if not achado:
         return None
-    nome = Path(achado).stem.lower()
+    nome = re.split(r"[\\/]", achado)[-1].rsplit(".", 1)[0].lower()
     if linha and nome in EDITORES_COM_G:
-        alvo = f'-g "{arquivo}:{linha}"'
+        alvo = f"-g {_entre_aspas(f'{arquivo}:{linha}')}"
     elif linha and nome in EDITORES_COM_DOIS_PONTOS:
-        alvo = f'"{arquivo}:{linha}"'
+        alvo = _entre_aspas(f"{arquivo}:{linha}")
     elif linha and nome in EDITORES_COM_N:
-        alvo = f'-n{linha} "{arquivo}"'
+        alvo = f"-n{linha} {_entre_aspas(arquivo)}"
     else:
-        alvo = f'"{arquivo}"'
-    return " ".join(parte for parte in (f'"{achado}"', resto, alvo) if parte)
+        alvo = _entre_aspas(arquivo)
+    return " ".join(parte for parte in (_entre_aspas(achado), resto, alvo) if parte)
 
 
 def _e_a_pasta_pessoal(pasta: str) -> bool:
@@ -132,14 +143,20 @@ EXECUTADOS_AO_ABRIR = {
 }
 
 
+# no Linux quem decide e o bit de execucao, mas estes rodam ou instalam mesmo sem ele
+EXECUTADOS_NO_LINUX = {".desktop", ".appimage", ".run", ".sh", ".bash", ".deb", ".rpm", ".pkg"}
+
+
 def _roda_ao_abrir(caminho: str) -> bool:
     extensao = Path(caminho).suffix.lower()
     pathext = {e.strip().lower() for e in os.environ.get("PATHEXT", "").split(";") if e.strip()}
+    if sys.platform != "win32" and (extensao in EXECUTADOS_NO_LINUX or os.access(caminho, os.X_OK)):
+        return True
     return extensao in EXECUTADOS_AO_ABRIR or extensao in pathext
 
 
 def _abrir_no_sistema(caminho: str) -> None:
-    """Abre o arquivo com o programa que o Windows associa a ele."""
+    """Abre o arquivo com o programa que o sistema associa a ele."""
     from PySide6.QtCore import QUrl
     from PySide6.QtGui import QDesktopServices
 
@@ -168,6 +185,9 @@ class Bridge(QObject):
     _identidadeRespondida = Signal(str, float, str)
     # a prova do sudo roda fora da thread da tela, e a resposta chega depois de a pagina perguntar
     elevacaoMudou = Signal(str)
+    # a janela sem a barra do sistema: a pagina pede, e a janela e que sabe se mover
+    janelaPedida = Signal(str)
+    janelaMudou = Signal(bool)
     _elevacaoRespondida = Signal(str)
     # a lista de sessoes, varrida fora da thread da tela a cada pedirSessoes
     sessoesProntas = Signal(str)
@@ -517,6 +537,17 @@ class Bridge(QObject):
         buffer.close()
         return self.salvarColagem(base64.b64encode(bruto).decode("ascii"), "png")
 
+    def definir_janela_propria(self, propria: bool) -> None:
+        self._janela_propria = propria
+
+    @Slot(result=bool)
+    def janelaPropria(self) -> bool:
+        return getattr(self, "_janela_propria", False)
+
+    @Slot(str)
+    def pedirJanela(self, acao: str) -> None:
+        self.janelaPedida.emit(acao or "")
+
     @Slot(str, str, str)
     def notificar(self, titulo: str, texto: str, aba: str) -> None:
         self.notificacaoPedida.emit(titulo or "Loom", texto or "", aba or "")
@@ -566,7 +597,7 @@ class Bridge(QObject):
                 # abrir no programa padrao e executar: o tests/x.py:42 clicado rodaria o script
                 inicio = f"Não achei o editor {editor}. " if editor else ""
                 return (
-                    f"{inicio}Não abri {arquivo.name}: no programa padrão o Windows executaria o arquivo."
+                    f"{inicio}Não abri {arquivo.name}: no programa padrão o sistema executaria o arquivo."
                     + onde_trocar
                 )
             _abrir_no_sistema(str(arquivo))

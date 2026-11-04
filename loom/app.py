@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import ctypes.wintypes
 import json
 import logging
 import os
@@ -14,7 +13,7 @@ from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWebChannel import QWebChannel
 from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineSettings
 from PySide6.QtWebEngineWidgets import QWebEngineView
-from PySide6.QtWidgets import QApplication, QMainWindow, QMenu, QMessageBox, QSystemTrayIcon
+from PySide6.QtWidgets import QApplication, QMainWindow, QMenu, QMessageBox, QSystemTrayIcon, QWidget
 
 from . import __version__
 from . import config as mod_config
@@ -32,10 +31,10 @@ log = logging.getLogger(__name__)
 
 # Tres niveis de cinza, do mais claro pro mais escuro, pra dar profundidade:
 # a barra de titulo do sistema, a barra do app e o terminal.
-COR_TITULO = "#252932"
-COR_FUNDO = "#16181c"
-COR_LINHA = "#333843"
-COR_TEXTO = "#c8cfda"
+COR_TITULO = "#0c0d0f"
+COR_FUNDO = "#111214"
+COR_LINHA = "#25262a"
+COR_TEXTO = "#e6e6e8"
 
 UI_DIR = Path(__file__).resolve().parent.parent / "ui"
 
@@ -48,12 +47,32 @@ TETO_DE_RECUPERACAO = 3
 # a janela que estava minimizada tem este prazo pra pagina voltar a pulsar depois de aparecer
 ESPERA_DO_PULSO_MS = 5000
 
+# de onde a janela sem a barra do sistema muda de tamanho
+BORDAS = {
+    "esquerda": Qt.Edge.LeftEdge,
+    "direita": Qt.Edge.RightEdge,
+    "cima": Qt.Edge.TopEdge,
+    "baixo": Qt.Edge.BottomEdge,
+    "cima-esquerda": Qt.Edge.TopEdge | Qt.Edge.LeftEdge,
+    "cima-direita": Qt.Edge.TopEdge | Qt.Edge.RightEdge,
+    "baixo-esquerda": Qt.Edge.BottomEdge | Qt.Edge.LeftEdge,
+    "baixo-direita": Qt.Edge.BottomEdge | Qt.Edge.RightEdge,
+}
+
 log_da_pagina = logging.getLogger("loom.tela")
 NIVEL_DO_CONSOLE = {
     QWebEnginePage.JavaScriptConsoleMessageLevel.InfoMessageLevel: logging.INFO,
     QWebEnginePage.JavaScriptConsoleMessageLevel.WarningMessageLevel: logging.WARNING,
     QWebEnginePage.JavaScriptConsoleMessageLevel.ErrorMessageLevel: logging.ERROR,
 }
+
+
+def usa_barra_propria(ajustes: dict) -> bool:
+    """Se o topo do Loom, com as abas, fica no lugar da barra de titulo do sistema.
+
+    So fora do Windows: la a barra do sistema e pintada na cor do app, e o Aero Snap depende dela.
+    """
+    return sys.platform != "win32" and not ajustes.get("barraDoSistema")
 
 
 class LoggingPage(QWebEnginePage):
@@ -77,8 +96,13 @@ class MainWindow(QMainWindow):
         # aplicacao, o Qt nao acrescenta sufixo e a barra mostra so o nome com a versao
         self.setWindowTitle(TITULO)
         self.resize(1180, 720)
+        barra_propria = usa_barra_propria(mod_config.carregar())
+        if barra_propria:
+            self.setWindowFlag(Qt.WindowType.FramelessWindowHint, True)
 
         self.bridge = Bridge(self, nucleo=nucleo)
+        self.bridge.definir_janela_propria(barra_propria)
+        self.bridge.janelaPedida.connect(self._pedido_da_janela)
         self._nucleo = nucleo
         if nucleo is not None:
             # outra abertura do Loom chama o nucleo, e ele pede a esta janela pra vir pra frente
@@ -98,7 +122,7 @@ class MainWindow(QMainWindow):
         # e criado por dentro do motor web e nao existe ainda neste ponto
         self.setAcceptDrops(True)
         app = QApplication.instance()
-        if app is not None:
+        if app is not None and sys.platform == "win32":
             app.installEventFilter(self)
 
         # por tras da pagina fica uma cor que ela nunca pinta: e por ela que a vigia percebe,
@@ -136,6 +160,14 @@ class MainWindow(QMainWindow):
         # quando o motor da pagina morre, a janela ficava preta pra sempre com os shells vivos
         # por baixo, sem nenhum jeito de voltar a eles
         view.page().renderProcessTerminated.connect(self._pagina_caiu)
+
+        if sys.platform != "win32":
+            # Fora do Windows o filtro fica so na view e no widget interno, onde o arrasto chega. Na
+            # aplicacao inteira ele fazia o PySide criar o wrapper de cada objeto do motor web, a
+            # criacao disparava outro evento pro mesmo filtro, e a tela caia ao receber o foco.
+            view.installEventFilter(self)
+            for filho in view.findChildren(QWidget):
+                filho.installEventFilter(self)
 
         channel = QWebChannel(view)
         channel.registerObject("bridge", self.bridge)
@@ -287,6 +319,12 @@ class MainWindow(QMainWindow):
         mandamos pra tela ja resolvido.
         """
         tipo = evento.type()
+        if tipo == QEvent.Type.ChildAdded and obj is self.view and sys.platform != "win32":
+            # o widget que recebe o arrasto nasce por dentro do motor web, depois da view
+            filho = evento.child()
+            if isinstance(filho, QWidget):
+                filho.installEventFilter(self)
+            return False
         if tipo in (QEvent.Type.DragEnter, QEvent.Type.DragMove):
             if evento.mimeData().hasUrls():
                 evento.acceptProposedAction()
@@ -315,8 +353,6 @@ class MainWindow(QMainWindow):
         Quem recebe o drop e o widget interno do motor web; a posicao vem relativa a ele e e
         levada pra tela inteira antes de virar pixel da pagina.
         """
-        from PySide6.QtWidgets import QWidget
-
         view = self.view
         if view is None or not isinstance(obj, QWidget) or not (obj is view or view.isAncestorOf(obj)):
             return None
@@ -327,6 +363,37 @@ class MainWindow(QMainWindow):
         zoom = view.zoomFactor() or 1.0
         return ponto.x() / zoom, ponto.y() / zoom
 
+    @Slot(str)
+    def _pedido_da_janela(self, acao: str) -> None:
+        """O que a pagina pede pra janela sem a barra do sistema.
+
+        Mover e mudar o tamanho ficam com o compositor: no Wayland o app nao sabe nem pode dizer
+        onde a janela esta, e e assim que encostar na borda e dividir a tela continuam valendo.
+        """
+        janela = self.windowHandle()
+        if acao == "mover":
+            if janela is not None:
+                janela.startSystemMove()
+        elif acao.startswith("borda:"):
+            borda = BORDAS.get(acao[len("borda:") :])
+            if janela is not None and borda is not None:
+                janela.startSystemResize(borda)
+        elif acao == "minimizar":
+            self.showMinimized()
+        elif acao == "maximizar":
+            if self.isMaximized():
+                self.showNormal()
+            else:
+                self.showMaximized()
+        elif acao == "fechar":
+            # fora da chamada da pagina: o fechar pode abrir a caixa de confirmacao e ficar nela
+            QTimer.singleShot(0, self.close)
+
+    def changeEvent(self, evento):
+        if evento.type() == QEvent.Type.WindowStateChange and hasattr(self, "bridge"):
+            self.bridge.janelaMudou.emit(self.isMaximized())
+        super().changeEvent(evento)
+
     def _pintar_barra_de_titulo(self) -> None:
         """Pinta a barra de titulo do Windows na cor do app.
 
@@ -336,6 +403,7 @@ class MainWindow(QMainWindow):
         if sys.platform != "win32":
             return
         import ctypes
+        import ctypes.wintypes
 
         def cor(hexa: str) -> int:
             # o DWM quer BGR, e nao RGB
@@ -489,9 +557,38 @@ def ligar_no_nucleo() -> ClienteDoNucleo | None:
     return None
 
 
+def _caixas_escuras(app: QApplication) -> None:
+    """A caixa de confirmacao e o menu da bandeja nascem do Qt, e nao da pagina.
+
+    No Windows quem pinta e o sistema. Fora dele, sem isto, o Fechar o Loom abria branco por cima
+    de uma janela quase preta.
+    """
+    app.setStyle("Fusion")
+    paleta = QPalette()
+    for papel, cor in (
+        (QPalette.ColorRole.Window, "#1a1b1e"),
+        (QPalette.ColorRole.WindowText, COR_TEXTO),
+        (QPalette.ColorRole.Base, COR_FUNDO),
+        (QPalette.ColorRole.AlternateBase, "#1a1b1e"),
+        (QPalette.ColorRole.Text, COR_TEXTO),
+        (QPalette.ColorRole.Button, "#25262a"),
+        (QPalette.ColorRole.ButtonText, COR_TEXTO),
+        (QPalette.ColorRole.ToolTipBase, "#1a1b1e"),
+        (QPalette.ColorRole.ToolTipText, COR_TEXTO),
+        (QPalette.ColorRole.Highlight, "#17627c"),
+        (QPalette.ColorRole.HighlightedText, "#ffffff"),
+    ):
+        paleta.setColor(papel, QColor(cor))
+    app.setPalette(paleta)
+
+
 def main() -> int:
     app = QApplication(sys.argv)
     app.setApplicationName("Loom")
+    if sys.platform != "win32":
+        # o compositor acha o icone e agrupa a janela pelo nome do .desktop
+        app.setDesktopFileName("loom")
+        _caixas_escuras(app)
     # sem nome de exibicao de proposito: no Windows o Qt pendura " - <nome>" em todo titulo que
     # nao termina nele, e a caixa de fechar ganhava o nome e a versao pendurados no fim
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import sys
 import time
 from pathlib import Path
 
@@ -17,6 +18,23 @@ def marca_da_instalacao() -> str:
     instancias, nem na marca de que a tela esta aberta.
     """
     return hashlib.sha1(str(PASTA_DA_TELA).lower().encode("utf-8")).hexdigest()[:10]
+
+
+def completar_path(ambiente=os.environ) -> None:
+    """Poe no PATH as pastas do usuario, onde o Claude e o Codex costumam morar.
+
+    Aberto pelo menu do sistema, o app herda o PATH curto da sessao grafica, sem o que o .bashrc
+    acrescenta. A aba acharia o CLI depois de ler o .bashrc, mas a tela de contas diria que ele
+    nao esta instalado. Ficam no fim, sem passar na frente de nada que ja estava.
+    """
+    if sys.platform == "win32":
+        return
+    casa = Path(os.path.expanduser("~"))
+    partes = [p for p in ambiente.get("PATH", "").split(os.pathsep) if p]
+    for pasta in (casa / ".local" / "bin", casa / "bin"):
+        if str(pasta) not in partes and pasta.is_dir():
+            partes.append(str(pasta))
+    ambiente["PATH"] = os.pathsep.join(partes)
 
 
 def garantir() -> None:

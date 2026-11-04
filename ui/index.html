@@ -9,6 +9,7 @@
 </head>
 <body>
   <header class="cromo">
+    <svg class="marca-sinal" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4.5 2.5v11M8 2.5v11M11.5 2.5v11"/><path d="M2.5 5.5h11M2.5 10.5h11"/></svg>
     <span class="marca">Loom</span>
     <span class="versao" id="versao-topo" title="Versão do Loom"></span>
     <span class="folga"></span>
@@ -16,6 +17,12 @@
     <button class="pilula" id="alternar-uso" title="Painel de uso, Ctrl+Shift+U" aria-pressed="false"><span class="pilula-ponto"></span>Uso</button>
     <button class="icone" id="alternar-lateral" title="Mostrar ou esconder a lista de abas"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2" y="3" width="12" height="10" rx="1.6"/><path d="M6.4 3v10"/></svg></button>
     <button class="icone" id="abrir-config" title="Configurações, Ctrl+vírgula"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
+    <!-- so com a barra propria: a janela sem a barra do sistema precisa dos tres botoes dela -->
+    <div class="janela-botoes" id="janela-botoes" hidden>
+      <button class="janela-botao" data-janela="minimizar" title="Minimizar"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"><path d="M2 6h8"/></svg></button>
+      <button class="janela-botao" data-janela="maximizar" title="Maximizar"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2"><rect x="2" y="2" width="8" height="8" rx="1.2"/></svg></button>
+      <button class="janela-botao janela-fechar" data-janela="fechar" title="Fechar"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7"/></svg></button>
+    </div>
   </header>
 
   <div class="busca" id="busca" hidden>
@@ -39,22 +46,8 @@
         </div>
       </div>
       <div class="lateral-lista" id="abas"></div>
-      <div class="divisor" id="divisor-fora" hidden title="Arraste pra cima ou pra baixo pra mudar o tamanho">
-        <span id="divisor-rotulo">Terminais externos</span>
-        <button class="divisor-olho" id="esconder-fora" title="Esconder estas sessões">
-          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round">
-            <path d="M1.5 8s2.4-4 6.5-4 6.5 4 6.5 4-2.4 4-6.5 4S1.5 8 1.5 8z"/><circle cx="8" cy="8" r="1.9"/>
-          </svg>
-        </button>
-      </div>
-      <div class="lateral-lista lista-externa" id="lista-externas" hidden></div>
-      <button class="mostrar-fora" id="mostrar-fora" hidden><span id="mostrar-fora-rotulo">Terminais externos</span> <b id="conta-fora"></b></button>
     </aside>
-    <div class="puxador" id="puxador" title="Arraste pra mudar a largura">
-      <button class="alca" id="recolher-lateral" title="Esconder ou mostrar a lista de sessões">
-        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9.6 3.6 5.2 8l4.4 4.4"/></svg>
-      </button>
-    </div>
+    <div class="puxador" id="puxador" title="Arraste pra mudar a largura"></div>
     <div class="coluna">
       <main class="palco" id="palco">
         <div class="palco-vazio" id="palco-vazio" hidden>
@@ -265,7 +258,7 @@
               <div class="rot"><span>Espaço entre letras</span><small>Em pixel, 0 é o natural da fonte</small></div>
               <div class="ctrl"><input type="range" id="cfg-espacoLetra" min="0" max="3" step="1"><output id="out-espacoLetra"></output></div>
             </div>
-            <div class="amostra" id="amostra">PS C:\Users\voce&gt; claude --version  #  0123456789  ilI1 oO0</div>
+            <div class="amostra" id="amostra">~/projetos $ claude --version  #  0123456789  ilI1 oO0</div>
           </div>
 
           <h3 class="grupo-titulo">Cursor</h3>
@@ -311,6 +304,10 @@
                 </select>
               </div>
             </div>
+            <div class="linha" id="linha-barra-sistema" hidden>
+              <div class="rot"><span>Barra de título do sistema</span><small>Troca a barra do Loom, com as abas, pela do sistema. Vale na próxima vez que o Loom abrir</small></div>
+              <div class="ctrl"><label class="chave"><input type="checkbox" id="cfg-barraDoSistema"><span></span></label></div>
+            </div>
             <div class="linha" id="aviso-desenho" hidden>
               <div class="rot"><small id="desenho-aviso"></small></div>
               <div class="ctrl"><button class="botao" id="voltar-gpu">Voltar à placa de vídeo</button></div>
@@ -344,7 +341,7 @@
           <h3 class="grupo-titulo">Avisos</h3>
           <div class="grupo">
             <div class="linha">
-              <div class="rot"><span>Avisar quando uma sessão terminar</span><small>Notificação do Windows com a janela atrás; com ela na frente, o cartão da aba acende</small></div>
+              <div class="rot"><span>Avisar quando uma sessão terminar</span><small>Notificação do sistema com a janela atrás; com ela na frente, o cartão da aba acende</small></div>
               <div class="ctrl"><label class="chave"><input type="checkbox" id="cfg-avisarQuandoPronta"><span></span></label></div>
             </div>
             <div class="linha">
@@ -445,14 +442,6 @@
     </div>
   </div>
 
-  <div class="menu menu-sessao" id="menu-sessao" hidden>
-    <button class="menu-item" data-acao="ir">Ir para a aba</button>
-    <button class="menu-item" data-acao="retomar">Retomar esta conversa numa aba</button>
-    <button class="menu-item" data-acao="abrir">Abrir aba nova nessa pasta</button>
-    <button class="menu-item" data-acao="copiar">Copiar o caminho da pasta</button>
-    <button class="menu-item menu-perigo" data-acao="encerrar">Fechar a aba</button>
-  </div>
-
   <!-- paleta de comandos: depois de todas as caixas, pra abrir por cima de qualquer uma -->
   <div class="paleta-veu" id="paleta" hidden>
     <div class="paleta" role="dialog" aria-label="Paleta de comandos">
@@ -467,6 +456,12 @@
         <span><kbd>Esc</kbd>Fechar</span>
       </div>
     </div>
+  </div>
+
+  <!-- as bordas da janela sem a barra do sistema: daqui ela muda de tamanho -->
+  <div class="bordas-janela" id="bordas-janela" hidden>
+    <i data-borda="esquerda"></i><i data-borda="direita"></i><i data-borda="cima"></i><i data-borda="baixo"></i>
+    <i data-borda="cima-esquerda"></i><i data-borda="cima-direita"></i><i data-borda="baixo-esquerda"></i><i data-borda="baixo-direita"></i>
   </div>
 
   <script src="vendor/qwebchannel.js"></script>

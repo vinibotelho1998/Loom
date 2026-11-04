@@ -20,7 +20,6 @@ PADRAO = {
     "confirmarFechar": True,
     "abrirCliDaConta": True,
     "mostrarUsoNaBarra": True,
-    "alturaExternas": 25,
     "larguraLateral": 246,
     "confiarPastas": True,
     "esconderStatusLine": True,
@@ -29,13 +28,14 @@ PADRAO = {
     "guardarHistorico": True,
     # a aba reaberta que rodava uma conversa ja volta dentro dela, em vez de parar no prompt
     "retomarConversas": True,
-    "mostrarSessoesDeFora": False,
     "avisarQuandoPronta": True,
     "avisoDeLimite": True,
     "fecharAoSair": False,
     "editor": "code",
     "densidade": "confortavel",
     "desenho": "auto",
+    # no Linux a barra do Loom, com as abas, fica no lugar da do sistema; ligado, volta a do sistema
+    "barraDoSistema": False,
     # o painel de uso a direita dos terminais nasce fechado: o botao do topo ou Ctrl+Shift+U abre, e
     # o app lembra do que a pessoa escolheu
     "painelUso": False,
@@ -48,7 +48,7 @@ PADRAO = {
 # range e number chegam da tela como inteiro mesmo quando o padrao e decimal, e o contrario
 # tambem acontece. Sem isto, arrastar a entrelinha ate 1 nao gravava e a tela voltava sozinha.
 NUMERICOS = {"tamanhoFonte", "entrelinha", "espacoLetra", "historico",
-             "alturaExternas", "larguraLateral", "larguraPainelUso", "fracaoDivisao"}
+             "larguraLateral", "larguraPainelUso", "fracaoDivisao"}
 
 # A mesma faixa que a tela aceita. Um historico 0 vindo do campo apagado, ou do arquivo editado
 # a mao, cortava na hora a rolagem de todas as abas abertas, sem volta.
@@ -57,7 +57,6 @@ FAIXAS = {
     "entrelinha": (1.0, 2.0),
     "espacoLetra": (0, 3),
     "historico": (1000, 200000),
-    "alturaExternas": (8, 75),
     "larguraLateral": (180, 520),
     # mais estreito que isso a barra de 5h perde o texto do zera em; mais largo rouba o terminal
     "larguraPainelUso": (280, 480),

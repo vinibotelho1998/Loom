@@ -15,9 +15,18 @@ from pathlib import Path
 from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from base import so_no_windows  # noqa: E402
 
 from PySide6.QtCore import Qt  # noqa: E402
-from winpty import WinptyError, ptyprocess  # noqa: E402
+
+if sys.platform == "win32":
+    from winpty import WinptyError, ptyprocess  # noqa: E402
+else:
+    from loom.pty_posix import ErroDoPty as WinptyError  # noqa: E402
+
+    ptyprocess = None
 
 from loom import pty_session, shells  # noqa: E402
 from loom.pty_session import PtySession  # noqa: E402
@@ -27,6 +36,7 @@ def achar(mapa: dict):
     return unittest.mock.patch.object(shells.shutil, "which", side_effect=lambda nome: mapa.get(nome))
 
 
+@so_no_windows
 class DescobrirShells(unittest.TestCase):
     def test_git_bash_fora_do_path_e_achado_no_lugar_de_sempre(self):
         extra = shells.EXTRAS["bash"][0]
@@ -94,6 +104,7 @@ class DescobrirShells(unittest.TestCase):
         )
 
 
+@so_no_windows
 class SudoDoWindows(unittest.TestCase):
     def elevacao(self, achados: dict, modo=None, saida: str = "uso: sudo", erro: Exception | None = None):
         provas = []
@@ -298,6 +309,7 @@ class LeituraDoShell(unittest.TestCase):
         self.assertEqual(fins, [("aba1", pty_session.CODIGO_DESCONHECIDO)])
 
 
+@so_no_windows
 class PararSemEspera(unittest.TestCase):
     """O fechar e o terminate do winpty de verdade, com o pseudo console e o relogio falsos."""
 
@@ -367,6 +379,7 @@ class SessaoSemShell(unittest.TestCase):
         self.assertNotIn("CLAUDE_CODE_ENTRYPOINT", sessao._env)
         self.assertNotIn("QT_QPA_PLATFORM", sessao._env)
 
+    @so_no_windows
     def test_shell_de_sempre_quando_nenhum_e_pedido(self):
         with unittest.mock.patch.object(pty_session.shutil, "which", side_effect=lambda n: {"powershell.exe": "ps.exe"}.get(n)):
             self.assertEqual(pty_session.default_shell(), ["ps.exe", "-NoLogo"])

@@ -38,20 +38,21 @@
 :root {
   /* preto absoluto cansa e some com a profundidade; um cinza escuro da relevo
      entre o terminal, o cromo e os cartoes */
-  --preto: #16181c;
-  --cromo: #1c1f25;
-  --linha: #2a2e36;
-  --linha-forte: #3a3f49;
-  --texto: #d3d8e0;
-  --apagado: #6e7683;
+  --preto: #111214;
+  --cromo: #0c0d0f;
+  --linha: #25262a;
+  --linha-forte: #3c3d42;
+  --texto: #e6e6e8;
+  --apagado: #8d8e94;
   /* texto pequeno precisa de mais contraste que texto grande. O cinza de antes ficava em
      2:1 sobre o cartao e a linha de estado, que e o que a lateral existe pra dizer,
      era a menos legivel da tela. */
-  --apagado-2: #8a93a1;
-  --apagado-3: #7d8797;
-  --fraco: #5b6371;
-  --acento: #4f9cf9;
+  --apagado-2: #a0a1a7;
+  --apagado-3: #8a8b92;
+  --fraco: #6a6b72;
+  --acento: #2ab4e0;
   --mono: "JetBrains Mono", Consolas, monospace;
+  --sans: "Inter", "Segoe UI Variable Text", "Segoe UI", "Noto Sans", Cantarell, system-ui, sans-serif;
 
   /* o Chromium desenha select e spinner no esquema claro sem isto, e dentro do painel
      escuro abria uma lista branca com texto preto */
@@ -69,9 +70,10 @@ html, body {
   margin: 0;
   background: var(--preto);
   color: var(--texto);
-  font: 12.5px/1.5 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  font: 12.5px/1.5 var(--sans);
   overflow: hidden;
   user-select: none;
+  -webkit-font-smoothing: antialiased;
 }
 
 /* ------------------------------------------------------------------ cromo */
@@ -139,9 +141,9 @@ body { display: flex; flex-direction: column; }
   position: absolute;
   top: 8px; right: 4px; bottom: 8px;
   width: 12px;
-  border: 1px solid #394352;
+  border: 1px solid #34353a;
   border-radius: 7px;
-  background: #222a35;
+  background: #1d1e21;
   cursor: default;
   touch-action: none;
 }
@@ -150,12 +152,12 @@ body { display: flex; flex-direction: column; }
   left: 2px; right: 2px;
   min-height: 0;
   border-radius: 5px;
-  background: #8996aa;
+  background: #8f9096;
 }
-.rolagem-terminal:hover .rolagem-terminal-polegar { background: #a6b4c9; }
-.rolagem-terminal.arrastando .rolagem-terminal-polegar { background: #c3d2e8; }
+.rolagem-terminal:hover .rolagem-terminal-polegar { background: #b0b1b7; }
+.rolagem-terminal.arrastando .rolagem-terminal-polegar { background: #cbccd1; }
 .rolagem-terminal:focus-visible { outline: 2px solid var(--acento); outline-offset: 1px; }
-.rolagem-terminal.sem-historico .rolagem-terminal-polegar { background: #394352; }
+.rolagem-terminal.sem-historico .rolagem-terminal-polegar { background: #34353a; }
 
 /* Barra de rolagem: a mesma nos terminais, nas listas, no painel de uso e nos ajustes, sempre
    visivel e com contraste. O polegar era quase da cor do fundo e as listas ainda tinham
@@ -167,24 +169,24 @@ body { display: flex; flex-direction: column; }
 .xterm-viewport::-webkit-scrollbar-track,
 .lateral-lista::-webkit-scrollbar-track,
 .uso-lateral::-webkit-scrollbar-track,
-.painel-corpo::-webkit-scrollbar-track { background: #12151b; }
+.painel-corpo::-webkit-scrollbar-track { background: #101113; }
 .xterm-viewport::-webkit-scrollbar-thumb,
 .lateral-lista::-webkit-scrollbar-thumb,
 .uso-lateral::-webkit-scrollbar-thumb,
 .painel-corpo::-webkit-scrollbar-thumb {
-  background: #5a6474;
+  background: #63646b;
   border-radius: 6px;
-  border: 2px solid #12151b;
+  border: 2px solid #101113;
   min-height: 36px;
 }
 .xterm-viewport::-webkit-scrollbar-thumb:hover,
 .lateral-lista::-webkit-scrollbar-thumb:hover,
 .uso-lateral::-webkit-scrollbar-thumb:hover,
-.painel-corpo::-webkit-scrollbar-thumb:hover { background: #7b879a; }
+.painel-corpo::-webkit-scrollbar-thumb:hover { background: #85868d; }
 .xterm-viewport::-webkit-scrollbar-thumb:active,
 .lateral-lista::-webkit-scrollbar-thumb:active,
 .uso-lateral::-webkit-scrollbar-thumb:active,
-.painel-corpo::-webkit-scrollbar-thumb:active { background: #97a3b5; }
+.painel-corpo::-webkit-scrollbar-thumb:active { background: #a3a4aa; }
 .xterm-viewport::-webkit-scrollbar-button,
 .lateral-lista::-webkit-scrollbar-button,
 .uso-lateral::-webkit-scrollbar-button,
@@ -205,7 +207,7 @@ body { display: flex; flex-direction: column; }
   padding: 6px;
   border: 1px solid var(--linha-forte);
   border-radius: 10px;
-  background: #14161b;
+  background: #18191c;
   box-shadow: 0 14px 40px rgba(0, 0, 0, .75);
   animation: surge .13s ease;
 }
@@ -236,7 +238,7 @@ body { display: flex; flex-direction: column; }
   cursor: default;
   transition: background .1s ease;
 }
-.menu-item:hover { background: #1f232b; }
+.menu-item:hover { background: #222327; }
 .menu-item .ponto { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; }
 .menu-item .selo {
   margin-left: auto;
@@ -260,7 +262,7 @@ body { display: flex; flex-direction: column; }
   padding: 18px;
   border: 1px solid var(--linha-forte);
   border-radius: 12px;
-  background: #14161b;
+  background: #18191c;
   box-shadow: 0 20px 60px rgba(0, 0, 0, .8);
 }
 .caixa-titulo { font-weight: 600; margin-bottom: 8px; }
@@ -272,7 +274,7 @@ body { display: flex; flex-direction: column; }
   padding: 9px 11px;
   border: 1px solid var(--linha-forte);
   border-radius: 8px;
-  background: #1b1e24;
+  background: #1e1f23;
   color: var(--texto);
   font: 13px var(--mono);
   outline: none;
@@ -291,9 +293,9 @@ body { display: flex; flex-direction: column; }
   font: 12px inherit;
   cursor: default;
 }
-.botao:hover { color: var(--texto); background: #1f232b; }
-.botao-forte { border-color: #1d4a7d; background: #12233a; color: #9dc9ff; }
-.botao-forte:hover { background: #17304f; color: #cfe4ff; }
+.botao:hover { color: var(--texto); background: #222327; }
+.botao-forte { border-color: #175a70; background: #0e2a34; color: #9ee2f6; }
+.botao-forte:hover { background: #123744; color: #d2f2fb; }
 
 /* ------------------------------------------------------------- icones */
 
@@ -307,7 +309,7 @@ body { display: flex; flex-direction: column; }
   cursor: default;
   transition: background .13s ease, color .13s ease;
 }
-.icone:hover { background: #1b1e24; color: var(--texto); }
+.icone:hover { background: #1e1f23; color: var(--texto); }
 
 /* -------------------------------------------------------- marca caixa */
 
@@ -316,7 +318,7 @@ body { display: flex; flex-direction: column; }
   padding: 9px 11px;
   border: 1px solid var(--linha);
   border-radius: 8px;
-  background: #171a1f;
+  background: #17181b;
   color: var(--apagado);
   font-size: 12px;
 }
@@ -335,7 +337,7 @@ body { display: flex; flex-direction: column; }
   height: min(560px, 88vh);
   border: 1px solid var(--linha-forte);
   border-radius: 14px;
-  background: #14161b;
+  background: #18191c;
   box-shadow: 0 24px 70px rgba(0, 0, 0, .8);
   overflow: hidden;
 }
@@ -346,7 +348,7 @@ body { display: flex; flex-direction: column; }
   gap: 2px;
   padding: 16px 10px;
   border-right: 1px solid var(--linha);
-  background: #111318;
+  background: #131417;
 }
 .painel-marca {
   padding: 0 10px 14px;
@@ -365,8 +367,8 @@ body { display: flex; flex-direction: column; }
   cursor: default;
   transition: background .12s ease, color .12s ease;
 }
-.nav-item:hover { background: #1b1e24; color: var(--texto); }
-.nav-item.ativa { background: #1f232b; color: var(--texto); }
+.nav-item:hover { background: #1e1f23; color: var(--texto); }
+.nav-item.ativa { background: #222327; color: var(--texto); }
 
 .painel-corpo { position: relative; overflow-y: auto; overflow-x: hidden; padding: 22px 26px 26px; }
 .painel-fechar {
@@ -376,7 +378,7 @@ body { display: flex; flex-direction: column; }
   background: transparent; color: var(--apagado);
   font-size: 16px; line-height: 1; cursor: default;
 }
-.painel-fechar:hover { background: #1f232b; color: var(--texto); }
+.painel-fechar:hover { background: #222327; color: var(--texto); }
 
 .secao { display: none; }
 .secao.ativa { display: block; animation: surge .14s ease; }
@@ -385,7 +387,7 @@ body { display: flex; flex-direction: column; }
 .linha {
   display: flex; align-items: center; gap: 20px;
   padding: 11px 0;
-  border-bottom: 1px solid #101116;
+  border-bottom: 1px solid #1f2023;
 }
 .linha:last-of-type { border-bottom: 0; }
 .rot { flex: 1; display: flex; flex-direction: column; gap: 3px; }
@@ -410,16 +412,16 @@ select.campo { cursor: default; }
 .chave span {
   position: absolute; inset: 0;
   border-radius: 20px;
-  background: #1a1d23;
+  background: #1d1e21;
   transition: background .14s ease;
 }
 .chave span::after {
   content: ""; position: absolute;
   top: 3px; left: 3px; width: 13px; height: 13px;
-  border-radius: 50%; background: #565e6b;
+  border-radius: 50%; background: #5b5c63;
   transition: transform .14s ease, background .14s ease;
 }
-.chave input:checked + span { background: #17395e; }
+.chave input:checked + span { background: #124250; }
 .chave input:checked + span::after { transform: translateX(15px); background: var(--acento); }
 
 .amostra {
@@ -448,7 +450,7 @@ select.campo { cursor: default; }
   margin-bottom: 8px;
   border: 1px solid var(--linha);
   border-radius: 9px;
-  background: #171a1f;
+  background: #17181b;
 }
 .conta-cor {
   width: 14px; height: 14px; border-radius: 50%;
@@ -476,7 +478,7 @@ select.campo { cursor: default; }
   background: transparent; color: var(--apagado);
   font: 11px inherit; padding: 5px 9px; cursor: default;
 }
-.conta-acao:hover { background: #1f232b; color: var(--texto); }
+.conta-acao:hover { background: #222327; color: var(--texto); }
 .conta-acao.perigo:hover { color: #f0808a; border-color: #4d2126; }
 /* Deslogar armado: o segundo clique apaga o login */
 .conta-acao.armado, .conta-acao.armado:hover { color: #f0a0a6; border-color: #4d2126; background: #2a1418; }
@@ -497,7 +499,7 @@ select.campo { cursor: default; }
   margin-bottom: 8px;
   border: 1px solid var(--linha);
   border-radius: 9px;
-  background: #171a1f;
+  background: #17181b;
 }
 .ferramenta-linha .titulo { grid-column: 1 / -1; font-size: 12.5px; display: flex; align-items: center; gap: 10px; }
 .ferramenta-achada { font: 10.5px var(--mono); color: #d9b25f; }
@@ -521,9 +523,9 @@ select.campo { cursor: default; }
   cursor: default;
   transition: background .13s ease, color .13s ease, border-color .13s ease;
 }
-.pilula:hover { background: #1b1e24; color: var(--texto); border-color: #2c2f37; }
+.pilula:hover { background: #1e1f23; color: var(--texto); border-color: #2e2f33; }
 /* o ponto diz o pior limite da conta da aba, com as mesmas faixas da barra; sem leitura, cinza */
-.pilula-ponto { width: 6px; height: 6px; border-radius: 50%; background: #3a3f49; }
+.pilula-ponto { width: 6px; height: 6px; border-radius: 50%; background: #3c3d42; }
 .pilula-ponto.ok { background: #4d9e6a; }
 .pilula-ponto.atencao { background: #c99a4a; }
 .pilula-ponto.critico { background: #cc5560; }
@@ -552,7 +554,7 @@ select.campo { cursor: default; }
   display: flex;
   flex-direction: column;
   border-right: 1px solid var(--linha);
-  background: #121419;
+  background: #0f1012;
   overflow: hidden;
   transition: flex-basis .16s ease, width .16s ease;
 }
@@ -575,40 +577,30 @@ select.campo { cursor: default; }
   overscroll-behavior: contain;
   padding: 0 8px 8px;
 }
-/* A de cima fica do tamanho do que tem, e a de fora usa o que sobra, com o divisor marcando o
-   piso dela. Com altura fixa, poucas abas deixavam um buraco em cima e a de fora cortava cartao.
-   A base zero da de fora faz a de cima ganhar quando as duas transbordam: com base no conteudo,
-   trinta conversas de fora espremiam as abas abaixo do que o divisor marcava. */
-.lateral:has(#lista-externas:not([hidden]):not(.encolhida)) #abas { flex: 0 1 auto; }
-.lateral-lista.lista-externa {
-  flex: 1 1 0;
-  min-height: var(--altura-externas, 25%);
-  padding-top: 2px;
-}
 
 
 .sessao {
   padding: 10px 11px;
   margin-bottom: 6px;
   border: 1px solid var(--linha);
-  border-left: 2px solid #2a2f38;
+  border-left: 2px solid #2b2c30;
   border-radius: 8px;
-  background: #14161b;
+  background: #18191c;
   cursor: default;
   transition: background .12s ease, border-color .12s ease;
 }
 /* todo hover do app clareia; so o do cartao escurecia, e as duas linguagens brigavam */
-.sessao:hover { background: #191c22; }
+.sessao:hover { background: #1b1c1f; }
 
 .sessao-topo { display: flex; align-items: center; gap: 7px; margin-bottom: 5px; }
 /* sem Claude o ponto leva a cor da conta; com ele, as regras de estado mais abaixo decidem */
-.sessao-pulso { width: 7px; height: 7px; border-radius: 50%; background: var(--cor-conta, #3a3f49); flex: 0 0 auto; }
+.sessao-pulso { width: 7px; height: 7px; border-radius: 50%; background: var(--cor-conta, #3c3d42); flex: 0 0 auto; }
 .sessao-pasta {
   flex: 1; min-width: 0;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   font-size: 12px; color: var(--texto);
 }
-/* texto de 10px pede mais contraste: o #5b6371 ficava em 3 pra 1 sobre o cartao */
+/* texto de 10px pede mais contraste: o #6a6b72 ficava em 3 pra 1 sobre o cartao */
 .sessao-idade { font: 10px var(--mono); color: var(--apagado-3); flex: 0 0 auto; }
 
 /* fechar pelo mouse sem abrir o menu: o x aparece no lugar da idade, so com o mouse em cima */
@@ -645,7 +637,7 @@ select.campo { cursor: default; }
   font: 10px var(--mono);
   color: var(--apagado-3);
 }
-.sessao-conta { padding: 1px 5px; border-radius: 4px; background: #1d212a; }
+.sessao-conta { padding: 1px 5px; border-radius: 4px; background: #202125; }
 
 @keyframes bater {
   0%, 100% { opacity: 1; transform: scale(1); }
@@ -655,8 +647,8 @@ select.campo { cursor: default; }
 .lateral-topo b {
   padding: 1px 6px;
   border-radius: 9px;
-  background: #16202e;
-  color: #7fb8ff;
+  background: #10242b;
+  color: #6fd0ee;
   font: 600 9.5px/1.5 var(--mono);
 }
 .lateral-topo b:empty { display: none; }
@@ -672,7 +664,7 @@ select.campo { cursor: default; }
   cursor: default;
   transition: background .13s ease, border-color .13s ease;
 }
-.medidor:hover { background: #1b1e24; border-color: #2c2f37; }
+.medidor:hover { background: #1e1f23; border-color: #2e2f33; }
 .medidor i {
   font: 600 10.5px/1 var(--mono);
   font-style: normal;
@@ -682,7 +674,7 @@ select.campo { cursor: default; }
 .medidor .trilho {
   width: 64px; height: 7px;
   border-radius: 4px;
-  background: #191c22;
+  background: #1b1c1f;
   overflow: hidden;
 }
 .medidor .trilho b {
@@ -772,8 +764,8 @@ select.campo { cursor: default; }
   from { background: #2a2515; border-color: #6b5c33; }
 }
 
-.sessao.rodando { border-left-color: #3f7fd0; }
-.sessao.rodando .sessao-pulso { background: #4f9cf9; }
+.sessao.rodando { border-left-color: #1f8fb8; }
+.sessao.rodando .sessao-pulso { background: #2ab4e0; }
 
 .sessao-linha { font-weight: 500; }
 .sessao.aguardando .sessao-linha { color: #d5b06b; }
@@ -787,7 +779,7 @@ select.campo { cursor: default; }
   padding: 9px 16px;
   border: 1px solid var(--linha-forte);
   border-radius: 9px;
-  background: #171a20;
+  background: #17181b;
   color: var(--apagado);
   font-size: 12px;
   box-shadow: 0 12px 34px rgba(0, 0, 0, .7);
@@ -802,7 +794,7 @@ select.campo { cursor: default; }
   display: flex; align-items: center; gap: 7px;
   padding: 0 11px 0 9px; height: 28px;
   border-radius: 7px;
-  background: #171a20;
+  background: #17181b;
 }
 .barra-conta i { width: 6px; height: 6px; border-radius: 50%; }
 .barra-conta b {
@@ -813,35 +805,8 @@ select.campo { cursor: default; }
 .barra-conta { flex: 0 0 auto; }
 
 
-.divisor {
-  display: flex; align-items: center; gap: 9px;
-  flex: 0 0 auto;
-  margin: 4px 11px 8px;
-  padding-top: 10px;
-  border-top: 1px solid #131519;
-  cursor: ns-resize;
-  user-select: none;
-  transition: border-color .13s ease, color .13s ease;
-  font: 600 9.5px/1 var(--mono);
-  letter-spacing: .1em;
-  text-transform: uppercase;
-  color: var(--apagado);
-}
-.divisor::before { content: ""; flex: 0 0 8px; height: 1px; background: #23262c; }
-.divisor::after { content: ""; flex: 1; height: 1px; background: #23262c; }
-/* na largura padrao o rotulo quebrava em duas linhas coladas e o traco da direita sumia */
-#divisor-rotulo { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 
-.sessao.externa {
-  background: transparent;
-  border-style: dashed;
-  border-left-style: solid;
-  opacity: .72;
-}
-.sessao.externa:hover { background: #191c22; }
-.sessao.externa .sessao-pasta { font-weight: 400; }
 
-.lateral-lista.encolhida { height: auto; min-height: 0; flex: 0 0 auto; overflow: hidden; }
 
 .medidor u {
   text-decoration: none;
@@ -860,7 +825,7 @@ select.campo { cursor: default; }
 .sessao-ctx .ctx-trilho {
   width: 30px; height: 4px;
   border-radius: 3px;
-  background: #16181e;
+  background: #1c1d20;
   overflow: hidden;
 }
 /* o mesmo verde da barra de baixo: e a mesma medida, da mesma aba */
@@ -871,9 +836,6 @@ select.campo { cursor: default; }
 .sessao-ctx.critico .ctx-trilho b { background: #cc5560; }
 .sessao-ctx.critico em { color: #f0808a; }
 
-.divisor:hover, .divisor.puxando { border-top-color: #2c333d; color: var(--apagado-2); }
-.lateral.arrastando { cursor: ns-resize; }
-.lateral.arrastando .lateral-lista { pointer-events: none; }
 
 .nova-aba {
   display: flex; align-items: center; gap: 9px;
@@ -881,14 +843,14 @@ select.campo { cursor: default; }
   padding: 9px 11px;
   border: 1px solid var(--linha);
   border-radius: 9px;
-  background: #171a1f;
+  background: #17181b;
   color: var(--apagado);
   font: 12.5px inherit;
   text-align: left;
   cursor: default;
   transition: background .13s ease, color .13s ease, border-color .13s ease;
 }
-.nova-aba:hover { background: #1d212a; color: var(--texto); border-color: var(--linha-forte); }
+.nova-aba:hover { background: #202125; color: var(--texto); border-color: var(--linha-forte); }
 .nova-aba .mais { font-size: 14px; line-height: 1; color: var(--acento); }
 
 .sessao.aba { cursor: default; }
@@ -897,7 +859,7 @@ select.campo { cursor: default; }
    fina, entao afundava em vez de saltar, e nao dava pra saber onde voce estava.
    Agora ela e a unica clara, com anel visivel e uma marca solida na lateral. */
 .sessao.aba.ativa {
-  background: #212734;
+  background: #26272b;
   border-color: #46506180;
   box-shadow: 0 0 0 1px rgba(79, 156, 249, .55), 0 2px 10px rgba(0, 0, 0, .45);
 }
@@ -909,11 +871,11 @@ select.campo { cursor: default; }
   border-radius: 3px 0 0 3px;
   background: var(--acento);
 }
-.sessao.aba.ativa .sessao-pasta { color: #f2f6fc; font-weight: 700; }
-.sessao.aba.ativa .sessao-origem { color: #7d8797; }
-.sessao.aba.ativa .sessao-origem b { color: #9aa5b5; }
-.sessao.aba.ativa .sessao-idade { color: #8a93a1; }
-.sessao.aba.ativa:hover { background: #262d3b; }
+.sessao.aba.ativa .sessao-pasta { color: #f7f7f8; font-weight: 700; }
+.sessao.aba.ativa .sessao-origem { color: #8a8b92; }
+.sessao.aba.ativa .sessao-origem b { color: #a6a7ad; }
+.sessao.aba.ativa .sessao-idade { color: #a0a1a7; }
+.sessao.aba.ativa:hover { background: #2a2b2f; }
 /* posicao relativa pra marca da direita ter onde se prender */
 .sessao { position: relative; }
 
@@ -926,32 +888,8 @@ select.campo { cursor: default; }
   background: transparent;
   transition: background .13s ease;
 }
-.puxador:hover, .puxador.ativo { background: #1d3550; }
+.puxador:hover, .puxador.ativo { background: #15404e; }
 
-/* Com a lateral aberta a alca ficava em cima da rolagem da lista, e agarrar a rolagem na
-   altura do meio recolhia a lateral; agora ela mora no puxador e no respiro do terminal. */
-.alca {
-  position: absolute;
-  top: 50%; left: 0;
-  width: 12px; height: 46px;
-  transform: translateY(-50%);
-  display: grid; place-items: center;
-  border: 1px solid var(--linha);
-  border-radius: 8px;
-  background: #1b1e24;
-  color: var(--apagado-2);
-  cursor: default;
-  opacity: .55;
-  z-index: 12;
-  transition: opacity .13s ease, color .13s ease, background .13s ease;
-}
-.alca svg { width: 10px; height: 10px; }
-.alca:hover { opacity: 1; color: var(--texto); background: #232833; }
-/* com a lateral fechada a alca tapava a primeira coluna do terminal, onde o Claude desenha o
-   prompt: o puxador reserva a faixa dela e o terminal comeca depois */
-.lateral.fechada + .puxador { flex-basis: 16px; }
-.lateral.fechada + .puxador .alca { transform: translateY(-50%) rotate(180deg); left: 0; width: 16px; opacity: .8; }
-.lateral.fechada + .puxador .alca svg { width: 12px; height: 12px; }
 body.puxando-largura { cursor: ew-resize; }
 body.puxando-largura .tela { pointer-events: none; }
 
@@ -998,7 +936,7 @@ body.puxando-largura .tela { pointer-events: none; }
   padding: 26px 4px 6px 10px;
   border: 1px solid var(--linha);
   border-radius: 10px;
-  background: #131519;
+  background: #131417;
   overflow: hidden;
 }
 .palco.grade .rolagem-terminal,
@@ -1026,7 +964,7 @@ body.puxando-largura .tela { pointer-events: none; }
   top: 0; left: 0; right: 0;
   height: 24px;
   padding: 0 10px;
-  background: #14161b;
+  background: #18191c;
   border-bottom: 1px solid var(--linha);
   border-radius: 9px 9px 0 0;
   font: 500 10.5px/1 var(--mono);
@@ -1036,9 +974,9 @@ body.puxando-largura .tela { pointer-events: none; }
 }
 .palco.grade .tela.ativa .chapeu,
 .palco.dividido .tela.lado.ativa .chapeu {
-  background: #202634;
+  background: #202328;
   border-bottom-color: #46506180;
-  color: #8a93a1;
+  color: #a0a1a7;
 }
 /* a cor da conta na borda do chapeu: com varios paineis, um ponto de 6px nao dava conta */
 .palco.grade .chapeu,
@@ -1061,7 +999,7 @@ body.puxando-largura .tela { pointer-events: none; }
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   color: var(--apagado);
 }
-.chapeu-conta + .chapeu-nome::before { content: "· "; color: #33383f; }
+.chapeu-conta + .chapeu-nome::before { content: "· "; color: #35363b; }
 .palco.grade .chapeu,
 .palco.dividido .tela.lado .chapeu { container-type: inline-size; }
 .palco.grade .tela.ativa .chapeu-nome,
@@ -1069,7 +1007,7 @@ body.puxando-largura .tela { pointer-events: none; }
 
 .chapeu-estado { flex: 0 0 auto; }
 .chapeu-estado.pensando { color: #b088f0; }
-.chapeu-estado.rodando { color: #7fb8ff; }
+.chapeu-estado.rodando { color: #6fd0ee; }
 /* o painel parado esperando voce aprovar nao pode ser o mais apagado da grade */
 .chapeu-estado.aguardando { color: #d5b06b; }
 .chapeu-estado.parada { color: var(--fraco); }
@@ -1110,7 +1048,7 @@ body.puxando-largura .tela { pointer-events: none; }
   transition: background .12s ease, color .12s ease;
 }
 .seletor-layout button:hover { color: var(--texto); }
-.seletor-layout button.ativo { background: #141821; color: #7fb8ff; }
+.seletor-layout button.ativo { background: #10242b; color: #6fd0ee; }
 
 .lateral-topo { gap: 8px; }
 
@@ -1130,7 +1068,7 @@ svg { display: block; }
   height: 28px; padding: 0 12px 0 10px;
   border: 1px solid var(--linha);
   border-radius: 7px;
-  background: #171a1f;
+  background: #17181b;
 }
 .modelo i { width: 6px; height: 6px; border-radius: 50%; }
 .modelo { flex: 0 1 auto; min-width: 0; }
@@ -1150,7 +1088,7 @@ svg { display: block; }
   padding: 5px 6px 5px 10px;
   border: 1px solid var(--linha-forte);
   border-radius: 9px;
-  background: #171a1f;
+  background: #17181b;
   box-shadow: 0 12px 30px rgba(0, 0, 0, .7);
   animation: surge .13s ease;
 }
@@ -1170,13 +1108,13 @@ svg { display: block; }
   background: transparent; color: var(--apagado);
   font-size: 12px; cursor: default;
 }
-.busca button:hover { background: #1f232b; color: var(--texto); }
+.busca button:hover { background: #222327; color: var(--texto); }
 
-.conta-acao.entrar { border-color: #1d4a7d; background: #12233a; color: #9dc9ff; }
-.conta-acao.entrar:hover { background: #17304f; color: #cfe4ff; }
+.conta-acao.entrar { border-color: #175a70; background: #0e2a34; color: #9ee2f6; }
+.conta-acao.entrar:hover { background: #123744; color: #d2f2fb; }
 
-#usar-logada { color: #7fb8ff; }
-#usar-logada:hover { background: #1f232b; }
+#usar-logada { color: #6fd0ee; }
+#usar-logada:hover { background: #222327; }
 
 /* nome em cima e e-mail embaixo, os dois com o espaco que sobrar: lado a lado, o nome ficava
    preso em 120px e o e-mail virava tres letras e reticencias */
@@ -1197,14 +1135,11 @@ svg { display: block; }
   letter-spacing: 0;
   font-size: 10.5px;
 }
-.sessao-linha .ferramenta { color: #5f6a78; font-weight: 600; }
-.sessao.rodando .sessao-linha .ferramenta { color: #5d8bbf; }
+.sessao-linha .ferramenta { color: #73747b; font-weight: 600; }
+.sessao.rodando .sessao-linha .ferramenta { color: #4ea6c4; }
 
 /* barra lateral colorida e o sinal forte; o resto do cartao fica calmo */
 .sessao { border-left-width: 3px; }
-/* So o cartao de fora desbota. A aba aberta em que o Claude esperou mais de 20 minutos
-   ficava mais apagada que um shell morto, e na volta do almoco parecia ter caido. */
-.sessao.externa.parada { opacity: .5; }
 .sessao.aguardando { border-left-color: #6b5c33; }
 
 .chapeu-estado {
@@ -1242,7 +1177,7 @@ svg { display: block; }
    Quem esta pensando pulsa; quem terminou ou parou fica com cor fixa e discreta. */
 .sessao.aguardando, .sessao.parada { animation: none; }
 .sessao.aguardando .sessao-pulso, .sessao.parada .sessao-pulso { animation: none; }
-.sessao.parada .sessao-pulso { background: #3a3f49; }
+.sessao.parada .sessao-pulso { background: #3c3d42; }
 .sessao.parada .sessao-linha { color: var(--apagado); }
 
 .palco.grade .tela.aguardando, .palco.grade .tela.parada,
@@ -1250,38 +1185,7 @@ svg { display: block; }
 .palco.grade .tela.aguardando .chapeu, .palco.grade .tela.parada .chapeu,
 .palco.dividido .tela.lado.aguardando .chapeu, .palco.dividido .tela.lado.parada .chapeu { animation: none; }
 
-.divisor-olho {
-  flex: 0 0 auto;
-  width: 20px; height: 18px;
-  display: grid; place-items: center;
-  border: 0; border-radius: 5px;
-  background: transparent; color: var(--apagado);
-  cursor: default;
-}
-.divisor-olho svg { width: 13px; height: 13px; }
-.divisor-olho:hover { background: #1f232b; color: var(--texto); }
 
-.mostrar-fora {
-  margin: 6px 8px 8px;
-  padding: 8px;
-  border: 1px dashed var(--linha);
-  border-radius: 8px;
-  background: transparent;
-  color: var(--apagado-2);
-  font: 11.5px inherit;
-  cursor: default;
-}
-.mostrar-fora:hover { background: #1b1e24; color: var(--texto); }
-.mostrar-fora b {
-  display: inline-block;
-  min-width: 17px;
-  margin-left: 3px;
-  padding: 1px 5px;
-  border-radius: 20px;
-  background: #1e2a3a;
-  color: #7fb8ff;
-  font: 600 10.5px/1.5 var(--mono);
-}
 
 .menu-escudo {
   margin-left: auto;
@@ -1295,7 +1199,7 @@ svg { display: block; }
   text-transform: uppercase;
   cursor: default;
 }
-.menu-escudo:hover { background: #1f232b; color: #d5b06b; border-color: #4a4029; }
+.menu-escudo:hover { background: #222327; color: #d5b06b; border-color: #4a4029; }
 .menu-escudo[disabled], .menu-escudo.indisponivel { opacity: .35; }
 
 /* --------------------------------------------------------------- densidade */
@@ -1305,7 +1209,6 @@ svg { display: block; }
 [data-densidade="compacta"] .sessao-origem { display: none; }
 [data-densidade="compacta"] .sessao-topo { margin-bottom: 3px; }
 [data-densidade="compacta"] .sessao-rodape { margin-top: 3px; }
-[data-densidade="compacta"] .nova-aba { padding: 6px 11px; margin-bottom: 2px; }
 
 /* ------------------------------------------------------------- tela vazia */
 
@@ -1350,7 +1253,7 @@ svg { display: block; }
   padding: 1px 5px;
   border: 1px solid var(--acento);
   border-radius: 5px;
-  background: #0c0e12;
+  background: #0b0c0d;
   color: var(--texto);
   font: 600 12.5px inherit;
   outline: none;
@@ -1378,11 +1281,11 @@ input:focus-visible {
 /* cromo: os icones sem moldura, so o fundo no hover; a pilula do uso e a unica com borda,
    porque e um botao de estado e o ligado precisa se ver de longe */
 .icone { border-color: transparent; transition: background .14s ease, color .14s ease; }
-.icone:hover { background: #22262e; }
+.icone:hover { background: #25262a; }
 .pilula { border-color: var(--linha); }
-.pilula[aria-pressed="true"] { background: #1b2433; border-color: #2c4566; color: #dfe9f7; }
-.pilula[aria-pressed="true"]:hover { background: #20304a; }
-.pilula-ponto.sem-dado { background: #3a3f49; }
+.pilula[aria-pressed="true"] { background: #12262e; border-color: #1d5568; color: #e3f5fa; }
+.pilula[aria-pressed="true"]:hover { background: #163340; }
+.pilula-ponto.sem-dado { background: #3c3d42; }
 
 /* ------------------------------------------------------------ cartoes */
 
@@ -1396,7 +1299,7 @@ input:focus-visible {
   padding: 8px 10px 8px 10px;
   margin-bottom: 3px;
   border: 1px solid transparent;
-  border-left: 3px solid #2a2f38;
+  border-left: 3px solid #2b2c30;
   border-radius: 8px;
   background: transparent;
   transition: background .14s ease, border-color .14s ease;
@@ -1419,22 +1322,21 @@ input:focus-visible {
   justify-content: flex-end;
   flex-wrap: nowrap;
   gap: 8px;
-  font: 500 11px/1.45 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  font: 500 11px/1.45 var(--sans);
 }
 .sessao-rodape > span:not(.sessao-conta):not(.sessao-ctx) { max-width: 90px; color: var(--fraco); }
 /* a conta e so o nome na cor dela: o selo com fundo era uma terceira caixa dentro do cartao */
 .sessao-conta { padding: 0; background: none; border-radius: 0; max-width: 110px; }
-.sessao:hover { background: #181b21; }
-.sessao.externa { border-color: #262a31; border-left-color: #2a2f38; }
+.sessao:hover { background: #1a1b1e; }
 
 /* a aba em que voce esta: o fundo mais claro e a marca solida na direita bastam, sem o anel
    azul em volta, que somado a marca gritava mais que um terminal pensando */
 .sessao.aba.ativa {
-  background: #1d222c;
-  border-color: #2a313d;
+  background: #1f2024;
+  border-color: #2e2f33;
   box-shadow: 0 1px 6px rgba(0, 0, 0, .35);
 }
-.sessao.aba.ativa:hover { background: #212734; }
+.sessao.aba.ativa:hover { background: #26272b; }
 .sessao.aba.ativa .sessao-linha { color: var(--apagado-2); }
 .sessao.aba.ativa .sessao-pasta { font-weight: 600; }
 
@@ -1443,33 +1345,33 @@ input:focus-visible {
 .lateral-topo { padding: 12px 12px 8px 14px; color: var(--apagado-3); }
 .seletor-layout { margin-right: 0; }
 .lateral-lista { padding: 0 8px 8px; }
-.nova-aba { background: #16191e; }
+.nova-aba { background: #17181b; }
 
 /* --------------------------------------------------------------- menu */
 
-.menu { padding: 5px; background: #17191f; border-color: #2e333c; box-shadow: 0 16px 44px rgba(0, 0, 0, .62); }
+.menu { padding: 5px; background: #1a1b1e; border-color: #303136; box-shadow: 0 16px 44px rgba(0, 0, 0, .62); }
 .menu-titulo {
   padding: 7px 9px 5px;
-  font: 600 10.5px/1 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  font: 600 10.5px/1 var(--sans);
   letter-spacing: .03em;
   text-transform: none;
   color: var(--apagado-3);
 }
 .menu-item { padding: 6px 9px; border-radius: 6px; transition: background .12s ease, color .12s ease; }
-.menu-item:hover { background: #22262e; }
+.menu-item:hover { background: #25262a; }
 .menu-icone { width: 14px; height: 14px; flex: 0 0 auto; color: var(--apagado-3); transition: color .12s ease; }
 .menu-item:hover .menu-icone { color: var(--texto); }
 .menu-item .nome { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.menu-item .selo { font: 500 10.5px/1 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; }
+.menu-item .selo { font: 500 10.5px/1 var(--sans); }
 .menu-acao { color: var(--apagado-2); font-size: 12.5px; }
 .menu-acao:hover { color: var(--texto); }
-#usar-logada .menu-icone { color: #6ea8ec; }
+#usar-logada .menu-icone { color: #5cc4e6; }
 
 /* o Adm mora em cada shell, mas so aparece com o mouse na linha ou com o foco do teclado nele */
 .menu-escudo {
   display: inline-flex; align-items: center; gap: 4px;
   padding: 3px 7px;
-  font: 500 10.5px/1 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  font: 500 10.5px/1 var(--sans);
   letter-spacing: 0;
   text-transform: none;
   opacity: 0;
@@ -1489,43 +1391,43 @@ input:focus-visible {
 .caixa {
   width: 400px;
   padding: 20px 22px 18px;
-  border-color: #2e333c;
+  border-color: #303136;
   border-radius: 12px;
-  background: #17191f;
+  background: #1a1b1e;
   box-shadow: 0 24px 60px rgba(0, 0, 0, .6);
 }
-.caixa-titulo { font-size: 14px; font-weight: 600; margin-bottom: 8px; color: #eef2f8; }
+.caixa-titulo { font-size: 14px; font-weight: 600; margin-bottom: 8px; color: #f4f4f5; }
 .caixa-texto { color: var(--apagado-2); font-size: 12.5px; line-height: 1.6; }
 .caixa-botoes { margin-top: 18px; }
 
 .campo {
   padding: 8px 11px;
-  border-color: #30353e;
+  border-color: #323338;
   border-radius: 7px;
-  background: #121418;
-  font: 13px "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  background: #101113;
+  font: 13px var(--sans);
   transition: border-color .14s ease, background .14s ease;
 }
-.campo:hover { border-color: #3a404b; }
-.campo:focus { border-color: var(--acento); background: #101216; }
+.campo:hover { border-color: #3e3f44; }
+.campo:focus { border-color: var(--acento); background: #0e0f11; }
 /* o que e codigo continua em fonte de codigo: comando, variavel, numero e o editor */
 .ferramenta-linha .campo, #cfg-editor, #cfg-historico { font-family: var(--mono); }
 .campo-rot { color: var(--apagado-2); font-size: 12px; }
-.campo-dica { font: 11.5px/1.55 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; }
+.campo-dica { font: 11.5px/1.55 var(--sans); }
 
 .botao {
   display: inline-flex; align-items: center; gap: 6px;
   padding: 7px 14px;
-  border-color: #30353e;
+  border-color: #323338;
   border-radius: 7px;
   color: var(--texto);
-  font: 12.5px "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  font: 12.5px var(--sans);
   transition: background .14s ease, color .14s ease, border-color .14s ease;
 }
 .botao svg { width: 13px; height: 13px; flex: 0 0 auto; }
-.botao:hover { background: #22262e; border-color: #3a404b; }
-.botao-forte { border-color: #2b5f9e; background: #1f4f8a; color: #eaf3ff; }
-.botao-forte:hover { background: #2660a6; border-color: #3570b8; color: #fff; }
+.botao:hover { background: #25262a; border-color: #3e3f44; }
+.botao-forte { border-color: #1c6f8c; background: #17627c; color: #eafaff; }
+.botao-forte:hover { background: #1c7391; border-color: #2383a3; color: #fff; }
 .botao-perigo { border-color: #5a262c; background: #3a1a1f; color: #ffd0d4; }
 .botao-perigo:hover { background: #4a1f25; color: #fff; }
 
@@ -1535,15 +1437,15 @@ input:focus-visible {
   grid-template-columns: 210px 1fr;
   width: min(940px, 94vw);
   height: min(660px, 90vh);
-  border-color: #2e333c;
-  background: #15171c;
+  border-color: #303136;
+  background: #18191c;
   box-shadow: 0 28px 80px rgba(0, 0, 0, .65);
 }
 .painel:focus { outline: none; }
-.painel-nav { gap: 1px; padding: 18px 10px; background: #111318; border-right-color: #23272e; }
+.painel-nav { gap: 1px; padding: 18px 10px; background: #131417; border-right-color: #232428; }
 .painel-marca {
   padding: 2px 10px 16px;
-  font: 600 13px/1 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  font: 600 13px/1 var(--sans);
   letter-spacing: 0;
   text-transform: none;
   color: var(--texto);
@@ -1556,8 +1458,8 @@ input:focus-visible {
   font-size: 12.5px;
 }
 .nav-item svg { width: 15px; height: 15px; flex: 0 0 auto; }
-.nav-item:hover { background: #1b1e24; color: var(--texto); }
-.nav-item.ativa { background: #1f242d; color: #eef2f8; }
+.nav-item:hover { background: #1e1f23; color: var(--texto); }
+.nav-item.ativa { background: #232428; color: #f4f4f5; }
 .nav-item.ativa svg { color: var(--acento); }
 /* o anel so pra quem chega pelo teclado; o clique nao deixa marca */
 .nav-item:focus { outline: none; }
@@ -1566,22 +1468,22 @@ input:focus-visible {
 .painel-corpo { padding: 26px 32px 36px; }
 .painel-fechar { display: grid; place-items: center; top: 16px; right: 18px; transition: background .14s ease, color .14s ease; }
 .painel-fechar svg { width: 14px; height: 14px; }
-.secao h2 { margin: 0 0 4px; font-size: 17px; font-weight: 600; color: #eef2f8; }
+.secao h2 { margin: 0 0 4px; font-size: 17px; font-weight: 600; color: #f4f4f5; }
 
 .grupo-titulo {
   margin: 22px 0 8px 2px;
-  font: 600 11.5px/1 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  font: 600 11.5px/1 var(--sans);
   letter-spacing: .01em;
   color: var(--apagado-2);
 }
 .secao h2 + .grupo-titulo { margin-top: 18px; }
 .grupo {
   padding: 0 16px;
-  border: 1px solid #262a31;
+  border: 1px solid #27282c;
   border-radius: 10px;
-  background: #191c22;
+  background: #1b1c1f;
 }
-.grupo .linha { padding: 12px 0; border-bottom: 1px solid #23272e; }
+.grupo .linha { padding: 12px 0; border-bottom: 1px solid #232428; }
 /* a ultima linha a vista nao leva traco, mesmo com a de aviso escondida depois dela */
 .grupo .linha:not(:has(~ .linha:not([hidden]))) { border-bottom: 0; }
 .rot { gap: 2px; min-width: 0; }
@@ -1596,27 +1498,27 @@ select.campo-curto { width: 216px; min-width: 0; max-width: none; padding-right:
 .linha.desligada .chave { pointer-events: none; }
 
 .chave { width: 34px; height: 20px; }
-.chave span { background: #2c313a; transition: background .16s ease; }
-.chave span::after { top: 3px; left: 3px; width: 14px; height: 14px; background: #9aa3b1; transition: transform .16s ease, background .16s ease; }
-.chave input:checked + span { background: #2f6fc0; }
+.chave span { background: #2f3034; transition: background .16s ease; }
+.chave span::after { top: 3px; left: 3px; width: 14px; height: 14px; background: #a6a7ad; transition: transform .16s ease, background .16s ease; }
+.chave input:checked + span { background: #1a86a9; }
 .chave input:checked + span::after { transform: translateX(14px); background: #fff; }
-.chave:hover span { background: #353b45; }
-.chave:hover input:checked + span { background: #387ad0; }
+.chave:hover span { background: #38393e; }
+.chave:hover input:checked + span { background: #1f95bb; }
 
-.amostra { margin: 4px 0 14px; padding: 12px 14px; border-color: #23272e; border-radius: 8px; background: #0f1114; }
+.amostra { margin: 4px 0 14px; padding: 12px 14px; border-color: #232428; border-radius: 8px; background: #0e0f11; }
 .ajuda { margin: 6px 0 16px; max-width: 620px; font-size: 12px; line-height: 1.6; color: var(--apagado-3); }
 
-.conta-linha { padding: 10px 14px; margin-bottom: 6px; border-color: #262a31; border-radius: 10px; background: #191c22; }
-.conta-acao { border-color: #30353e; border-radius: 6px; color: var(--texto); padding: 5px 10px; transition: background .14s ease, color .14s ease, border-color .14s ease; }
-.conta-acao:hover { background: #22262e; }
-.conta-acao.entrar { border-color: #2b5f9e; background: #1f4f8a; color: #eaf3ff; }
-.conta-acao.entrar:hover { background: #2660a6; color: #fff; }
+.conta-linha { padding: 10px 14px; margin-bottom: 6px; border-color: #27282c; border-radius: 10px; background: #1b1c1f; }
+.conta-acao { border-color: #323338; border-radius: 6px; color: var(--texto); padding: 5px 10px; transition: background .14s ease, color .14s ease, border-color .14s ease; }
+.conta-acao:hover { background: #25262a; }
+.conta-acao.entrar { border-color: #1c6f8c; background: #17627c; color: #eafaff; }
+.conta-acao.entrar:hover { background: #1c7391; color: #fff; }
 .botoes-contas { justify-content: flex-start; margin: 10px 0 0; }
 
-.ferramenta-linha { padding: 12px 14px; border-color: #262a31; border-radius: 10px; background: #191c22; }
+.ferramenta-linha { padding: 12px 14px; border-color: #27282c; border-radius: 10px; background: #1b1c1f; }
 .ferramenta-linha .titulo { font-weight: 600; }
 .ferramenta-linha label {
-  font: 500 11px/1 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  font: 500 11px/1 var(--sans);
   letter-spacing: 0;
   text-transform: none;
   color: var(--apagado-2);
@@ -1629,7 +1531,7 @@ select.campo-curto { width: 216px; min-width: 0; max-width: none; padding-right:
   display: flex; align-items: center;
   margin: 0;
   padding: 9px 0;
-  border-bottom: 1px solid #23272e;
+  border-bottom: 1px solid #232428;
 }
 .atalhos dt { gap: 4px; padding-right: 28px; }
 .atalhos dd { color: var(--apagado-2); font-size: 12.5px; }
@@ -1638,12 +1540,12 @@ kbd {
   display: inline-block;
   min-width: 22px;
   padding: 2px 6px;
-  border: 1px solid #343a45;
+  border: 1px solid #36373c;
   border-bottom-width: 2px;
   border-radius: 5px;
-  background: #20242c;
+  background: #232428;
   color: var(--texto);
-  font: 500 11px/1.35 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  font: 500 11px/1.35 var(--sans);
   text-align: center;
   white-space: nowrap;
 }
@@ -1662,11 +1564,11 @@ kbd {
   cursor: default;
   transition: background .14s ease;
 }
-.barra-conta:hover { background: #22262e; }
+.barra-conta:hover { background: #25262a; }
 .barra-conta b { font-size: 12px; }
 .medidor { height: 26px; padding: 0 9px; border-color: transparent; border-radius: 6px; gap: 7px; }
-.medidor:hover { background: #22262e; border-color: transparent; }
-.medidor .trilho { height: 5px; width: 56px; background: #272b33; }
+.medidor:hover { background: #25262a; border-color: transparent; }
+.medidor .trilho { height: 5px; width: 56px; background: #2a2b2f; }
 .medidor em { font-size: 12px; }
 .modelo { margin-left: auto; height: 26px; border-color: transparent; background: transparent; }
 .modelo b { font-size: 12px; }
@@ -1719,10 +1621,10 @@ kbd {
   width: 3px; height: 34px;
   transform: translate(-50%, -50%);
   border-radius: 2px;
-  background: #363c47;
+  background: #3a3b40;
   transition: background .14s ease, height .16s ease;
 }
-.divisoria:hover::after, .divisoria.ativo::after { height: 64px; background: #3d6ea8; }
+.divisoria:hover::after, .divisoria.ativo::after { height: 64px; background: #2a86a6; }
 /* o cartao do lado que nao esta em foco leva a mesma marca da direita, em cinza */
 .sessao.aba.na-divisao:not(.ativa)::after {
   content: "";
@@ -1730,7 +1632,7 @@ kbd {
   top: 8px; bottom: 8px; right: 0;
   width: 3px;
   border-radius: 3px 0 0 3px;
-  background: #4a5262;
+  background: #4d4e55;
 }
 body.puxando-divisao { cursor: col-resize; }
 /* sem isto o xterm de baixo do mouse seleciona texto enquanto a divisoria anda */
@@ -1752,9 +1654,9 @@ body.puxando-divisao .tela { pointer-events: none; }
   width: min(640px, 100%);
   max-height: min(540px, calc(100vh - 96px));
   display: flex; flex-direction: column;
-  border: 1px solid #2e333c;
+  border: 1px solid #303136;
   border-radius: 12px;
-  background: #17191f;
+  background: #1a1b1e;
   box-shadow: 0 24px 60px rgba(0, 0, 0, .6);
   overflow: hidden;
   animation: surge-caixa .16s ease;
@@ -1764,14 +1666,14 @@ body.puxando-divisao .tela { pointer-events: none; }
   flex: 0 0 auto;
   height: 46px;
   padding: 0 16px;
-  border-bottom: 1px solid #23272e;
+  border-bottom: 1px solid #232428;
 }
 .paleta-lupa { width: 15px; height: 15px; flex: 0 0 auto; color: var(--apagado-3); }
 .paleta-busca input {
   flex: 1; min-width: 0;
   border: 0; background: transparent;
   color: var(--texto);
-  font: 14px "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  font: 14px var(--sans);
   outline: none;
   user-select: text;
 }
@@ -1787,12 +1689,12 @@ body.puxando-divisao .tela { pointer-events: none; }
 }
 .paleta-lista::-webkit-scrollbar { width: 10px; }
 .paleta-lista::-webkit-scrollbar-track { background: transparent; }
-.paleta-lista::-webkit-scrollbar-thumb { background: #3a404b; border-radius: 6px; border: 2px solid #17191f; }
-.paleta-lista::-webkit-scrollbar-thumb:hover { background: #5a6474; }
+.paleta-lista::-webkit-scrollbar-thumb { background: #3e3f44; border-radius: 6px; border: 2px solid #1a1b1e; }
+.paleta-lista::-webkit-scrollbar-thumb:hover { background: #63646b; }
 
 .paleta-grupo {
   padding: 10px 10px 5px;
-  font: 600 10.5px/1 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  font: 600 10.5px/1 var(--sans);
   letter-spacing: .03em;
   color: var(--apagado-3);
 }
@@ -1805,17 +1707,17 @@ body.puxando-divisao .tela { pointer-events: none; }
   cursor: default;
   transition: background .12s ease;
 }
-.paleta-item.escolhido { background: #232a36; }
+.paleta-item.escolhido { background: #1c2b31; }
 .paleta-icone { display: grid; place-items: center; width: 16px; height: 16px; flex: 0 0 auto; color: var(--apagado-3); transition: color .12s ease; }
 .paleta-icone svg { width: 15px; height: 15px; }
-.paleta-item.escolhido .paleta-icone { color: #7fb8ff; }
+.paleta-item.escolhido .paleta-icone { color: #6fd0ee; }
 .paleta-textos { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .paleta-rotulo {
   font-size: 13px; line-height: 1.35;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 /* as letras que casaram com o que voce digitou */
-.paleta-rotulo b { font-weight: 600; color: #7fb8ff; }
+.paleta-rotulo b { font-weight: 600; color: #6fd0ee; }
 .paleta-detalhe {
   display: flex; align-items: center; gap: 6px;
   min-width: 0;
@@ -1832,8 +1734,8 @@ body.puxando-divisao .tela { pointer-events: none; }
   margin-right: 4px;
   padding: 1px 7px;
   border-radius: 9px;
-  background: #1f2733;
-  color: #8fb6e6;
+  background: #14282f;
+  color: #8fd3ea;
   font-size: 10.5px;
 }
 .paleta-tag { font-size: 11px; color: var(--fraco); }
@@ -1843,7 +1745,7 @@ body.puxando-divisao .tela { pointer-events: none; }
   display: flex; align-items: center; gap: 16px;
   flex: 0 0 auto;
   padding: 7px 16px;
-  border-top: 1px solid #23272e;
+  border-top: 1px solid #232428;
   font-size: 11px;
   color: var(--apagado-3);
 }
@@ -1851,3 +1753,199 @@ body.puxando-divisao .tela { pointer-events: none; }
 .paleta-rodape span kbd:last-of-type { margin-right: 3px; }
 .paleta-rodape kbd { min-width: 18px; padding: 0 5px; font-size: 10px; line-height: 1.5; }
 .paleta-rodape kbd svg { display: inline-block; width: 9px; height: 9px; vertical-align: -1px; }
+
+/* ------------------------------------------------------------- repaginacao */
+
+/* Na linha do Warp: quase preto com a barra de cima mais funda que o terminal, abas em pilula, sem
+   borda em volta de cada coisa. Esta camada vem por ultimo de proposito e so desenha; o estado
+   continua dizendo o mesmo: violeta pensa, azul trabalha, ambar espera voce, vermelho e erro. */
+
+.cromo {
+  flex: 0 0 44px;
+  height: 44px;
+  gap: 6px;
+  padding: 0 8px 0 14px;
+  border-bottom: 0;
+  background: var(--cromo);
+}
+.marca-sinal { width: 15px; height: 15px; flex: 0 0 auto; color: var(--acento); }
+.marca { margin: 0; font: 600 13px/1 var(--sans); letter-spacing: 0; }
+.versao { margin: 0 8px 0 -1px; font: 500 10px/1 var(--mono); color: var(--fraco); }
+
+/* ------------------------------------------------------- botoes do topo */
+
+.icone { width: 30px; height: 30px; border-radius: 8px; color: var(--apagado); }
+.icone:hover { background: #1e1f23; }
+.pilula { height: 30px; padding: 0 12px 0 10px; border: 0; border-radius: 8px; font: 500 12px/1 var(--sans); }
+.pilula:hover { background: #1e1f23; }
+.pilula[aria-pressed="true"] { background: #12262e; color: #9ee2f6; }
+
+.janela-botoes { display: flex; align-items: center; gap: 2px; margin-left: 6px; }
+.janela-botao {
+  display: grid;
+  place-items: center;
+  width: 34px; height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--apagado-2);
+  cursor: default;
+  transition: background .1s ease, color .1s ease;
+}
+.janela-botao svg { width: 12px; height: 12px; }
+.janela-botao:hover { background: #25262a; color: var(--texto); }
+.janela-fechar:hover { background: #c8404a; color: #fff; }
+
+/* a janela sem a barra do sistema: um fio em volta pra ela nao sumir no fundo da area de trabalho */
+body.janela-propria:not(.maximizada)::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 95;
+  border: 1px solid #2b2c30;
+  pointer-events: none;
+}
+.bordas-janela i { position: fixed; z-index: 96; }
+body.maximizada .bordas-janela { display: none; }
+[data-borda="esquerda"] { left: 0; top: 8px; bottom: 8px; width: 4px; cursor: ew-resize; }
+[data-borda="direita"] { right: 0; top: 8px; bottom: 8px; width: 4px; cursor: ew-resize; }
+[data-borda="cima"] { top: 0; left: 8px; right: 8px; height: 4px; cursor: ns-resize; }
+[data-borda="baixo"] { bottom: 0; left: 8px; right: 8px; height: 4px; cursor: ns-resize; }
+[data-borda="cima-esquerda"] { top: 0; left: 0; width: 8px; height: 8px; cursor: nwse-resize; }
+[data-borda="cima-direita"] { top: 0; right: 0; width: 8px; height: 8px; cursor: nesw-resize; }
+[data-borda="baixo-esquerda"] { bottom: 0; left: 0; width: 8px; height: 8px; cursor: nesw-resize; }
+[data-borda="baixo-direita"] { bottom: 0; right: 0; width: 8px; height: 8px; cursor: nwse-resize; }
+
+/* ---------------------------------------------------------------- lateral */
+
+.lateral { background: #0f1012; border-right: 1px solid #1d1e21; }
+.lateral.fechada { border-right: 0; }
+.nova-aba {
+  flex: 0 0 auto;
+  margin: 10px 8px 2px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: #18191c;
+  color: var(--apagado-2);
+  font: 500 12.5px/1.2 var(--sans);
+}
+.nova-aba:hover { background: #1e1f23; color: var(--texto); border: 0; }
+.nova-aba .mais { color: var(--acento); }
+.nova-aba .mais svg { width: 14px; height: 14px; }
+.lateral-topo { padding: 12px 10px 6px 14px; font: 600 11px/1 var(--sans); letter-spacing: 0; text-transform: none; color: var(--apagado); }
+.seletor-layout { gap: 1px; margin: 0; padding: 0; border: 0; }
+.seletor-layout button { width: 24px; height: 22px; border-radius: 6px; color: var(--apagado); }
+.seletor-layout button svg { width: 13px; height: 13px; }
+.seletor-layout button:hover { background: #1e1f23; color: var(--texto); }
+.seletor-layout button.ativo { background: #1e1f23; color: var(--texto); }
+.lateral-topo b { background: #1e1f23; color: var(--apagado-2); font: 600 10px/1.5 var(--mono); }
+
+.sessao { padding: 9px 10px; margin-bottom: 2px; border: 0; border-left: 2px solid transparent; border-radius: 8px; }
+.sessao:hover { background: #17181b; }
+.sessao.aba.ativa { background: #1e1f23; border-color: transparent; box-shadow: none; }
+.sessao.aba.ativa:hover { background: #1e1f23; }
+.sessao.aba.ativa::after, .sessao.aba.na-divisao:not(.ativa)::after { display: none; }
+.sessao.aba.ativa .sessao-pasta { font-weight: 500; }
+.sessao-pasta { font-weight: 500; font-size: 12.5px; }
+.sessao-linha { font: 400 11.5px/1.45 var(--sans); }
+.sessao-origem { font: 400 11px/1.4 var(--sans); }
+.sessao-origem b { font-weight: 500; }
+.sessao.pensando { animation: none; }
+.sessao.aba.ativa.pensando { animation: none; }
+.sessao.pensando .sessao-linha { color: #b49ae0; }
+.sessao.rodando .sessao-linha { color: #6fd0ee; }
+.sessao.aguardando .sessao-linha { color: #e0b458; }
+.sessao.aguardando .sessao-pulso { background: #e0b458; }
+.sessao.rodando .sessao-pulso { background: var(--acento); }
+
+.puxador { flex: 0 0 3px; margin-left: -3px; z-index: 5; }
+.puxador:hover, .puxador.ativo { background: #1c6f8c; }
+.lateral.fechada + .puxador { display: none; }
+
+/* --------------------------------------------------------------- terminal */
+
+.palco { background: var(--preto); }
+.tela { padding: 12px 4px 8px 16px; }
+.tela.tela-painel { padding: 0; }
+.rolagem-terminal { top: 12px; bottom: 8px; border: 0; border-radius: 6px; background: transparent; }
+.rolagem-terminal-polegar { left: 3px; right: 3px; border-radius: 4px; background: #3e3f44; }
+.rolagem-terminal:hover .rolagem-terminal-polegar { background: #63646b; }
+.rolagem-terminal.arrastando .rolagem-terminal-polegar { background: #8d8e94; }
+.rolagem-terminal.sem-historico .rolagem-terminal-polegar { background: #1e1f23; }
+
+.palco.grade, .palco.dividido { background: var(--cromo); }
+.palco.grade .tela,
+.palco.dividido .tela.lado { padding: 34px 4px 6px 12px; border-color: #1d1e21; background: var(--preto); }
+.palco.grade .rolagem-terminal,
+.palco.dividido .tela.lado .rolagem-terminal { top: 34px; }
+.palco.grade .tela.ativa,
+.palco.dividido .tela.lado.ativa { border-color: #1f8fb8; box-shadow: none; }
+.palco.grade .tela:not(.ativa),
+.palco.dividido .tela.lado:not(.ativa) { opacity: 1; }
+.palco.grade .chapeu,
+.palco.dividido .tela.lado .chapeu { height: 28px; padding: 0 12px; border-bottom: 0; background: #17181b; font: 500 11.5px/1 var(--sans); }
+.palco.grade .tela.ativa .chapeu,
+.palco.dividido .tela.lado.ativa .chapeu { background: #1e1f23; border-bottom: 0; }
+.chapeu-estado { letter-spacing: 0; text-transform: none; font-size: 11px; }
+
+/* ---------------------------------------------------------- barra de baixo */
+
+.rodape { height: 30px; padding: 0 10px; gap: 2px; border-top: 1px solid #1d1e21; background: var(--preto); }
+.barra-conta { height: 22px; padding: 0 8px 0 6px; }
+.barra-conta b { font: 500 11.5px/1 var(--sans); color: var(--apagado-2); }
+.medidor { height: 22px; padding: 0 8px; gap: 6px; }
+.medidor i { font: 500 10.5px/1 var(--sans); color: var(--fraco); }
+.medidor .trilho { width: 44px; height: 3px; background: #25262a; }
+.medidor em { font: 500 11px/1 var(--mono); color: var(--apagado-2); }
+.medidor u { font: 400 10.5px/1 var(--mono); color: var(--fraco); }
+.modelo { height: 22px; }
+.modelo b { font: 500 11.5px/1 var(--sans); color: var(--apagado-2); letter-spacing: 0; }
+
+/* ------------------------------------------------------ menus e caixas */
+
+.menu, .caixa, .painel, .paleta {
+  border: 1px solid #2b2c30;
+  background: #1a1b1e;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, .55);
+}
+.menu { border-radius: 10px; }
+.menu-item { padding: 7px 10px; }
+.menu-item:hover { background: #25262a; }
+.veu { background: rgba(0, 0, 0, .55); }
+.paleta-veu { background: rgba(0, 0, 0, .35); }
+.paleta { border-radius: 12px; }
+.paleta-busca { height: 50px; border-bottom-color: #25262a; }
+.paleta-item { border-radius: 8px; }
+.paleta-item.escolhido { background: #25262a; }
+.paleta-rodape { border-top-color: #25262a; }
+.busca { top: 52px; border-color: #2b2c30; background: #1a1b1e; }
+
+.painel-nav { background: #141517; border-right-color: #25262a; }
+.nav-item.ativa { background: #25262a; }
+.grupo { border: 0; background: #202125; }
+.grupo .linha { border-bottom-color: #2a2b2f; }
+.conta-linha, .ferramenta-linha { border: 0; background: #202125; }
+.botao-forte { border-color: transparent; background: #17627c; color: #eafaff; }
+.botao-forte:hover { background: #1c7391; border-color: transparent; }
+.chave input:checked + span { background: #1a86a9; }
+.chave:hover input:checked + span { background: #1f95bb; }
+
+/* ------------------------------------------------------------- tela vazia */
+
+.vazio-marca { font: 600 22px/1 var(--sans); letter-spacing: 0; }
+.vazio-atalhos dt { font: 500 11px/1.4 var(--mono); color: var(--fraco); }
+
+/* cada informacao na sua linha, sem uma cortar a outra: dividindo a linha, a origem virava
+   "Claude Cod..." e o estado "ready permis" */
+.sessao-origem { grid-column: 1 / -1; grid-row: 2; min-width: 0; margin-bottom: 0; }
+.sessao-rodape { grid-column: 1 / -1; grid-row: 4; justify-content: flex-start; padding-left: 14px; margin-top: 3px; }
+.sessao-linha { grid-column: 1 / -1; grid-row: 3; margin-top: 2px; }
+.sessao.aba.ativa.pensando .sessao-linha { color: #b49ae0; }
+.sessao.aba.ativa.rodando .sessao-linha { color: #6fd0ee; }
+.sessao.aba.ativa.aguardando .sessao-linha { color: #e0b458; }
+
+/* cartao de shell puro: sem origem, a linha do estado e a conta dividem a mesma linha */
+.sessao:has(.sessao-origem:empty) .sessao-linha { grid-column: 1; grid-row: 2; margin-top: 0; }
+.sessao:has(.sessao-origem:empty) .sessao-rodape { grid-column: 2; grid-row: 2; justify-content: flex-end; padding-left: 0; margin-top: 0; }
