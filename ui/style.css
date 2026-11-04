@@ -1949,3 +1949,35 @@ body.maximizada .bordas-janela { display: none; }
 /* cartao de shell puro: sem origem, a linha do estado e a conta dividem a mesma linha */
 .sessao:has(.sessao-origem:empty) .sessao-linha { grid-column: 1; grid-row: 2; margin-top: 0; }
 .sessao:has(.sessao-origem:empty) .sessao-rodape { grid-column: 2; grid-row: 2; justify-content: flex-end; padding-left: 0; margin-top: 0; }
+
+/* ---------------------------------------------------- monitor de recursos */
+
+/* Pra bater o olho enquanto programa, como no painel de uso: a barra diz o nivel de longe, e o numero
+   e a temperatura sao os mais claros da barra de cima. So ganham cor quando pedem atencao. Sem
+   transicao na barra: animar a cada leitura seria repintar a toa. */
+.recursos {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-right: 14px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.recurso { display: inline-flex; align-items: center; gap: 6px; cursor: default; }
+.recurso i { font: 600 11px/1 var(--sans); font-style: normal; color: var(--apagado-2); }
+.recurso b { font: 600 12.5px/1 var(--mono); color: var(--texto); }
+.recurso em { font: 500 12px/1 var(--mono); font-style: normal; color: var(--apagado-2); }
+.recurso em:empty { display: none; }
+.recurso-trilho { display: block; flex: 0 0 auto; width: 40px; height: 5px; border-radius: 3px; background: #25262a; overflow: hidden; }
+.recurso-trilho u { display: block; height: 100%; width: 0; border-radius: 3px; background: #4d9e6a; text-decoration: none; }
+/* o numero que muda de largura nao empurra os vizinhos a cada leitura */
+#rec-cpu b, #rec-gpu b { min-width: 4ch; text-align: right; }
+.recurso .alto { color: #e0b458; }
+.recurso .critico { color: #f0808a; }
+.recurso u.alto { background: #c99a4a; }
+.recurso u.critico { background: #cc5560; }
+/* janela menor: a barrinha cede primeiro, e so depois o monitor todo, antes de empurrar os botoes */
+@media (max-width: 1240px) { .recurso-trilho { display: none; } }
+@media (max-width: 860px) { .recursos { display: none; } }

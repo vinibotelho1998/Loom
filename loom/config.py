@@ -36,6 +36,8 @@ PADRAO = {
     "desenho": "auto",
     # no Linux a barra do Loom, com as abas, fica no lugar da do sistema; ligado, volta a do sistema
     "barraDoSistema": False,
+    # CPU, memoria e placa de video na barra de cima
+    "mostrarRecursos": True,
     # o painel de uso a direita dos terminais nasce fechado: o botao do topo ou Ctrl+Shift+U abre, e
     # o app lembra do que a pessoa escolheu
     "painelUso": False,

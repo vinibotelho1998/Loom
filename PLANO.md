@@ -144,6 +144,8 @@ Decidido em 04/11/2026, na repaginacao:
 - **Abas na vertical.** A lista da esquerda mostra toda aba, com o estado e a conta. Guias no topo foram testadas e a vertical ficou melhor pra acompanhar varios agentes.
 - **Painel de uso igual ao do Windows.** Ele fica com o visual e as cores do app instalado no Windows, abas Claude e Codex em cima e os chips de conta, qualquer que seja o tema do resto da janela.
 - **Barra propria no Linux.** O topo do Loom fica no lugar da barra de titulo do sistema, com os botoes de janela. Mover e mudar o tamanho ficam com o compositor, e o ajuste Barra de titulo do sistema volta a do sistema. No Windows continua a do sistema, pintada na cor do app, porque o Aero Snap depende dela.
+- **Monitor de recursos na barra de cima.** CPU, memoria, placa de video, memoria de video e temperaturas, sempre a vista, com a barrinha de nivel pra bater o olho. Le o /proc e o /sys numa thread a cada 2 s, sem programa externo, e so com a janela a vista. Fora do Linux nao ha leitura e ele nao aparece.
+- **Download do Linux.** O CI publica o `Loom-Linux-x64.tar.gz` na mesma release do exe, depois dele. Se o job do Linux falhar, o exe ja saiu.
 - **Terminais externos sairam.** A lista dos terminais abertos fora do Loom nao servia pra nada. Conversa antiga continua pela paleta.
 
 ---

@@ -78,7 +78,7 @@ class ConfiguracoesEmSecoes(unittest.TestCase):
             "geral": ("shellPadrao", "perfilPadrao", "abrirCliDaConta", "restaurarAbas", "guardarHistorico",
                       "retomarConversas", "confirmarFechar", "fecharAoSair", "editor", "historico"),
             "aparencia": ("fonte", "tamanhoFonte", "entrelinha", "espacoLetra", "cursor", "cursorPisca",
-                          "densidade", "desenho"),
+                          "densidade", "desenho", "mostrarRecursos"),
             "claude": ("mostrarUsoNaBarra", "esconderStatusLine", "confiarPastas", "avisarQuandoPronta",
                        "avisoDeLimite"),
         }

@@ -13,6 +13,13 @@
     <span class="marca">Loom</span>
     <span class="versao" id="versao-topo" title="Versão do Loom"></span>
     <span class="folga"></span>
+    <!-- so o que o kernel entrega de graca: o monitor nao pode pesar no que ele mede -->
+    <div class="recursos" id="recursos" hidden aria-label="Uso do computador">
+      <span class="recurso" id="rec-cpu" hidden><i>CPU</i><span class="recurso-trilho"><u></u></span><b></b><em></em></span>
+      <span class="recurso" id="rec-ram" hidden><i>RAM</i><span class="recurso-trilho"><u></u></span><b></b></span>
+      <span class="recurso" id="rec-gpu" hidden><i>GPU</i><span class="recurso-trilho"><u></u></span><b></b><em></em></span>
+      <span class="recurso" id="rec-vram" hidden><i>VRAM</i><span class="recurso-trilho"><u></u></span><b></b><em></em></span>
+    </div>
     <!-- um botao so pro uso: a pilula com o ponto de nivel abre e fecha o painel da direita -->
     <button class="pilula" id="alternar-uso" title="Painel de uso, Ctrl+Shift+U" aria-pressed="false"><span class="pilula-ponto"></span>Uso</button>
     <button class="icone" id="alternar-lateral" title="Mostrar ou esconder a lista de abas"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2" y="3" width="12" height="10" rx="1.6"/><path d="M6.4 3v10"/></svg></button>
@@ -303,6 +310,10 @@
                   <option value="software">Software</option>
                 </select>
               </div>
+            </div>
+            <div class="linha" id="linha-recursos" hidden>
+              <div class="rot"><span>Monitor de recursos</span><small>CPU, memória, placa de vídeo e temperaturas na barra de cima, atualizados a cada 2 segundos</small></div>
+              <div class="ctrl"><label class="chave"><input type="checkbox" id="cfg-mostrarRecursos"><span></span></label></div>
             </div>
             <div class="linha" id="linha-barra-sistema" hidden>
               <div class="rot"><span>Barra de título do sistema</span><small>Troca a barra do Loom, com as abas, pela do sistema. Vale na próxima vez que o Loom abrir</small></div>

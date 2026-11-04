@@ -28,6 +28,7 @@ from . import painel_uso as mod_painel_uso
 from . import perfis as mod_perfis
 from . import pty_session as mod_pty
 from . import queda as mod_queda
+from . import recursos as mod_recursos
 from . import sessao_salva as mod_salvas
 from . import sessoes as mod_sessoes
 from . import sessoes_codex as mod_sessoes_codex
@@ -70,6 +71,8 @@ RAIZ_DADOS = mod_caminhos.RAIZ
 ID_DE_CONVERSA = re.compile(r"[\w-]{1,128}")
 # o shell nem chegou a subir: a aba mostra o fim com este codigo, e o Enter tenta de novo
 CODIGO_SEM_SHELL = -1
+# leitura dos recursos sem resposta por mais que isso: o driver travou, e a proxima vai por outra thread
+LEITURA_DE_RECURSOS_PRESA = 10.0
 # o que a pagina recebe enquanto a prova do sudo roda; a resposta de verdade vem por elevacaoMudou
 ELEVACAO_PENDENTE = {"disponivel": False, "motivo": "verificando", "comando": ""}
 
@@ -191,6 +194,8 @@ class Bridge(QObject):
     _elevacaoRespondida = Signal(str)
     # a lista de sessoes, varrida fora da thread da tela a cada pedirSessoes
     sessoesProntas = Signal(str)
+    recursosProntos = Signal(str)
+    _recursosLidos = Signal(str)
     _sessoesVarridas = Signal(str)
     # o relatorio do painel de uso, coletado fora da thread da tela
     painelUsoPronto = Signal(str)
@@ -208,6 +213,9 @@ class Bridge(QObject):
         self._varrendo_desde = 0.0
         self._ultima_lista = "[]"
         self._sessoesVarridas.connect(self._entregar_sessoes)
+        self._recursosLidos.connect(self._entregar_recursos)
+        self._medidor: mod_recursos.Medidor | None = None
+        self._lendo_recursos_desde: float | None = None
         # Toda ligacao a um metodo da ponte nasce aqui, antes de o canal ler a ponte, e todo
         # metodo ligado e slot declarado. Ligado depois, um metodo sem @Slot vira slot novo na
         # hora, a numeracao dos sinais muda por baixo da pagina e ela passa a descartar todos,
@@ -1001,6 +1009,47 @@ class Bridge(QObject):
         self._varrendo = False
         self._ultima_lista = lista
         self.sessoesProntas.emit(lista)
+
+    # -- monitor de recursos --------------------------------------------
+
+    @Slot()
+    def pedirRecursos(self) -> None:
+        """Le CPU, memoria e placa fora da thread da tela; a resposta chega por recursosProntos.
+
+        O sensor da placa pode demorar com ela em carga cheia, e aqui isso pararia os terminais junto.
+        O pedido que chega com uma leitura andando fica com a resposta dela, e driver travado nao
+        acumula thread: passado o prazo, a proxima leitura comeca do zero.
+        """
+        agora = time.monotonic()
+        if self._lendo_recursos_desde is not None:
+            if agora - self._lendo_recursos_desde < LEITURA_DE_RECURSOS_PRESA:
+                return
+            self._medidor = None
+        self._lendo_recursos_desde = agora
+        medidor = self._medidor
+
+        def ler() -> None:
+            texto = "{}"
+            try:
+                texto = json.dumps((medidor or self._novo_medidor()).ler())
+            except Exception:  # noqa: BLE001 - sensor estranho apaga a barra, e nao derruba a tela
+                log.warning("nao consegui ler os recursos da maquina", exc_info=True)
+            try:
+                self._recursosLidos.emit(texto)
+            except RuntimeError:
+                # o app fechou no meio da leitura
+                pass
+
+        threading.Thread(target=ler, name="recursos", daemon=True).start()
+
+    def _novo_medidor(self) -> mod_recursos.Medidor:
+        self._medidor = mod_recursos.Medidor()
+        return self._medidor
+
+    @Slot(str)
+    def _entregar_recursos(self, texto: str) -> None:
+        self._lendo_recursos_desde = None
+        self.recursosProntos.emit(texto)
 
     # -- conversas da paleta --------------------------------------------
     # A paleta de comandos acha conversas de ate 30 dias, alem das 24 horas da lateral. A leitura vai

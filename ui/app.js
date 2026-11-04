@@ -1843,6 +1843,7 @@ const CAMPOS = [
   ["cursorPisca", "check"],
   ["densidade", "select"],
   ["barraDoSistema", "check"],
+  ["mostrarRecursos", "check"],
   ["desenho", "select"],
   ["shellPadrao", "select"],
   ["perfilPadrao", "select"],
@@ -1925,6 +1926,7 @@ function aplicarTudo() {
   preencherCampos();
   pintarUsoDaBarra();
   PainelUso.aplicar();
+  aplicarRecursos();
 }
 
 function ligarCampos() {
@@ -3521,6 +3523,135 @@ function ligarJanelaPropria(propria) {
 }
 
 
+/* ------------------------------------------------- monitor de recursos */
+
+const RECURSOS_A_CADA_MS = 2000;
+// as faixas de cada temperatura: a partir de onde chama atencao, e de onde o componente ja corta
+const CALOR = { cpu: [85, 95], gpu: [85, 100], vram: [95, 105] };
+// a ultima leitura veio com alguma coisa: fora do Linux nao vem nada, e a barra nem aparece
+let recursosComLeitura = false;
+
+function nivelDoUso(p) {
+  return typeof p !== "number" ? "" : p >= 95 ? "critico" : p >= 85 ? "alto" : "";
+}
+
+function nivelDoCalor(t, faixas) {
+  return typeof t !== "number" ? "" : t >= faixas[1] ? "critico" : t >= faixas[0] ? "alto" : "";
+}
+
+function textoDePorcento(p) {
+  return typeof p === "number" ? Math.round(p) + "%" : "--";
+}
+
+function textoDeGraus(t) {
+  return typeof t === "number" ? Math.round(t) + "°" : "";
+}
+
+function gigas(bytes) {
+  return (bytes / 1073741824).toFixed(1).replace(".", ",");
+}
+
+function textoDeMemoria(m) {
+  return gigas(m.usado) + "/" + Math.round(m.total / 1073741824) + " GB";
+}
+
+function itensDosRecursos(r) {
+  /* O que cada item da barra escreve, separado de quem pinta. Item sem leitura nao vem. */
+  const itens = {};
+  if (r.cpu) {
+    itens.cpu = {
+      valor: textoDePorcento(r.cpu.uso), nivel: nivelDoUso(r.cpu.uso), parte: r.cpu.uso || 0,
+      temp: textoDeGraus(r.cpu.temp), calor: nivelDoCalor(r.cpu.temp, CALOR.cpu),
+      dica: "Processador: " + textoDePorcento(r.cpu.uso) + " em uso" + (typeof r.cpu.temp === "number" ? ", " + Math.round(r.cpu.temp) + " °C" : ""),
+    };
+  }
+  if (r.ram && r.ram.total) {
+    const parte = (100 * r.ram.usado) / r.ram.total;
+    itens.ram = {
+      valor: textoDeMemoria(r.ram), nivel: nivelDoUso(parte), parte, temp: "", calor: "",
+      dica: "Memória: " + gigas(r.ram.usado) + " de " + gigas(r.ram.total) + " GB em uso, " + Math.round(parte) + "%",
+    };
+  }
+  if (r.gpu) {
+    const graus = [];
+    if (typeof r.gpu.temp === "number") graus.push("borda " + Math.round(r.gpu.temp) + " °C");
+    if (typeof r.gpu.juncao === "number") graus.push("junção " + Math.round(r.gpu.juncao) + " °C");
+    itens.gpu = {
+      valor: r.gpu.dormindo ? "off" : textoDePorcento(r.gpu.uso), nivel: nivelDoUso(r.gpu.uso), parte: r.gpu.uso || 0,
+      temp: textoDeGraus(r.gpu.temp), calor: nivelDoCalor(Math.max(r.gpu.temp || 0, r.gpu.juncao || 0), CALOR.gpu),
+      dica: r.gpu.dormindo
+        ? "Placa de vídeo dormindo"
+        : "Placa de vídeo: " + textoDePorcento(r.gpu.uso) + " em uso" + (graus.length ? ", " + graus.join(", ") : ""),
+    };
+  }
+  if (r.vram && r.vram.total) {
+    const parte = (100 * r.vram.usado) / r.vram.total;
+    itens.vram = {
+      valor: textoDeMemoria(r.vram), nivel: nivelDoUso(parte), parte,
+      temp: textoDeGraus(r.vram.temp), calor: nivelDoCalor(r.vram.temp, CALOR.vram),
+      dica: "Memória de vídeo: " + gigas(r.vram.usado) + " de " + gigas(r.vram.total) + " GB em uso" + (typeof r.vram.temp === "number" ? ", " + Math.round(r.vram.temp) + " °C" : ""),
+    };
+  }
+  return itens;
+}
+
+function escreverSeMudou(alvo, texto) {
+  // o monitor anda a cada 2 s: sem isto, cada volta repintava a barra mesmo com o numero igual
+  if (alvo && alvo.textContent !== texto) alvo.textContent = texto;
+}
+
+function pintarRecursos(json) {
+  let dados = {};
+  try {
+    dados = JSON.parse(json) || {};
+  } catch (e) {
+    dados = {};
+  }
+  const itens = itensDosRecursos(dados);
+  recursosComLeitura = Object.keys(itens).length > 0;
+  for (const nome of ["cpu", "ram", "gpu", "vram"]) {
+    const caixa = el("rec-" + nome);
+    const item = itens[nome];
+    if (caixa.hidden !== !item) caixa.hidden = !item;
+    if (!item) continue;
+    const valor = caixa.querySelector("b");
+    escreverSeMudou(valor, item.valor);
+    if (valor.className !== item.nivel) valor.className = item.nivel;
+    const barra = caixa.querySelector("u");
+    // em numero inteiro: uma casa decimal a mais seria um repinte a mais a cada leitura
+    const largura = Math.round(Math.min(Math.max(item.parte, 0), 100)) + "%";
+    if (barra.style.width !== largura) barra.style.width = largura;
+    if (barra.className !== item.nivel) barra.className = item.nivel;
+    const temp = caixa.querySelector("em");
+    if (temp) {
+      escreverSeMudou(temp, item.temp);
+      if (temp.className !== item.calor) temp.className = item.calor;
+    }
+    if (caixa.title !== item.dica) caixa.title = item.dica;
+  }
+  aplicarRecursos();
+}
+
+function aplicarRecursos() {
+  const ligado = cfg.mostrarRecursos !== false;
+  el("recursos").hidden = !ligado || !recursosComLeitura;
+  const linha = el("linha-recursos");
+  // no sistema em que nao ha o que mostrar, o ajuste tambem nao aparece
+  if (recursosComLeitura) linha.hidden = false;
+}
+
+function pedirRecursos() {
+  // com a janela escondida ninguem esta olhando, e desligado nao ha por que ler
+  if (!bridge || document.hidden || cfg.mostrarRecursos === false) return;
+  bridge.pedirRecursos();
+}
+
+function ligarRecursos() {
+  bridge.recursosProntos.connect(pintarRecursos);
+  pedirRecursos();
+  setInterval(pedirRecursos, RECURSOS_A_CADA_MS);
+}
+
 /* ------------------------------------------------------ limite do plano */
 
 let limitesPorPerfil = {};
@@ -4577,6 +4708,7 @@ new QWebChannel(qt.webChannelTransport, (channel) => {
           preencherCampos();
           ligarCampos();
           aplicarLarguraLateral();
+          ligarRecursos();
           // antes das abas: o terminal ja nasce na largura que sobra ao lado do painel
           PainelUso.ligar();
           reconectarAbas((reconectou) => {

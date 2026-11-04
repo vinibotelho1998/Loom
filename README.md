@@ -29,6 +29,9 @@ por id de mensagem, converte o horário de UTC para o fuso local e agrega por di
 semana, modelo e perfil. Leitura incremental: guarda o deslocamento de cada
 arquivo e nunca relê o que já contou.
 
+**Monitor da máquina.** No Linux, a barra de cima mostra CPU, memória, placa de
+vídeo, memória de vídeo e temperaturas, lidos direto do kernel, sem programa externo.
+
 **Terminal de verdade.** xterm.js na tela, o PTY do kernel no Linux, pywinpty no
 ConPTY do Windows, e a tela fala com os shells pelo canal interno do Qt, sem porta
 de rede nenhuma.
@@ -38,11 +41,12 @@ de rede nenhuma.
 **Windows:** baixe o **Loom-Setup.exe** da [última release](https://github.com/vinibotelho1998/Loom/releases/latest)
 e execute. Não precisa de Python nem do repositório.
 
-**Linux:** gere o build e coloque no menu do sistema. Testado no KDE Plasma em Wayland.
+**Linux:** baixe o **Loom-Linux-x64.tar.gz** da mesma release, extraia onde o app vai
+morar e coloque no menu do sistema. Não precisa de Python. Testado no KDE Plasma em Wayland.
 
 ```
-packaging/build.sh
-packaging/instalar-linux.sh
+tar -xzf Loom-Linux-x64.tar.gz
+Loom/instalar-linux.sh
 ```
 
 ## Rodar a partir do código-fonte
@@ -70,7 +74,9 @@ ficam fora do `rapido`.
 ## Gerar o instalador
 
 No Windows, `BUILD.bat` gera `dist\Loom-Setup.exe`, e o CI gera um a cada push na
-`main`. No Linux, `packaging/build.sh` gera a pasta `dist/Loom`.
+`main`. No Linux, `packaging/build.sh` gera a pasta `dist/Loom`, e
+`packaging/instalar-linux.sh` coloca ela no menu do sistema. O CI também publica o
+pacote de Linux na mesma release.
 
 ## Onde ficam os dados
 
