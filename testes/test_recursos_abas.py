@@ -498,7 +498,8 @@ class MonitorNoMeio(unittest.TestCase):
                   const versao = document.getElementById("versao-topo").getBoundingClientRect();
                   const uso = document.getElementById("alternar-uso").getBoundingClientRect();
                   return JSON.stringify({ meio: (r.left + r.right) / 2, janela: innerWidth,
-                    folgaEsquerda: r.left - versao.right, folgaDireita: uso.left - r.right });
+                    folgaEsquerda: r.left - versao.right, folgaDireita: uso.left - r.right,
+                    posicao: getComputedStyle(caixa).position });
                 })()"""
             ],
             largura=largura,
@@ -509,14 +510,19 @@ class MonitorNoMeio(unittest.TestCase):
         for largura in (1100, 1300, 1920, 3440):
             with self.subTest(largura=largura):
                 medida = self.medir(largura)
+                self.assertEqual(medida["posicao"], "absolute")
                 self.assertAlmostEqual(medida["meio"], medida["janela"] / 2, delta=1)
                 self.assertGreaterEqual(medida["folgaDireita"], 16, "o meio caiu em cima do botao de uso")
                 self.assertGreaterEqual(medida["folgaEsquerda"], 16)
 
     def test_sem_espaco_volta_pro_lado_dos_botoes_sem_encostar(self):
-        """Controle: abaixo do corte o meio da janela cairia em cima do botao de uso."""
+        """Abaixo do corte o meio da janela cairia em cima do botao de uso: o monitor volta pra fila.
+
+        Pela posicao calculada, e nao pela distancia do meio: com a fonte do Windows, mais estreita,
+        ele cai a poucos pixels do meio mesmo de volta na fila.
+        """
         medida = self.medir(1000)
-        self.assertNotAlmostEqual(medida["meio"], medida["janela"] / 2, delta=10)
+        self.assertEqual(medida["posicao"], "static")
         self.assertGreaterEqual(medida["folgaDireita"], 14)
         self.assertGreaterEqual(medida["folgaEsquerda"], 14)
 
