@@ -29,6 +29,7 @@ from . import perfis as mod_perfis
 from . import pty_session as mod_pty
 from . import queda as mod_queda
 from . import recursos as mod_recursos
+from . import recursos_abas as mod_recursos_abas
 from . import sessao_salva as mod_salvas
 from . import sessoes as mod_sessoes
 from . import sessoes_codex as mod_sessoes_codex
@@ -215,6 +216,7 @@ class Bridge(QObject):
         self._sessoesVarridas.connect(self._entregar_sessoes)
         self._recursosLidos.connect(self._entregar_recursos)
         self._medidor: mod_recursos.Medidor | None = None
+        self._medidor_abas: mod_recursos_abas.MedidorDeAbas | None = None
         self._lendo_recursos_desde: float | None = None
         # Toda ligacao a um metodo da ponte nasce aqui, antes de o canal ler a ponte, e todo
         # metodo ligado e slot declarado. Ligado depois, um metodo sem @Slot vira slot novo na
@@ -1025,13 +1027,21 @@ class Bridge(QObject):
             if agora - self._lendo_recursos_desde < LEITURA_DE_RECURSOS_PRESA:
                 return
             self._medidor = None
+            self._medidor_abas = None
         self._lendo_recursos_desde = agora
         medidor = self._medidor
+        medidor_abas = self._medidor_abas
+        # o shell de cada aba, lido aqui na thread da tela: a lista muda quando uma aba abre ou fecha
+        abas = {sid: s.pid for sid, s in self._sessions.items() if s.alive and s.pid}
 
         def ler() -> None:
             texto = "{}"
             try:
-                texto = json.dumps((medidor or self._novo_medidor()).ler())
+                dados = (medidor or self._novo_medidor()).ler()
+                gasto = self._gasto_das_abas(medidor_abas, abas)
+                if gasto:
+                    dados["abas"] = gasto
+                texto = json.dumps(dados)
             except Exception:  # noqa: BLE001 - sensor estranho apaga a barra, e nao derruba a tela
                 log.warning("nao consegui ler os recursos da maquina", exc_info=True)
             try:
@@ -1045,6 +1055,18 @@ class Bridge(QObject):
     def _novo_medidor(self) -> mod_recursos.Medidor:
         self._medidor = mod_recursos.Medidor()
         return self._medidor
+
+    def _gasto_das_abas(self, medidor_abas, abas: dict) -> dict:
+        """O que cada aba gasta. Falhar aqui so tira os numeros das abas, e a barra de cima continua."""
+        if not abas:
+            return {}
+        try:
+            if medidor_abas is None:
+                medidor_abas = self._medidor_abas = mod_recursos_abas.MedidorDeAbas()
+            return medidor_abas.ler(abas)
+        except Exception:  # noqa: BLE001 - processo estranho no /proc nao pode apagar o monitor inteiro
+            log.warning("nao consegui ler o gasto das abas", exc_info=True)
+            return {}
 
     @Slot(str)
     def _entregar_recursos(self, texto: str) -> None:

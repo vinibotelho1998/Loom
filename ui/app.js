@@ -423,6 +423,11 @@ class Aba extends AbaBase {
       '<span class="chapeu-estado"></span>' +
       '<span class="chapeu-medidas"></span>';
     this.tela.appendChild(this.chapeu);
+    // o que roda nesta aba gasta: no cartao da lateral sempre, e no chapeu na grade e na tela dividida
+    this.usoNoCartao = montarUsoDaAba("sessao-uso");
+    this.botao.appendChild(this.usoNoCartao);
+    this.usoNoChapeu = montarUsoDaAba("chapeu-uso");
+    this.chapeu.insertBefore(this.usoNoChapeu, this.chapeu.querySelector(".chapeu-medidas"));
 
     this.term.open(this.tela);
     this.tela.addEventListener("paste", (ev) => {
@@ -3595,6 +3600,87 @@ function itensDosRecursos(r) {
   return itens;
 }
 
+function memoriaCurta(bytes) {
+  if (typeof bytes !== "number") return "--";
+  return bytes < 1073741824 ? Math.round(bytes / 1048576) + " MB" : gigas(bytes) + " GB";
+}
+
+function textoDeNucleos(n) {
+  if (typeof n !== "number") return "--";
+  const texto = n.toFixed(n < 10 ? 1 : 0).replace(".", ",");
+  return texto + (texto === "1,0" ? " núcleo" : " núcleos");
+}
+
+function itensDaAba(r) {
+  /* O que a linha de uma aba escreve: o programa que mais gasta nela e o total da aba inteira.
+     A CPU e a parte da maquina, como na barra de cima; os nucleos ficam na dica. Placa so aparece
+     quando algum programa da aba abriu a placa. */
+  if (!r) return null;
+  const principais = r.principais || [];
+  const comPlaca = typeof r.vram === "number" && r.vram > 0;
+  const linhas = principais.map((p) => {
+    const partes = [textoDeNucleos(p.nucleos), memoriaCurta(p.ram)];
+    if (typeof p.gpu === "number") partes.push("placa " + textoDePorcento(p.gpu));
+    if (p.vram) partes.push(memoriaCurta(p.vram) + " de vídeo");
+    return p.nome + ": " + partes.join(", ");
+  });
+  const processos = r.processos || principais.length;
+  const dica =
+    "Nesta aba agora, " + processos + (processos === 1 ? " processo" : " processos") +
+    (typeof r.nucleos === "number" ? ", " + textoDeNucleos(r.nucleos) + " ocupados" : "") + ":\n" +
+    linhas.join("\n") + (processos > linhas.length ? "\n..." : "");
+  return {
+    nome: principais.length ? principais[0].nome : "",
+    cpu: { valor: textoDePorcento(r.cpu), nivel: nivelDoUso(r.cpu) },
+    ram: { valor: memoriaCurta(r.ram), nivel: "" },
+    gpu: comPlaca ? { valor: textoDePorcento(r.gpu), nivel: nivelDoUso(r.gpu) } : null,
+    vram: comPlaca ? { valor: memoriaCurta(r.vram), nivel: "" } : null,
+    quieta: !(r.cpu >= 1) && !(r.gpu >= 1),
+    dica,
+  };
+}
+
+function montarUsoDaAba(classe) {
+  const caixa = document.createElement("div");
+  caixa.className = classe + " uso-aba";
+  caixa.hidden = true;
+  caixa.innerHTML =
+    '<span class="uso-aba-nome"></span>' +
+    '<span class="uso-aba-item" data-item="cpu"><i>CPU</i><b></b></span>' +
+    '<span class="uso-aba-item" data-item="ram"><i>RAM</i><b></b></span>' +
+    '<span class="uso-aba-item" data-item="gpu"><i>GPU</i><b></b></span>' +
+    '<span class="uso-aba-item" data-item="vram"><i>VRAM</i><b></b></span>';
+  return caixa;
+}
+
+function pintarUsoDaAba(caixa, itens) {
+  // muda so o que mudou, como a barra de cima: a cada 2 s, em cada aba
+  const mostrar = !!itens && cfg.mostrarRecursos !== false;
+  if (caixa.hidden !== !mostrar) caixa.hidden = !mostrar;
+  if (!mostrar) return;
+  escreverSeMudou(caixa.querySelector(".uso-aba-nome"), itens.nome);
+  for (const nome of ["cpu", "ram", "gpu", "vram"]) {
+    const item = caixa.querySelector('[data-item="' + nome + '"]');
+    const dado = itens[nome];
+    if (item.hidden !== !dado) item.hidden = !dado;
+    if (!dado) continue;
+    const valor = item.querySelector("b");
+    escreverSeMudou(valor, dado.valor);
+    if (valor.className !== dado.nivel) valor.className = dado.nivel;
+  }
+  if (caixa.classList.contains("quieta") !== itens.quieta) caixa.classList.toggle("quieta", itens.quieta);
+  if (caixa.title !== itens.dica) caixa.title = itens.dica;
+}
+
+function pintarUsoDasAbas(abas) {
+  for (const aba of ordem) {
+    if (aba.ehPainel || !aba.usoNoCartao) continue;
+    const itens = aba.viva && aba.sessionId ? itensDaAba(abas[aba.sessionId]) : null;
+    pintarUsoDaAba(aba.usoNoCartao, itens);
+    pintarUsoDaAba(aba.usoNoChapeu, itens);
+  }
+}
+
 function escreverSeMudou(alvo, texto) {
   // o monitor anda a cada 2 s: sem isto, cada volta repintava a barra mesmo com o numero igual
   if (alvo && alvo.textContent !== texto) alvo.textContent = texto;
@@ -3629,12 +3715,15 @@ function pintarRecursos(json) {
     }
     if (caixa.title !== item.dica) caixa.title = item.dica;
   }
+  pintarUsoDasAbas(dados.abas || {});
   aplicarRecursos();
 }
 
 function aplicarRecursos() {
   const ligado = cfg.mostrarRecursos !== false;
   el("recursos").hidden = !ligado || !recursosComLeitura;
+  // desligado, o gasto de cada aba sai junto com a barra; ligado de novo, volta na proxima leitura
+  if (!ligado) pintarUsoDasAbas({});
   const linha = el("linha-recursos");
   // no sistema em que nao ha o que mostrar, o ajuste tambem nao aparece
   if (recursosComLeitura) linha.hidden = false;

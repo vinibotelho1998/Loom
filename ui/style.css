@@ -1978,6 +1978,56 @@ body.maximizada .bordas-janela { display: none; }
 .recurso .critico { color: #f0808a; }
 .recurso u.alto { background: #c99a4a; }
 .recurso u.critico { background: #cc5560; }
+/* No meio da janela, e nao no meio do espaco entre os dois grupos da barra: os botoes da direita
+   ocupam mais que a marca da esquerda, e o meio do espaco ficava torto. Com a janela estreita o meio
+   cairia em cima dos botoes, e ai o monitor volta pro lugar de antes, encostado neles. */
+.cromo { position: relative; }
+.recursos { position: absolute; left: 50%; transform: translateX(-50%); margin-right: 0; }
+@media (max-width: 1060px) { .recursos { position: static; transform: none; margin-right: 14px; } }
 /* janela menor: a barrinha cede primeiro, e so depois o monitor todo, antes de empurrar os botoes */
 @media (max-width: 1240px) { .recurso-trilho { display: none; } }
 @media (max-width: 860px) { .recursos { display: none; } }
+
+/* ------------------------------------------- o que cada aba esta gastando */
+
+/* Debaixo de cada cartao da lateral, e no chapeu da grade e da tela dividida: o programa que mais
+   gasta na aba e o total dela. Parada, a linha fica apagada; so ganha cor o que pede atencao, como
+   na barra de cima. Na lateral estreita a placa desce pra uma segunda linha em vez de cortar. */
+.uso-aba[hidden], .uso-aba-item[hidden] { display: none; }
+.uso-aba {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 9px;
+  row-gap: 1px;
+  min-width: 0;
+  font: 500 10.5px/1.4 var(--mono);
+  color: var(--apagado-2);
+  cursor: default;
+}
+.uso-aba-nome {
+  flex: 1 1 52px;
+  min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--apagado);
+}
+.uso-aba-nome:empty { display: none; }
+.uso-aba-item { flex: 0 0 auto; white-space: nowrap; }
+.uso-aba-item i { font-style: normal; color: var(--fraco); margin-right: 4px; }
+.uso-aba-item b { font-weight: 600; color: var(--texto); }
+.uso-aba-item b.alto { color: #e0b458; }
+.uso-aba-item b.critico { color: #f0808a; }
+.uso-aba.quieta .uso-aba-nome,
+.uso-aba.quieta .uso-aba-item b { font-weight: 500; color: var(--fraco); }
+.uso-aba.quieta .uso-aba-item b.alto,
+.uso-aba.quieta .uso-aba-item b.critico { font-weight: 600; }
+.sessao-uso { grid-column: 1 / -1; grid-row: 5; padding-left: 14px; margin-top: 4px; }
+.chapeu-uso { flex: 0 1 auto; flex-wrap: nowrap; overflow: hidden; padding-left: 10px; }
+.chapeu-uso .uso-aba-nome { flex: 0 1 auto; max-width: 18ch; }
+/* o chapeu estreito larga primeiro o nome do programa e a RAM; mais estreito, a linha inteira */
+@container (max-width: 560px) {
+  .chapeu-uso .uso-aba-nome, .chapeu-uso [data-item="ram"], .chapeu-uso [data-item="vram"] { display: none; }
+}
+@container (max-width: 400px) {
+  .chapeu-uso { display: none; }
+}
