@@ -420,12 +420,113 @@ class TextoDaAba(ComPagina):
         self.assertIsNone(self.itens(None))
 
 
+class TextoDoMonitorDaAba(ComPagina):
+    """Os mesmos quatro itens da barra de cima, medindo so a aba."""
+
+    TOTAIS = {"ram": 32 * GB, "vram": 16 * GB}
+
+    def itens(self, dados, totais=TOTAIS):
+        return self.rodar("itensDoMonitorDaAba(" + json.dumps(dados) + ", " + json.dumps(totais) + ")")
+
+    def test_os_quatro_itens_com_a_barrinha_pela_parte_da_maquina(self):
+        itens = self.itens({"cpu": 36.4, "nucleos": 5.8, "ram": 8 * GB, "gpu": 98.8, "vram": 12 * GB, "processos": 3,
+                            "principais": [{"nome": "llama-server", "nucleos": 5.8, "ram": 8 * GB, "gpu": 98.8, "vram": 12 * GB}]})
+        self.assertEqual(itens["nome"], "llama-server")
+        self.assertEqual([itens[n]["valor"] for n in ("cpu", "ram", "gpu", "vram")], ["36%", "8,0 GB", "99%", "12,0 GB"])
+        self.assertEqual(itens["cpu"]["parte"], 36.4)
+        self.assertAlmostEqual(itens["ram"]["parte"], 25.0, msg="8 de 32 GB")
+        self.assertAlmostEqual(itens["vram"]["parte"], 75.0, msg="12 de 16 GB")
+        self.assertEqual(itens["gpu"]["nivel"], "critico")
+        self.assertIn("llama-server: 5,8 núcleos", itens["dica"])
+
+    def test_aba_sem_placa_mostra_a_placa_parada(self):
+        itens = self.itens({"cpu": 0.2, "nucleos": 0.03, "ram": 400 * MB, "gpu": None, "vram": None, "processos": 1,
+                            "principais": [{"nome": "claude", "nucleos": 0.03, "ram": 400 * MB}]})
+        self.assertEqual((itens["gpu"]["valor"], itens["gpu"]["parte"]), ("0%", 0))
+        self.assertEqual((itens["vram"]["valor"], itens["vram"]["parte"]), ("0 MB", 0))
+
+    def test_antes_do_primeiro_numero_vai_traco(self):
+        for dados in (None, {"cpu": None, "nucleos": None, "ram": GB, "gpu": None, "vram": None, "processos": 1, "principais": []}):
+            with self.subTest(dados=dados):
+                itens = self.itens(dados)
+                self.assertEqual(itens["cpu"]["valor"], "--")
+                self.assertEqual(itens["gpu"]["valor"], "--")
+
+    def test_sem_total_da_maquina_a_barrinha_fica_vazia(self):
+        itens = self.itens({"cpu": 1, "ram": GB, "vram": GB, "gpu": 3, "principais": []}, {})
+        self.assertEqual((itens["ram"]["parte"], itens["vram"]["parte"]), (0, 0))
+
+
 class UsoDaAbaNaPagina(unittest.TestCase):
     def test_a_linha_nasce_no_cartao_e_no_chapeu_de_cada_aba(self):
         app = (UI / "app.js").read_text(encoding="utf-8")
         aba = app[app.index("class Aba extends AbaBase"):app.index("this.term.open(this.tela)")]
         self.assertIn('montarUsoDaAba("sessao-uso")', aba)
-        self.assertIn('montarUsoDaAba("chapeu-uso")', aba)
+        self.assertIn('montarMonitorDaAba("chapeu-uso")', aba)
+        self.assertIn('montarMonitorDaAba("tela-uso")', aba)
+
+    FAIXA = """(function () {
+      cfg.mostrarRecursos = true;
+      recursosComLeitura = true;
+      const palco = document.getElementById("palco");
+      if (GRADE) palco.classList.add("grade");
+      const tela = document.createElement("div");
+      tela.className = "tela ativa";
+      tela.innerHTML = '<div class="xterm" style="height: 100%"></div><div class="rolagem-terminal"></div>';
+      palco.appendChild(tela);
+      const chapeu = document.createElement("div");
+      chapeu.className = "chapeu";
+      tela.appendChild(chapeu);
+      const aba = { ehPainel: false, viva: true, sessionId: "s1", tela,
+        usoNoCartao: montarUsoDaAba("sessao-uso"), usoNoChapeu: montarMonitorDaAba("chapeu-uso"), usoNaTela: montarMonitorDaAba("tela-uso") };
+      chapeu.appendChild(aba.usoNoChapeu);
+      tela.appendChild(aba.usoNaTela);
+      ordem.push(aba);
+      let ajustes = 0;
+      const ajustarDeVerdade = ajustarTodas;
+      ajustarTodas = () => ajustes++;
+      const totais = { ram: 32 * 1073741824, vram: 16 * 1073741824 };
+      const dados = { s1: { cpu: 36, nucleos: 5.8, ram: 8 * 1073741824, gpu: 99, vram: 12 * 1073741824, processos: 2,
+        principais: [{ nome: "llama-server", nucleos: 5.8, ram: 1, gpu: 99, vram: 1 }] } };
+      pintarUsoDasAbas(dados, totais);
+      pintarUsoDasAbas(dados, totais);
+      const faixa = aba.usoNaTela.getBoundingClientRect();
+      const itens = aba.usoNaTela.querySelector(".monitor-aba-itens").getBoundingClientRect();
+      const caixa = tela.getBoundingClientRect();
+      const termo = tela.querySelector(".xterm").getBoundingClientRect();
+      const cpu = aba.usoNaTela.querySelector('[data-item="cpu"] u').style.width;
+      const medida = {
+        faixaVisivel: getComputedStyle(aba.usoNaTela).display !== "none",
+        chapeuVisivel: getComputedStyle(aba.usoNoChapeu).display !== "none",
+        ajustes, cpu,
+        folga: termo.top - faixa.bottom,
+        meio: (itens.left + itens.right) / 2 - (caixa.left + caixa.right) / 2,
+        vaza: aba.usoNaTela.scrollWidth - aba.usoNaTela.clientWidth,
+      };
+      pintarUsoDasAbas({});
+      cfg.mostrarRecursos = false;
+      pintarUsoDasAbas({});
+      medida.desligadaSemFaixa = !tela.classList.contains("com-uso") && aba.usoNaTela.hidden;
+      medida.ajustesDepois = ajustes;
+      ajustarTodas = ajustarDeVerdade;
+      return JSON.stringify(medida);
+    })()"""
+
+    def test_na_vista_de_uma_aba_a_faixa_fica_no_topo_do_terminal_sem_cobrir_a_primeira_linha(self):
+        medida = self.medir(self.FAIXA.replace("GRADE", "false"), 1300)
+        self.assertTrue(medida["faixaVisivel"])
+        self.assertGreaterEqual(medida["folga"], 0, "a faixa cobriu a primeira linha do terminal")
+        self.assertLessEqual(abs(medida["meio"]), 1, "os numeros ficam no meio do terminal, como os de cima")
+        self.assertLessEqual(medida["vaza"], 0)
+        self.assertEqual(medida["cpu"], "36%", "a barrinha mede o mesmo que o numero")
+        self.assertEqual(medida["ajustes"], 1, "o terminal remede uma vez quando a faixa aparece, e nao a cada leitura")
+        self.assertEqual(medida["ajustesDepois"], 2, "e de novo quando ela some")
+        self.assertTrue(medida["desligadaSemFaixa"])
+
+    def test_na_grade_quem_mostra_e_o_chapeu(self):
+        medida = self.medir(self.FAIXA.replace("GRADE", "true"), 1300)
+        self.assertFalse(medida["faixaVisivel"])
+        self.assertTrue(medida["chapeuVisivel"])
 
     def test_desligar_o_monitor_tira_tambem_a_linha_das_abas(self):
         app = (UI / "app.js").read_text(encoding="utf-8")

@@ -2022,11 +2022,52 @@ body.maximizada .bordas-janela { display: none; }
 .uso-aba.quieta .uso-aba-item b.alto,
 .uso-aba.quieta .uso-aba-item b.critico { font-weight: 600; }
 .sessao-uso { grid-column: 1 / -1; grid-row: 5; padding-left: 14px; margin-top: 4px; }
-.chapeu-uso { flex: 0 1 auto; flex-wrap: nowrap; overflow: hidden; padding-left: 10px; }
-.chapeu-uso .uso-aba-nome { flex: 0 1 auto; max-width: 18ch; }
-/* o chapeu estreito larga primeiro o nome do programa e a RAM; mais estreito, a linha inteira */
-@container (max-width: 560px) {
-  .chapeu-uso .uso-aba-nome, .chapeu-uso [data-item="ram"], .chapeu-uso [data-item="vram"] { display: none; }
+
+/* A barra de cima dentro de cada terminal: os mesmos quatro itens, com a barrinha, medindo so o que
+   roda nele. Na vista de uma aba e uma faixa no topo do terminal, com os numeros no meio como la em
+   cima; na grade e na tela dividida mora no chapeu de cada painel. */
+.monitor-aba[hidden] { display: none; }
+.monitor-aba-nome {
+  min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font: 500 11.5px/1 var(--mono);
+  color: var(--apagado);
+}
+.monitor-aba-itens { display: flex; align-items: center; gap: 18px; white-space: nowrap; }
+/* o numero que muda de largura nao empurra os vizinhos a cada leitura */
+.monitor-aba [data-item="cpu"] b, .monitor-aba [data-item="gpu"] b { min-width: 4ch; text-align: right; }
+.tela-uso { display: none; }
+.palco:not(.grade) .tela.com-uso:not(.lado) .tela-uso:not([hidden]) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: 16px;
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 30px;
+  padding: 0 14px 0 16px;
+  background: #141518;
+  border-bottom: 1px solid #1d1e21;
+  z-index: 2;
+}
+.tela-uso .monitor-aba-itens { grid-column: 2; }
+.tela-uso .monitor-aba-nome { grid-column: 1; grid-row: 1; }
+/* o terminal comeca depois da faixa: sem isto a primeira linha ficava embaixo dela */
+.palco:not(.grade) .tela.com-uso:not(.lado) { padding-top: 40px; }
+.palco:not(.grade) .tela.com-uso:not(.lado) .rolagem-terminal { top: 40px; }
+.chapeu-uso { display: flex; align-items: center; gap: 10px; flex: 0 1 auto; min-width: 0; overflow: hidden; padding-left: 10px; }
+.chapeu-uso .monitor-aba-nome { max-width: 16ch; font-size: 10.5px; }
+.chapeu-uso .monitor-aba-itens { gap: 12px; }
+.chapeu-uso .recurso { gap: 5px; }
+.chapeu-uso .recurso i { font-size: 10px; }
+.chapeu-uso .recurso b { font-size: 11px; }
+.chapeu-uso .recurso-trilho { width: 28px; height: 4px; }
+/* o chapeu estreito larga a barrinha e o nome; depois a RAM e a VRAM; e por fim a linha inteira */
+@container (max-width: 760px) {
+  .chapeu-uso .recurso-trilho, .chapeu-uso .monitor-aba-nome { display: none; }
+}
+@container (max-width: 520px) {
+  .chapeu-uso [data-item="ram"], .chapeu-uso [data-item="vram"] { display: none; }
 }
 @container (max-width: 400px) {
   .chapeu-uso { display: none; }

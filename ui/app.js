@@ -426,8 +426,11 @@ class Aba extends AbaBase {
     // o que roda nesta aba gasta: no cartao da lateral sempre, e no chapeu na grade e na tela dividida
     this.usoNoCartao = montarUsoDaAba("sessao-uso");
     this.botao.appendChild(this.usoNoCartao);
-    this.usoNoChapeu = montarUsoDaAba("chapeu-uso");
+    // dentro do terminal, a barra de cima medindo so esta aba: no chapeu na grade, numa faixa no resto
+    this.usoNoChapeu = montarMonitorDaAba("chapeu-uso");
     this.chapeu.insertBefore(this.usoNoChapeu, this.chapeu.querySelector(".chapeu-medidas"));
+    this.usoNaTela = montarMonitorDaAba("tela-uso");
+    this.tela.appendChild(this.usoNaTela);
 
     this.term.open(this.tela);
     this.tela.addEventListener("paste", (ev) => {
@@ -3672,13 +3675,84 @@ function pintarUsoDaAba(caixa, itens) {
   if (caixa.title !== itens.dica) caixa.title = itens.dica;
 }
 
-function pintarUsoDasAbas(abas) {
+function itensDoMonitorDaAba(r, totais) {
+  /* Os mesmos quatro itens da barra de cima, medindo so a aba. As barrinhas de RAM e VRAM dizem
+     quanto da maquina a aba ocupa. Sem placa aberta, a placa fica em zero, como a barra de cima
+     mostraria uma placa parada; antes da segunda leitura nao ha uso, e vai traco. */
+  r = r || {};
+  totais = totais || {};
+  const primeira = typeof r.cpu !== "number";
+  const fracao = (parte, total) => (typeof parte === "number" && total ? (100 * parte) / total : 0);
+  const ram = fracao(r.ram, totais.ram);
+  const vram = fracao(r.vram || 0, totais.vram);
+  const gpu = primeira ? null : r.gpu || 0;
+  const principal = (r.principais || [])[0];
+  const doCartao = r.principais ? itensDaAba(r) : null;
+  return {
+    nome: principal ? principal.nome : "",
+    cpu: { valor: textoDePorcento(r.cpu), parte: r.cpu || 0, nivel: nivelDoUso(r.cpu) },
+    ram: { valor: typeof r.ram === "number" ? memoriaCurta(r.ram) : "--", parte: ram, nivel: nivelDoUso(ram) },
+    gpu: { valor: textoDePorcento(gpu), parte: gpu || 0, nivel: nivelDoUso(gpu) },
+    vram: { valor: typeof r.ram === "number" ? memoriaCurta(r.vram || 0) : "--", parte: vram, nivel: nivelDoUso(vram) },
+    dica: doCartao ? doCartao.dica : "",
+  };
+}
+
+function montarMonitorDaAba(classe) {
+  const caixa = document.createElement("div");
+  caixa.className = classe + " monitor-aba";
+  caixa.hidden = true;
+  caixa.innerHTML =
+    '<span class="monitor-aba-nome"></span><span class="monitor-aba-itens">' +
+    ["cpu", "ram", "gpu", "vram"]
+      .map((nome) =>
+        '<span class="recurso" data-item="' + nome + '"><i>' + nome.toUpperCase() + "</i>" +
+        '<span class="recurso-trilho"><u></u></span><b></b></span>')
+      .join("") +
+    "</span>";
+  return caixa;
+}
+
+function pintarMonitorDaAba(caixa, itens) {
+  // como a barra de cima: so mexe no que mudou, e a largura da barrinha em numero inteiro
+  const mostrar = !!itens;
+  if (caixa.hidden !== !mostrar) caixa.hidden = !mostrar;
+  if (!mostrar) return;
+  escreverSeMudou(caixa.querySelector(".monitor-aba-nome"), itens.nome);
+  for (const nome of ["cpu", "ram", "gpu", "vram"]) {
+    const item = caixa.querySelector('[data-item="' + nome + '"]');
+    const dado = itens[nome];
+    const valor = item.querySelector("b");
+    escreverSeMudou(valor, dado.valor);
+    if (valor.className !== dado.nivel) valor.className = dado.nivel;
+    const barra = item.querySelector("u");
+    const largura = Math.round(Math.min(Math.max(dado.parte, 0), 100)) + "%";
+    if (barra.style.width !== largura) barra.style.width = largura;
+    if (barra.className !== dado.nivel) barra.className = dado.nivel;
+  }
+  if (caixa.title !== itens.dica) caixa.title = itens.dica;
+}
+
+function pintarUsoDasAbas(abas, totais = {}) {
+  // a faixa do terminal existe enquanto o monitor tem leitura: aparece com traco antes do primeiro
+  // numero da aba, pra o terminal nao encolher uma linha 2 s depois de abrir
+  const faixa = cfg.mostrarRecursos !== false && recursosComLeitura;
+  let mudou = false;
   for (const aba of ordem) {
     if (aba.ehPainel || !aba.usoNoCartao) continue;
-    const itens = aba.viva && aba.sessionId ? itensDaAba(abas[aba.sessionId]) : null;
-    pintarUsoDaAba(aba.usoNoCartao, itens);
-    pintarUsoDaAba(aba.usoNoChapeu, itens);
+    const dado = aba.viva && aba.sessionId ? abas[aba.sessionId] : null;
+    pintarUsoDaAba(aba.usoNoCartao, itensDaAba(dado));
+    const comFaixa = faixa && !!aba.viva;
+    const itens = comFaixa ? itensDoMonitorDaAba(dado, totais) : null;
+    pintarMonitorDaAba(aba.usoNoChapeu, dado ? itens : null);
+    pintarMonitorDaAba(aba.usoNaTela, itens);
+    if (aba.tela.classList.contains("com-uso") !== comFaixa) {
+      aba.tela.classList.toggle("com-uso", comFaixa);
+      mudou = true;
+    }
   }
+  // a faixa tira altura do terminal: cada um remede, e o shell recebe o tamanho novo
+  if (mudou) ajustarTodas();
 }
 
 function escreverSeMudou(alvo, texto) {
@@ -3715,7 +3789,7 @@ function pintarRecursos(json) {
     }
     if (caixa.title !== item.dica) caixa.title = item.dica;
   }
-  pintarUsoDasAbas(dados.abas || {});
+  pintarUsoDasAbas(dados.abas || {}, { ram: dados.ram && dados.ram.total, vram: dados.vram && dados.vram.total });
   aplicarRecursos();
 }
 
