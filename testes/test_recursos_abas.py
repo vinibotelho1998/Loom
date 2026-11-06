@@ -47,12 +47,15 @@ class ProcDeMentira:
             corpo = b"".join(f"{chave}={valor}".encode() + b"\0" for chave, valor in ambiente.items())
             (pasta / "environ").write_bytes(corpo)
 
-    def tiques(self, pid, tiques):
+    def tiques(self, pid, tiques, dos_filhos=None):
+        """Os tiques do proprio processo e, se vier, o que os filhos que ele recolheu gastaram."""
         stat = self.proc / str(pid) / "stat"
         texto = stat.read_text(encoding="ascii")
         inicio = texto.rindex(")") + 2
         campos = texto[inicio:].split()
         campos[11] = str(tiques)
+        if dos_filhos is not None:
+            campos[13] = str(dos_filhos)
         stat.write_text(texto[:inicio] + " ".join(campos) + "\n", encoding="ascii")
 
     def descritor(self, pid, numero, alvo=PLACA, cliente=None, trabalho=0, calculo=0, vram=None, campo="drm-resident-vram", unidade="KiB"):
@@ -192,6 +195,64 @@ class Cpu(ComProc):
         self.maquina.processo(101, 100, "novo", tiques=20, nasceu=900)
         r = self.ler({"a": 100})["a"]
         self.assertAlmostEqual(r["nucleos"], 0.1)
+
+    def test_o_que_nasce_e_morre_entre_duas_leituras_entra_pelo_pai(self):
+        """Um build sao centenas de compiladores de meio segundo: nenhum chega a ser visto vivo."""
+        self.maquina.processo(100, 1, "bash", ambiente={"LOOM_ABA": "a"})
+        self.ler({"a": 100})
+        self.passar(2.0)
+        self.maquina.tiques(100, 0, dos_filhos=200)
+        r = self.ler({"a": 100})["a"]
+        self.assertAlmostEqual(r["nucleos"], 1.0)
+        self.assertEqual(r["principais"][0]["nome"], "bash", "quem soltou os curtos e quem aparece gastando")
+
+    def test_filho_ja_visto_que_morre_nao_conta_duas_vezes(self):
+        self.maquina.processo(100, 1, "bash", ambiente={"LOOM_ABA": "a"})
+        self.maquina.processo(101, 100, "make", tiques=500)
+        self.ler({"a": 100})
+        self.passar(2.0)
+        # o make gastou mais 40 e morreu: o bash recebe os 540 dele, dos quais 500 ja tinham contado
+        self.maquina.sumir(101)
+        self.maquina.tiques(100, 0, dos_filhos=540)
+        self.assertAlmostEqual(self.ler({"a": 100})["a"]["nucleos"], 0.2)
+
+    def test_filho_e_neto_que_morrem_juntos_descontam_do_antepassado_vivo(self):
+        self.maquina.processo(100, 1, "bash", ambiente={"LOOM_ABA": "a"})
+        self.maquina.processo(101, 100, "make", tiques=100)
+        self.maquina.processo(102, 101, "gcc", tiques=300)
+        self.ler({"a": 100})
+        self.passar(2.0)
+        # o gcc fecha com 340 e o make o recolhe; o make fecha com 120 dele, e o bash recolhe 460
+        self.maquina.sumir(102)
+        self.maquina.sumir(101)
+        self.maquina.tiques(100, 0, dos_filhos=460)
+        self.assertAlmostEqual(self.ler({"a": 100})["a"]["nucleos"], 0.3, msg="so os 60 do intervalo")
+
+    def test_recolhido_por_quem_e_de_fora_nao_desconta_de_ninguem(self):
+        self.maquina.processo(1, 0, "systemd")
+        self.maquina.processo(100, 1, "bash", ambiente={"LOOM_ABA": "a"})
+        self.maquina.processo(200, 1, "llama-server", tiques=900, ambiente={"LOOM_ABA": "a"})
+        self.ler({"a": 100})
+        self.passar(2.0)
+        self.maquina.sumir(200)
+        self.maquina.tiques(100, 50)
+        self.assertAlmostEqual(self.ler({"a": 100})["a"]["nucleos"], 0.25)
+
+    def test_zumbi_conta_na_cpu_e_fica_fora_da_lista(self):
+        self.maquina.processo(100, 1, "bash", ambiente={"LOOM_ABA": "a"})
+        self.maquina.processo(101, 100, "teste", tiques=100)
+        self.ler({"a": 100})
+        self.passar(2.0)
+        self.maquina.processo(101, 100, "teste", tiques=160, estado="Z")
+        r = self.ler({"a": 100})["a"]
+        self.assertAlmostEqual(r["nucleos"], 0.3)
+        self.assertNotIn("teste", {p["nome"] for p in r["principais"]})
+        self.assertEqual(r["processos"], 1)
+        self.passar(2.0)
+        # recolhido: os 160 passam pro bash e ja tinham contado
+        self.maquina.sumir(101)
+        self.maquina.tiques(100, 0, dos_filhos=160)
+        self.assertAlmostEqual(self.ler({"a": 100})["a"]["nucleos"], 0.0)
 
     def test_aba_inteira_nao_passa_de_toda_a_maquina(self):
         self.maquina.processo(100, 1, "bash", ambiente={"LOOM_ABA": "a"})

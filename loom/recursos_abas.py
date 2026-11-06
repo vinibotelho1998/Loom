@@ -89,14 +89,19 @@ class MedidorDeAbas:
         self._pagina = pagina or (sysconf("SC_PAGE_SIZE") if sysconf else 4096)
         self._nucleos = nucleos or os.cpu_count() or 1
         self._quando: float | None = None
-        # (pid, quando nasceu): o pid volta a ser usado, e o par nao
-        self._tiques_antes: dict[tuple[int, int], int] = {}
+        # (pid, quando nasceu): o pid volta a ser usado, e o par nao. Guarda o tempo de CPU, o pai e a aba
+        self._antes: dict[tuple[int, int], tuple[int, int, str | None]] = {}
         self._marcas: dict[tuple[int, int], str] = {}
         self._descritores: dict[tuple[int, int], tuple[list[str], int]] = {}
         self._trabalho_antes: dict[str, int] = {}
 
-    def _processos(self) -> list[tuple[int, int, str, int, int, int]] | None:
-        """(pid, pai, nome, tiques de CPU, quando nasceu, paginas na RAM) de cada processo vivo."""
+    def _processos(self) -> list[tuple[int, int, str, int, int, int, bool]] | None:
+        """(pid, pai, nome, tiques, quando nasceu, paginas na RAM, zumbi) de cada processo.
+
+        Os tiques somam o que o processo gastou e o que gastaram os filhos que ele ja recolheu. Sem
+        a parte dos filhos, o que nasce e morre entre duas leituras, como cada compilador de um build,
+        sumia da conta. O zumbi ainda nao foi recolhido: conta na CPU e fica fora da lista.
+        """
         try:
             nomes = os.listdir(self._proc)
         except OSError:
@@ -110,13 +115,13 @@ class MedidorDeAbas:
             texto = texto.decode("utf-8", "replace")
             inicio, fim = texto.find("("), texto.rfind(")")
             campos = texto[fim + 1 :].split()
-            # zumbi ja acabou: so espera o pai ler o codigo
-            if inicio < 0 or fim < inicio or len(campos) < 22 or campos[0] in ("Z", "X"):
+            if inicio < 0 or fim < inicio or len(campos) < 22 or campos[0] == "X":
                 continue
             try:
+                tiques = sum(int(c) for c in campos[11:15])
                 processos.append(
-                    (int(nome), int(campos[1]), texto[inicio + 1 : fim], int(campos[11]) + int(campos[12]),
-                     int(campos[19]), int(campos[21]))
+                    (int(nome), int(campos[1]), texto[inicio + 1 : fim], tiques, int(campos[19]), int(campos[21]),
+                     campos[0] == "Z")
                 )
             except ValueError:
                 continue
@@ -179,25 +184,56 @@ class MedidorDeAbas:
                 pilha.extend(filhos.get(pid, ()))
 
         vivos = set()
-        tiques_agora = {}
-        por_aba: dict[str, list] = defaultdict(list)
-        for pid, pai, nome, tiques, nasceu, paginas in processos:
+        agora_por_pid: dict[int, tuple[int, int]] = {}
+        antes_agora: dict[tuple[int, int], tuple[int, int, str | None]] = {}
+        membros: dict[int, list] = {}
+        for pid, pai, nome, tiques, nasceu, paginas, zumbi in processos:
             chave = (pid, nasceu)
             vivos.add(chave)
-            tiques_agora[chave] = tiques
+            agora_por_pid[pid] = chave
             aba = dona.get(pid)
             # linha de kernel nao tem ambiente; o resto e lido uma vez na vida do processo
-            if aba is None and pid != 2 and pai != 2:
+            if aba is None and not zumbi and pid != 2 and pai != 2:
                 marca = self._marcas.get(chave)
                 if marca is None:
                     marca = self._marcas[chave] = self._marca(pid)
                 aba = marca if marca in abas else None
+            antes_agora[chave] = (tiques, pai, aba)
             if aba is None:
                 continue
-            antes = self._tiques_antes.get(chave)
+            antes = self._antes.get(chave)
             # o que nasceu depois da ultima leitura gastou tudo dentro do intervalo
-            gasto = tiques - antes if antes is not None else tiques
-            por_aba[aba].append((pid, nome, max(gasto, 0), paginas * self._pagina, chave))
+            gasto = tiques - antes[0] if antes is not None else tiques
+            membros[pid] = [aba, nome, gasto, paginas * self._pagina, chave, zumbi]
+
+        # Quem morreu no intervalo passou o tempo todo dele pro pai que o recolheu, e daquele tempo
+        # uma parte ja tinha sido contada nas leituras de antes. Essa parte sai do primeiro antepassado
+        # vivo, que e onde o kernel somou. Recolhido por quem e de fora da aba, o tempo nao volta.
+        antes_por_pid = {chave[0]: (chave, info) for chave, info in self._antes.items()}
+        for chave, (tiques, pai, aba) in self._antes.items():
+            if chave in vivos or aba is None:
+                continue
+            passo = pai
+            for _ in range(64):
+                if passo <= 1:
+                    break
+                viva = agora_por_pid.get(passo)
+                anterior = antes_por_pid.get(passo)
+                if viva is not None and (anterior is None or anterior[0] == viva):
+                    if passo in membros:
+                        membros[passo][2] -= tiques
+                    break
+                if anterior is None:
+                    break
+                passo = anterior[1][1]
+
+        por_aba: dict[str, list] = defaultdict(list)
+        cpu_por_aba: dict[str, int] = defaultdict(int)
+        for pid, (aba, nome, gasto, ram, chave, zumbi) in membros.items():
+            gasto = max(gasto, 0)
+            cpu_por_aba[aba] += gasto
+            if not zumbi:
+                por_aba[aba].append((pid, nome, gasto, ram, chave))
 
         segundos = intervalo if intervalo and intervalo > 0 else None
         resultado = {}
@@ -237,7 +273,7 @@ class MedidorDeAbas:
                     "gpu": round(min(gpu_do_processo, 100.0), 1) if processo_com_placa and segundos else None,
                     "vram": vram_do_processo or None,
                 })
-            nucleos_da_aba = sum(p[2] for p in membros) / self._tique / segundos if segundos else None
+            nucleos_da_aba = cpu_por_aba[aba] / self._tique / segundos if segundos else None
             linhas.sort(key=lambda p: (p["nucleos"] or 0, p["gpu"] or 0, p["ram"]), reverse=True)
             resultado[aba] = {
                 "cpu": round(min(100.0, 100 * nucleos_da_aba / self._nucleos), 1) if nucleos_da_aba is not None else None,
@@ -249,7 +285,7 @@ class MedidorDeAbas:
                 "principais": linhas[:PRINCIPAIS],
             }
 
-        self._tiques_antes = tiques_agora
+        self._antes = antes_agora
         self._trabalho_antes = trabalho_agora
         self._marcas = {chave: marca for chave, marca in self._marcas.items() if chave in vivos}
         self._descritores = {chave: d for chave, d in self._descritores.items() if chave in vivos}
