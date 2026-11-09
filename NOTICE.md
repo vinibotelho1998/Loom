@@ -14,6 +14,14 @@ Copyright (c) 2012-2013 Christopher Jeffrey
 
 Licença MIT. https://github.com/xtermjs/xterm.js
 
+`ui/vendor/addon-webgl.js` tem uma modificação do Loom, marcada no topo do arquivo. A textura de
+letras passa a usar filtro linear e o addon deixa de chamar `generateMipmap` a cada envio dela. Sem
+filtro próprio, o WebGL usa o padrão, que exige mipmaps; com a Radeon RX 9070 no Mesa, o driver
+recusava gerar os mipmaps, com `GL_INVALID_OPERATION` em `allocateMipmapLevelsForGeneration`, a textura
+ficava incompleta e as letras novas saíam como blocos pretos. O terminal desenha na escala de um
+para um, então a imagem não muda. `testes/test_desenho_webgl.py` confere a modificação, para ela não
+sumir numa atualização do xterm.js.
+
 ### Qt WebChannel, lado JavaScript
 `ui/vendor/qwebchannel.js`
 
@@ -96,6 +104,7 @@ O `Loom-Setup.exe` é gerado com PyInstaller e leva junto:
 
 ## Como conferir
 
-Os arquivos de terceiros ficam todos em `ui/vendor/`. Nenhum deles foi editado:
-são cópias do que o projeto de origem publica. A exceção é `loom/dados/precos.json`,
-o recorte da tabela do LiteLLM descrito acima.
+Os arquivos de terceiros ficam todos em `ui/vendor/`. Só um deles foi editado, o
+`ui/vendor/addon-webgl.js`, com a modificação descrita acima e marcada no topo dele; os
+outros são cópias do que o projeto de origem publica. A outra exceção é
+`loom/dados/precos.json`, o recorte da tabela do LiteLLM descrito acima.
